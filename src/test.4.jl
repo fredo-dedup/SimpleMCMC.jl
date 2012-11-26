@@ -1,7 +1,10 @@
 load("extras/distributions.jl")
 import Distributions.*
 
-load("p:/documents/julia/mc_lib.2.jl")
+load("mc_lib.3.jl")
+load("SimpleMCMC.jl")
+import SimpleMCMC.*
+
 
 ###################  problem data  ##########################
 	begin
@@ -48,37 +51,7 @@ params = quote
 	vars::{vector(nbeta), init=0}
 end
 
-ex = params
-function parseParams(ex)
-	println(ex.head, " -> ")
-	@assert params.head == :block
-	index1 = 1
-	index2 = 1
-	assigns = {}
-	for e in ex.args
-		if e.head == :(::)
-			@assert typeof(e.args[1]) == Symbol
-			@assert typeof(e.args[2]) == Expr
-			e2 = e.args[2]
-			if e2.args[1] == :scalar
-				push(assigns, :($(e.args[1]) = beta[$index1]))
-				index1 += 1
-			elseif typeof(e2.args[1]) == Expr
-				e3 = e2.args[1].args
-				if e3[1] == :vector
-					nb = eval(e3[2])
-					push(assigns, :($(e.args[1]) = beta[$index1:$(nb+index1-1)]))
-					index1 += nb
-				end
-			end
-		end
-	end
-
-	Expr(:block, assigns, Any)
-end
-
-e = params.args[2]
-e.head
+parmap = parseParams(params)
 
 
 my = :()
