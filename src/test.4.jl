@@ -1,11 +1,12 @@
 load("extras/distributions.jl")
 import Distributions.*
 
-load("mc_lib.3.jl")
+# load("mc_lib.3.jl")
 load("SimpleMCMC.jl")
-import SimpleMCMC.*
+# include("SimpleMCMC.jl")
+# import SimpleMCMC.*
 
-
+simpleMCMC
 ###################  problem data  ##########################
 	begin
 		srand(1)
@@ -23,8 +24,8 @@ import SimpleMCMC.*
 			resid ~ Normal(0.0, sigma)
 		end
 
-		modelExpr = mcmc2(model)
-		setmap = :(sigma=beta[1] ; vars=beta[2:(nbeta+1)])
+		# modelExpr = mcmc2(model)
+		# setmap = :(sigma=beta[1] ; vars=beta[2:(nbeta+1)])
 	end
 
 	begin
@@ -53,17 +54,99 @@ end
 
 parmap = parseParams(params)
 
-
 my = :()
 expexp(my)
 expexp(params)
 my.args[1] = :(a=2)
 
-
 expexp(params)
 
 
 ###################  runs  ##########################
+expexp(:(4+5*a))
+expexp(:(sigma::{scalar}, vars::{vector(nbeta)}))
+
+params = :(sigma::{scalar}, vars::{vector(nbeta)})
+
+load("SimpleMCMC.jl")
+
+eval(quote 
+    sigma = beta[1]
+    vars = beta[2:41]
+end)
+
+beta = ones(41)
+params = :(sigma::{scalar}, vars::{vector(nbeta)})
+
+nbeta = 40
+simpleMCMC10(model, :(sigma::{scalar}, vars::{vector(nbeta)}), 10)
+
+@time begin
+	samples = simpleMCMC10(model, :(sigma::{scalar}, vars::{vector(nbeta)}), 1000)
+end  # 9,6 pour 1000
+
+
+
+test = quote 
+	lp = 1.2
+	println("lp :", lp)
+end
+
+(nbeta, parmap) = parseParams(:(sigma::{scalar}, vars::{vector(nbeta)}))
+model2 = parseModel(model)
+
+eval(quote 
+	function f(beta) 
+		local __lp
+
+		$parmap
+		__lp = 0.0 
+		$model2
+		__lp
+	end
+end)
+
+f()
+
+test = :(sigma = alpha)
+f(x) = (zeta = x)
+eval(:(f() = (sigma = alpha)))
+f
+global sigma
+sigma
+f(5)
+zeta
+sigma
+
+function test2()
+	local zeta
+	# zeta = 0
+	alpha = 3
+
+	eval(:(f(x) = (:zeta = x)))
+
+	f(alpha)
+	println(zeta)
+# catch x
+# 	println("error : ", x)
+end
+
+test2()
+
+alpha
+sigma
+
+
+
+
+
+
+
+
+
+
+
+
 	begin
 		scale = 0.1
 		steps = 10000
@@ -78,10 +161,6 @@ expexp(params)
 model
 
 #############  find starting values  ################
-
-
-
-
 	for k in 1:10
 		global beta
 		global __lp
@@ -94,22 +173,12 @@ model
 		end
 	end
 
-beta = [1 , zeros((40,)) ]
-
-quote 	#  line 2:
-    resid = -(Y, *(X, vars))	#  line 3:
-    __lp = +(__lp, sum(logpdf(Gamma(2, 1), sigma)))	#  line 5:
-    __lp = +(__lp, sum(logpdf(Normal(0.0, 1), vars)))	#  line 6:
-    __lp = +(__lp, sum(logpdf(Normal(0.0, sigma), resid)))
-end
-
-
 	@time begin
 		eval(loop)
 	end    # 1.05 pour 10000 iter, un peu plus lent, 73s pour 40 vars et 10.000 iter
 
 	mean(samples[:,5])  # mais la distrib est meilleure (mes fonctions sont fausses !)
-	[mean(samples[:,i]) for i in 1:(nbeta+1)]
+	[[mean(samples[:,i]) for i in 1:(nbeta+1)] ; beta0 ]
 	 #-142.638   
 	 #  -0.946342
 	 #  -0.978874
