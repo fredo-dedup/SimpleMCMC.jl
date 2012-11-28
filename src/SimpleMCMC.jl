@@ -162,22 +162,19 @@
 		samples
 	end
 
-	function simpleMCMC10(model::Expr, params::Expr, steps::Integer)
-		# steps = 10
-		# scale = 0.1
+	function simpleMCMC10(model::Expr, params::Expr, steps::Integer, burnin::Integer)
+		# (steps = 10, scale = 0.1)
 		local beta, nbeta
-		local jump, S
+		local jump, S, eta, SS
+		const local target_alpha = 0.234
 
 		model2 = parseModel(model)
-		println(model2)
 		(nbeta, parmap) = parseParams(params)
-		println(parmap)
 
 		beta = ones(nbeta)
-		println("beta : ", beta, size(beta))
 
 		eval(quote
-			function loop(beta::Vector{Float64})
+			function __loglik(beta::Vector{Float64})
 				local acc
 				$parmap
 				acc = 0.0
@@ -186,32 +183,35 @@
 			end
 		end)
 
-		__lp = loop(beta)
-		println("loop 1: ", __lp)
+		__lp = __loglik(beta)
+		@assert __lp != -Inf
 
 		samples = zeros(Float64, (steps, 2+nbeta))
-		__lp = -Inf
 		S = eye(nbeta)
 	 	for i in 1:steps	 		
 			jump = 0.1 * randn(nbeta)
 			oldbeta, beta = beta, beta + S * jump
-			println((S * jump)[1:3])
+			# println(diag(S))
 
-	 		old__lp, __lp = __lp, loop(beta)
+	 		old__lp, __lp = __lp, __loglik(beta)
 	 		alpha = min(1, exp(__lp - old__lp))
 			if rand() > exp(__lp - old__lp)
 				__lp, beta = old__lp, oldbeta
 			end
 			samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
 
-			eta = min(1, nbeta*i^(-2/3))
-			SS = (jump * jump') * ((1 / (jump' * jump)) * eta * (alpha - 0.234))[1,1]
+			# eta = min(1, nbeta*i^(-2/3))
+			eta = min(1, nbeta * (i <= burnin ? 1 : i-burnin)^(-2/3))
+			SS = (jump * jump') / (jump' * jump)[1,1] * eta * (alpha - target_alpha)
 			SS = S * (eye(nbeta) + SS) * S'
-			S = lu(SS)[1]
+			S = chol(SS)
+			S = S'
 		end
 
-		samples
+		return(samples)
 	end
 
-
+	function simpleMCMC10(model::Expr, params::Expr, steps::Integer) 
+		simpleMCMC10(model::Expr, params::Expr, steps::Integer, min(1, div(steps,2)))
+	end
 # end
