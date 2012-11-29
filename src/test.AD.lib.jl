@@ -95,8 +95,8 @@ import Distributions.Normal, Distributions.Gamma, Distributions.logpdf
 
 	begin
 		srand(1)
-		n = 10
-		nbeta = 4
+		n = 10000
+		nbeta = 40
 		X = [fill(1, (n,)) randn((n, nbeta-1))]
 		beta0 = randn((nbeta,))
 		Y = X * beta0 + randn((n,))
@@ -124,8 +124,44 @@ import Distributions.Normal, Distributions.Gamma, Distributions.logpdf
 		ll
 	end
 
-beta = ones(5)
+	function loglik0(beta)
+		dimb::Int32
+
+		dimb = numel(beta)
+		tmp = beta[2:dimb]
+		resid = Y - X * tmp
+		ll = 0.0
+		ll += logpdf(Gamma(2, 1), beta[1])
+
+		ll += sum( - tmp' * tmp)
+
+		tmp = resid' * resid 
+		ll += sum( - resid) / beta[1]
+
+		ll
+	end
+
+
+
+
 delta = loglik(beta)
+
+@time begin
+	beta = ones(nbeta+1)
+	for i in 1:100
+		delta = loglik0(beta)
+	end
+end #  10000 * 40 : 0.003 sec
+
+@time begin
+	beta = ones(nbeta+1)
+	for i in 1:10
+		delta = loglik(beta)
+	end
+end #  10000 * 40 : 0.4 sec par appel, x100 par rapport à la version de base
+
+
+
 beta += delta.dx *0.9
 
 expexp(:([ ADVar(i, 5, 1),  ADVar(i, 5, 2),  ADVar(i, 5, 3),  ADVar(i, 5, 4)]))
