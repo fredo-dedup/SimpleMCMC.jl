@@ -17,9 +17,10 @@ ADVar(3.0, [1, 2])
 ADVar(3, [1, 2])
 ADVar(3, [1., 2])
 
+convert(::Type{ADVar}, x::Number) = ADVar(x, zeros(2))
+promote_rule(::Type{Float64}, ::Type{ADVar}) = ADVar
+
 ###
-	convert(::Type{ADVar}, x::Number) = ADVar(x, zeros(2))
-	promote_rule(::Type{Float64}, ::Type{ADVar}) = ADVar
 	promote_rule(::Type{Number}, ::Type{ADVar}) = ADVar
 
 	ADVar(4., [3.])
@@ -62,8 +63,8 @@ ADVar(3, [1., 2])
 
 ######### multiplication  ######################
 	*(x::ADVar, y::ADVar) = ADVar(x.x * y.x, x.dx*y.x + y.dx*x.x)
-	*(x::ADVar, y::Any) = ADVar(x.x*y, x.dx*y)  # not correct for matrices !
-	*(x::Any, y::ADVar) = *(y, x)
+	*(x::ADVar, y::Any) = ADVar(x.x*y, x.dx*y)  
+	*(x::Any, y::ADVar) = *(y, x) # not correct for matrices !
 
 	@assert  (ADVar(4., [1., 0]) * ADVar(4., [1., 0])).x == 16.
 	@assert  (ADVar(4., [1., 0]) * ADVar(4., [0., 1])).dx == [4., 4]
@@ -81,17 +82,67 @@ ADVar(3, [1., 2])
 	(ADVar(2., [1., 0]) * (ADVar(3., [0., 1]) * ADVar(3., [0., 1]))).x  # 18
 	(ADVar(2., [1., 0]) * (ADVar(3., [0., 1]) * ADVar(3., [0., 1]))).dx #  [9.  12.]
 
+########### array sums ####################
+	function +(X::AbstractArray{ADVar}, a::Number)
+		for i = 1:numel(X)
+	        X[i] = X[i] + a
+	    end
+	    return X
+	end
+	+(a::Number, X::AbstractArray{ADVar}) = X + a
+
+	function +(X::AbstractArray, a::ADVar)
+		Y = similar(X, ADVar)
+		for i = 1:numel(X)
+	        Y[i] = X[i] + a
+	    end
+	    return Y
+	end
+	+(a::ADVar, X::AbstractArray) = X + a
+
+	[ADVar(1, [1]) ADVar(2, [0])] + 4.5
+	4.5 + [ADVar(1, [1]), ADVar(2, [0])]
+
+	[1., 2.] + ADVar(2, [0])
+	[ADVar(1, [1]) ADVar(2, [0])] + ADVar(2, [0])
+	ADVar(2, [0, 0.5]) + [ADVar(1, [1, 0]), ADVar(2, [0, 1])]
+
+########### array products ####################
+	function *(X::AbstractArray{ADVar}, a::Number)
+		for i = 1:numel(X)
+	        X[i] = X[i] * a
+	    end
+	    return X
+	end
+	*(a::Number, X::AbstractArray{ADVar}) = X * a
+
+	function *(X::AbstractArray, a::ADVar)
+		Y = similar(X, ADVar)
+		for i = 1:numel(X)
+	        Y[i] = X[i] * a
+	    end
+	    return Y
+	end
+	*(a::ADVar, X::AbstractArray) = X * a
+
+	[ADVar(1, [1]) ADVar(2, [0])] * 4.5
+	4.5 * [ADVar(1, [1]), ADVar(2, [0])]
+
+	[1., 2.] * ADVar(2, [0])
+	[ADVar(1, [1]) ADVar(2, [0])] * ADVar(2, [0])
+	ADVar(2, [0, 0.5]) * [ADVar(1, [1, 0]), ADVar(2, [0, 1])]
+
 ######### division  ######################
 	/(x::ADVar, y::ADVar) = ADVar(x.x / y.x, (x.dx*y.x - y.dx*x.x) / (y.x * y.x))
 	/(x::ADVar, y::Any) = ADVar(x.x / y, x.dx / y) 
-	/(x::Any, y::ADVar) = *(x / y.x, - y.dx * (x / (y.x * y.x)))
+	/(x::Any, y::ADVar) = ADVar(x / y.x, - y.dx * (x / (y.x * y.x)))
 
 	@assert  (ADVar(4., [1., 0]) / ADVar(2., [1., 0])).x == 2.
 	@assert  (ADVar(4., [1., 0]) / ADVar(2., [0., 1])).dx == [.5, -1]
 	@assert  (ADVar(4., [1., 0]) / 2.).x == 2.
 	@assert  (ADVar(4., [1., 0]) / 2.).dx == [.5, 0]
 	@assert  (1. / ADVar(4., [1., 0])).x == 0.25
-	@assert  (4. * ADVar(4., [1., 0])).dx == [4., 0]
+	@assert  (4. / ADVar(4., [0., 1])).dx == [0., -.25]
 
 ######### power  ######################
 	^(x::ADVar, y::ADVar) = ADVar(x.x ^ y.x, (y.x * x.x^(y.x-1.)) * x.dx + (log(x.x) * x.x^y.x) * y.dx)
@@ -103,46 +154,62 @@ ADVar(3, [1., 2])
 	@assert (2.0 ^ ADVar(3.0, [1., 0])).x == 8.
 	@assert norm((2.0 ^ ADVar(3.0, [1., 0])).dx - [5.54518, 0] ) < 1e-5
 
+######### misc  ######################
+	log(x::ADVar) = ADVar(log(x.x), x.dx / x.x)
+
+	log(ADVar(4, [1, 3]))
 
 ########## scrapbook  #######################
+c = 46
+test(x) = c + x^2 - x^(x / 12) + 1/x
 
-test(x) = (x+2) * (x+4)
-test(ADVar(-2., [1., 0])).x
-test(ADVar(-4., [1., 0])).dx
-
-test(x) = (x+2) * (x+4) - 3
-test(ADVar(-2., [1., 0])).x
-
-
-[ [test(x)::Any, test(ADVar(float(x), [1., 0]))] for x in -10:1:10]
-[ test(x).x for x in -10:1:10]
-
-x = 4
-test
+[ test(x) for x in 1:10]
+[ test(ADVar(x, [1])).x for x in 1:10] #  ok égalité
+[ test(ADVar(x, [1])).dx for x in 1:10]
+[ (test(ADVar(x+1e-4, [1])).x - test(ADVar(x, [1])).x)/1e-4 for x in 1:10]  # ok égalité
 
 
-end
+randn((2,2)) * ADVar(1, [1])  # marche 
+randn((2,2)) * [ADVar(1, [1]), ADVar(2, [0])]  # marche pas
+randn((2,2)) * [ADVar(1, [1]), ADVar(2, [0])]  # marche pas
+
+[ADVar(1, [1]), ADVar(2, [0])] * [ADVar(1, [1]), ADVar(2, [0])] 
 
 
-3. * [ADVar(1., [1., 2]), ADVar(2., [0., 2])]
-3. + [ADVar(1., [1., 2]), ADVar(2., [0., 2])]
+############### test lm ####################
+	begin
+		srand(1)
+		n = 10
+		nbeta = 4
+		X = [fill(1, (n,)) randn((n, nbeta-1))]
+		beta0 = randn((nbeta,))
+		Y = X * beta0 + randn((n,))
+	end
 
-ADVar(4.2, [1.0, 20.2, 356.])
-4 + 5 
-b = a + 6
-b.x
-(6 + a).x
+	function loglik(beta)
+		dimb::Int32
 
-b
-(a+b).dx
+		dimb = numel(beta)
 
+		resid = Y - X * [ ADVar(beta[i], dimb, i) for i in 2:dimb]
+		ll = 0.0
+		ll += logpdf(Gamma(2, 1), beta[1])
+		# sigma ~ Gamma(2, 1)
 
-type abcd
-	x::Float64
+		tmp = [ ADVar(beta[i], 41, i) for i in 2:dimb]
+		ll += sum( - tmp' * tmp)
 
-	abcd(x0::Number) = new(x0)
-end
+		tmp = resid' * resid 
+		ll += sum( - resid / sigma)
+		# resid ~ Normal(0.0, sigma)
 
-abcd(13.2)
-abcd(13)
+		ll
+	end
 
+expexp(:([ ADVar(i, 5, 1),  ADVar(i, 5, 2),  ADVar(i, 5, 3),  ADVar(i, 5, 4)]))
+
+loglik(ones(5))
+
+sum([ ADVar(1, [3]) ADVar(1, [3])])	
+		model = quote
+		end
