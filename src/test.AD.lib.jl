@@ -153,13 +153,15 @@ delta = loglik(beta)
 	end
 end #  10000 * 40 : 0.003 sec
 
-@time begin
+
+load("profile.jl")
+@profile begin
 	beta = ones(nbeta+1)
 	for i in 1:10
 		delta = loglik(beta)
 	end
-end #  10000 * 40 : 0.4 sec par appel, x100 par rapport à la version de base
-
+#  10000 * 40 : 0.4 sec par appel, x100 par rapport à la version de base
+end
 
 
 beta += delta.dx *0.9
