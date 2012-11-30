@@ -2,16 +2,17 @@ module ADlib
 
 	# using Base
 
-	import Base.(+), Base.*, Base./
+	import Base.+, Base.*, Base./
 	import Base.log, Base.(-), Base.^
 	import Base.conj
 
-	export +, *, /, log, -, ^, conj
+	export +, *, /, log, -, ^, conj, ADVar
 
 	type ADVar
 		x::Float64
 		dx::Vector{Float64}
 	end
+
 	ADVar(x::Float64, dim::Integer, index::Integer) = ADVar(x, [i==index ? 1.0 : 0.0 for i in 1:dim])
 	ADVar(x::Int32, dim::Integer, index::Integer) = ADVar(convert(Float64,x), [i==index ? 1.0 : 0.0 for i in 1:dim])
 	ADVar(x::Int64, dim::Integer, index::Integer) = ADVar(convert(Float64,x), [i==index ? 1.0 : 0.0 for i in 1:dim])
@@ -25,7 +26,7 @@ module ADlib
 	ADVar(x::Int32, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
 	ADVar(x::Int64, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
 
-	@assert isequal(ADVar(3.0, [1., 2]), ADVar(3.0, [1., 2]))
+	# @assert isequal(ADVar(3.0, [1., 2]), ADVar(3.0, [1., 2]))
 	ADVar(3.0, [1, 2])
 	ADVar(3, [1, 2])
 	ADVar(3, [1., 2])
@@ -213,7 +214,7 @@ module ADlib
 		*(X::Vector{ADVar}, Y::Vector) = admul(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
 
 		[1 2] * [ADVar(1, [1]), ADVar(2, [0])] 
-		[1 2 ; 3 4] * [ADVar(1, [1]) ADVar(2, [0])] 
+		[1 2 ; 3 4] * [ADVar(1, [1]), ADVar(2, [0])] 
 		[1 2 ; 3 4] * [ADVar(1, [1]) ADVar(2, [0]) ; ADVar(3, [1]) ADVar(4, [0])] 
 		[ADVar(1, [1]), ADVar(2, [0])] * [1 2] 
 		[ADVar(1, [1]) ADVar(2, [0])] * [1 2 ; 3 4]

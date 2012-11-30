@@ -33,17 +33,20 @@ load("SimpleMCMC.jl")  # refresh if necessary
 
 simpleMCMC10(model, :(sigma::{scalar}, vars::{vector(nbeta)}), 100)
 
-@time begin
-	samples = simpleMCMC10(model, :(sigma::{scalar}, vars::{vector(nbeta)}), 1000)
-end  # 9,6 pour 1000
+begin
+	tic()
+	(samples = simpleMCMC10(model, :(sigma::{scalar}, vars::{vector(nbeta)}), 10000, 5000))
+	toc()
+end  
+# 9,6 pour 1000, 8.0 sec pour 1000 avec RAM, 272 secondes pour JAGS !!!! (à vérifier)
+# 36 sec, pour 2000 (burnin 1000)
+# 40 sec, pour 5000 (burnin 5000)
+# 75 sec, pour 10000 (burnin 5000)
+# 80 sec, pour 10000 (burnin 5000)
+# 158 sec, pour 20000 (burnin 5000)
 
-	[[mean(samples[:,i]) for i in 1:(nbeta+1)] ; beta0 ]
-	 #-142.638   
-	 #  -0.946342
-	 #  -0.978874
-	 #  -0.977102
-	 #  -1.7795  
-	beta0
+	[[mean(samples[5001:10000,i])::Float64 for i in 3:(nbeta+3)]  [1.0, beta0] ]
+
 
 dlmwrite("c:/temp/mcjl.txt", samples, '\t')
 

@@ -1,5 +1,8 @@
-
 load("AD.lib.jl")
+import ADlib.*
+
+load("AD.lib.2.jl")
+import ADlib.ADVar
 
 
 ADVar(1, [2, 3]) + 5.0
@@ -28,44 +31,43 @@ randn((2,2)) * [ADVar(1, [1]), ADVar(2, [0])]  # marche pas
 
 
 @time begin
-	for i in 1:100000
+	for i in 1:1000000
 		test(5)
 	end
-end # 0.04 - 0.06 sec
+end # 0.75 sec
 
 @time begin
 	a = ADVar(5., [1.])
-	for i in 1:100000
+	for i in 1:1000000
 		test(a)
 	end
-end # 0.40 sec, x 10
+end # 6.7 sec, x9
 
 @time begin
 	a = ADVar(5., [1., 0, 1, 2, 3, 5, -5])
-	for i in 1:100000
+	for i in 1:1000000
 		test(a)
 	end
-end # 0.48 sec, x 10
+end # 9.2 sec, x12
 
 #
 @time begin
 	a = randn((2,2))
-	for i in 1:100000
+	for i in 1:1000000
 		a * 1 
 	end
-end # 0.01 - 0.025 sec
+end # 0.21 sec
 
 @time begin
 	a = randn((2,2))
-	for i in 1:100000
+	for i in 1:1000000
 		a * ADVar(1, [1]) 
 	end
-end # 0.09, x 5
+end # 1.714, x8
 
 #
 @time begin
 	a = randn((2,2))
-	b = randn((2,2))
 	for i in 1:1000000
 		a * 1 
 	end
@@ -87,6 +89,83 @@ end # 0.90, x8
 	end
 end # 1.90, x16
 
+# matrix multiply 2
+@time begin
+	a = randn((100,100))
+	b = randn(100)
+	for i in 1:100000
+		a * b
+	end
+end # 1.6 sec
+
+@time begin
+	a = randn((100,100))
+	b = [ADVar(randn(), [randn(), randn()]) for i in 1:100]
+	for i in 1:10000
+		a * b
+	end
+end # 626 sec, x391 !!!
+
+type ADVar2 <: Vector{Float64}
+
+end
+
+b = [ADVar(randn(), [randn(), randn()]) for i in 1:2]
+
+type ADArray
+	dx::Array{Float64, 3}
+end
+
+convert(::Type{Vector{Float64}}, x::ADVar) = [x.x, x.dx]::Vector{Float64}
+# convert(Vector{Float64}, b[1])
+# b
+
+x = b
+function ADArray(x::Array{ADVar})
+	local n,m,d
+
+	d = size(x[1].dx)[1] + 1 # nb of derivates
+	if ndims(x) == 1
+		n, m = size(x)[1], 1
+	elseif ndims(x) == 2
+		n, m = size(x)
+		x = reshape(x, (n*m, 1))
+	else
+		error("up to 2 dims supported")
+	end
+	tmp = Array(Float64, (d*n*m))
+
+	x = [convert(Vector{Float64}, x[i]) for i in 1:(n*m)]
+	for i in 1:numel(x)
+		tmp[i*3-2:i*3] = convert(Vector{Float64}, x[i])
+	end
+	
+	ADArray(reshape(tmp, (d, n, m)))
+end
+
+
+z = [randn() for i in 1:2, j in 1:3, k in 1:2]
+ADArray(z)
+
+b = [ADVar(randn(), [randn(), randn()]) for i in 1:2]
+ADArray(b)
+
+X = ADArray([ADVar(randn(), [randn(), randn()]) for i in 1:2])
+Y = ADArray([ADVar(randn(), [randn(), randn()]) for i in 1:1, j in 1:2])
+
+function *(X::ADArray, Y::ADArray)
+	d1, n1, m1 = size(X.dx)
+	d2, n2, m2 = size(Y.dx)
+
+	if m1 != n2
+		error("Dimensions do not match")
+	elseif d1 != d2
+		error("Nb of derivatives do not match")
+	end
+
+	tmp = Array(Float64, (d1, n1, m2))
+	tmp[1,:, :] = slicedim(X.dx, 1, 1) [1, :, :]) * squeeze(Y.dx[1, :, :])
+end
 
 ############### test lm ####################
 require("Distributions.jl") # will also make this go away
