@@ -1,254 +1,248 @@
+############################################################################
+#  New type definition + method defs for automated derivation
+############################################################################
+
 module ADlib
 
-	# using Base
+	using Base
 
 	import Base.+, Base.*, Base./
 	import Base.log, Base.(-), Base.^
-	import Base.conj
+	import Base.conj, Base.ctranspose
 
+	# supported operators
 	export +, *, /, log, -, ^, conj, ADVar
+	export isscalar
 
 	type ADVar
-		x::Float64
-		dx::Vector{Float64}
+		v::Array{Float64,3}
 	end
 
-	ADVar(x::Float64, dim::Integer, index::Integer) = ADVar(x, [i==index ? 1.0 : 0.0 for i in 1:dim])
-	ADVar(x::Int32, dim::Integer, index::Integer) = ADVar(convert(Float64,x), [i==index ? 1.0 : 0.0 for i in 1:dim])
+	isscalar(x::ADVar) = size(x.v)[1:2] == (1, 1)
+
+	function ADVar(x::Any, dim::Integer, index::Integer)
+	 	tmp = Array(Float64, (1,1,dim+1))
+	 	tmp[1:numel(tmp)] = [x, [i==index ? 1.0 : 0.0 for i in 1:dim]]
+	 	ADVar(tmp)
+	end
+
+	function ADVar(x::Any, d::Vector{Any})
+	 	tmp = Array(Float64, (1, 1, length(d)+1))
+	 	tmp[1:numel(tmp)] = [x, d[1:end]]
+	 	ADVar(tmp)
+	end
+	function ADVar(x::Float64, d::Vector{Float64})
+	 	tmp = Array(Float64, (1, 1, length(d)+1))
+	 	tmp[1:numel(tmp)] = [x, d[1:end]]
+	 	ADVar(tmp)
+	end
+
+# import ADlib.ADVar, ADlib.isscalar
+# import Base.+, Base 
+
+	# @assert vec(ADVar(Array(Float64, (1, 1, 4))).v) == [0, 0, 0, 0]
+	# @assert ADVar(fill(0, (2, 3, 2))).v == [0 for i in 1:2, j in 1:3, k in 1:2] # fail
+
+	@assert vec(ADVar(1.0, 5, 2).v) == [1., 0, 1, 0, 0, 0]
+	@assert vec(ADVar(1, 5, 2).v) == [1., 0, 1, 0, 0, 0]
+
+	@assert vec(ADVar(2., [1., 2, 3]).v) == [2., 1, 2, 3] 
+	# @assert vec(ADVar(2., [1., 2, 3]).v) == [2., 1, 2, 3] 
+
+
 	ADVar(x::Int64, dim::Integer, index::Integer) = ADVar(convert(Float64,x), [i==index ? 1.0 : 0.0 for i in 1:dim])
-	ADVar(3.0, 4, 3)
 
-	ADVar(x::Number, dx::Vector{Number}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
-	ADVar(x::Int32, dx::Vector{Int32}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
-	ADVar(x::Int64, dx::Vector{Int64}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
-	ADVar(x::Float64, dx::Vector{Int32}) =  ADVar(x, convert(Vector{Float64}, dx))
-	ADVar(x::Float64, dx::Vector{Int64}) =  ADVar(x, convert(Vector{Float64}, dx))
-	ADVar(x::Int32, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
-	ADVar(x::Int64, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
-
-	# @assert isequal(ADVar(3.0, [1., 2]), ADVar(3.0, [1., 2]))
-	ADVar(3.0, [1, 2])
-	ADVar(3, [1, 2])
-	ADVar(3, [1., 2])
-
-	# convert(::Type{ADVar}, x::Number) = ADVar(x, zeros(2))
-	# promote_rule(::Type{Float64}, ::Type{ADVar}) = ADVar
-		# promote_rule(::Type{Number}, ::Type{ADVar}) = ADVar
+	# ADVar(x::Number, dx::Vector{Number}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
+	# ADVar(x::Int32, dx::Vector{Int32}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
+	# ADVar(x::Int64, dx::Vector{Int64}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
+	# ADVar(x::Float64, dx::Vector{Int32}) =  ADVar(x, convert(Vector{Float64}, dx))
+	# ADVar(x::Float64, dx::Vector{Int64}) =  ADVar(x, convert(Vector{Float64}, dx))
+	# ADVar(x::Int32, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
+	# ADVar(x::Int64, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
 
 	######### addition  ######################
-		+(x::ADVar, y::ADVar) = ADVar(x.x + y.x, x.dx + y.dx)
-		+(x::ADVar, y::Any) = ADVar(x.x + y, x.dx)
+		+(x::ADVar, y::ADVar) = ADVar(x.v + y.v)
+		function +(x::ADVar, y::Any)  #TODO rajouter matrices
+			for i in 1:(size(x.v,1)*size(x.v,2))
+				x.v[i] += y
+			end
+			x
+		end
 		+(x::Any, y::ADVar) = +(y, x)
 
-		@assert  (ADVar(4., [1., 0]) + ADVar(4., [1., 0])).x == 8.
-		@assert  (ADVar(4., [1., 0]) + ADVar(4., [1., 0])).dx == [2., 0]
-		@assert  (ADVar(4., [1., 0]) + 1.).x == 5.
-		@assert  (ADVar(4., [1., 0]) + 4.).dx == [1., 0]
-		@assert  (1. + ADVar(4., [1., 0])).x == 5.
-		@assert  (4. + ADVar(4., [1., 0])).dx == [1., 0]
+		@assert vec((ADVar(4., [1., 0]) + ADVar(4., [0., 1])).v) == [8, 1, 1]
+		@assert vec((ADVar(4., [1., 0]) + 4).v) == [8, 1, 0]
+		@assert vec((3. + ADVar(3., [0., 2])).v) == [6, 0, 2]
 
 	######### substraction ######################
-		-(x::ADVar) = ADVar(-x.x, -x.dx)  # unary
-		-(x::ADVar, y::ADVar) = ADVar(x.x - y.x, x.dx - y.dx)
-		-(x::ADVar, y::Any) = ADVar(x.x - y, x.dx)
+		-(x::ADVar) = ADVar(-x.v)  # unary
+		-(x::ADVar, y::ADVar) = ADVar(x.v - y.v)
+		function -(x::ADVar, y::Any) #TODO rajouter matrices
+			for i in 1:(size(x.v,1)*size(x.v,2))
+				x.v[i] -= y
+			end
+			x
+		end
 		-(x::Any, y::ADVar) = -(y - x)
 
-		@assert  (- ADVar(4., [1., 0])).x == -4.
-		@assert  (- ADVar(4., [1., 0])).dx == [-1., 0]
-		@assert  (ADVar(4., [1., 0]) - ADVar(4., [1., 0])).dx == [0., 0]
-		@assert  (ADVar(4., [1., 0]) - ADVar(4., [1., 0])).x == 0.
-		@assert  (ADVar(4., [1., 0]) - ADVar(4., [1., 0])).dx == [0., 0]
-		@assert  (ADVar(4., [1., 0]) - 1.).x == 3.
-		@assert  (ADVar(4., [1., 0]) - 4.).dx == [1., 0]
-		@assert  (1. - ADVar(4., [1., 0])).x == -3.
-		@assert  (4. - ADVar(4., [1., 0])).dx == [-1., 0]
+		@assert  vec((- ADVar(4., [1., 0])).v) == [-4., -1, 0]
+		@assert  vec((ADVar(4., [1., 0]) - ADVar(4., [1., 0])).v) == [0., 0, 0]
+		@assert  vec((ADVar(4., [1., 0]) - 1.0).v) == [3., 1, 0]
+		@assert  vec((3 - ADVar(4., [1., 0])).v) == [-1., -1, 0]
 
 	######### multiplication  ######################
-		*(x::ADVar, y::ADVar) = ADVar(x.x * y.x, x.dx*y.x + y.dx*x.x)
-		*(x::ADVar, y::Any) = ADVar(x.x*y, x.dx*y)  
-		*(x::Any, y::ADVar) = *(y, x) # not correct for matrices !
+		function *(X::ADVar, Y::ADVar)
+			n1, m1, d1 = size(X.v)
+			n2, m2, d2 = size(Y.v)
 
-		@assert  (ADVar(4., [1., 0]) * ADVar(4., [1., 0])).x == 16.
-		@assert  (ADVar(4., [1., 0]) * ADVar(4., [0., 1])).dx == [4., 4]
-		@assert  (ADVar(4., [1., 0]) * ADVar(4., [1., 0])).dx == [8., 0]
-		@assert  (ADVar(4., [1., 0]) * 1.).x == 4.
-		@assert  (ADVar(4., [1., 0]) * 4.).dx == [4., 0]
-		@assert  (1. * ADVar(4., [1., 0])).x == 4.
-		@assert  (4. * ADVar(4., [1., 0])).dx == [4., 0]
-
-		#  x  + y^2 avec (x=4 et y=2)
-		(ADVar(4., [1., 0]) + (ADVar(2., [0., 1]) * ADVar(2., [0., 1]))).x  # 8
-		(ADVar(4., [1., 0]) + (ADVar(2., [0., 1]) * ADVar(2., [0., 1]))).dx #  [1.  4]
-
-		#  x * y^2 avec (x=2 et y=3)
-		(ADVar(2., [1., 0]) * (ADVar(3., [0., 1]) * ADVar(3., [0., 1]))).x  # 18
-		(ADVar(2., [1., 0]) * (ADVar(3., [0., 1]) * ADVar(3., [0., 1]))).dx #  [9.  12.]
-
-	########### array sums ####################
-		function +(X::AbstractArray{ADVar}, a::Number)
-			for i = 1:numel(X)
-		        X[i] = X[i] + a
-		    end
-		    return X
-		end
-		+(a::Number, X::AbstractArray{ADVar}) = X + a
-
-		function +(X::AbstractArray, a::ADVar)
-			Y = similar(X, ADVar)
-			for i = 1:numel(X)
-		        Y[i] = X[i] + a
-		    end
-		    return Y
-		end
-		+(a::ADVar, X::AbstractArray) = X + a
-
-		[ADVar(1, [1]) ADVar(2, [0])] + 4.5
-		4.5 + [ADVar(1, [1]), ADVar(2, [0])]
-
-		[1., 2.] + ADVar(2, [0])
-		[ADVar(1, [1]) ADVar(2, [0])] + ADVar(2, [0])
-		ADVar(2, [0, 0.5]) + [ADVar(1, [1, 0]), ADVar(2, [0, 1])]
-
-		function adadd(X::AbstractArray, Y::AbstractArray)
-			@assert size(X) == size(Y)
-			Z = similar(X, ADVar)
-			for i = 1:numel(X)
-		        Z[i] = X[i] + Y[i]
-		    end
-		    return Z
-		end
-		+(X::Matrix{ADVar}, Y::Matrix{ADVar}) = adadd(X, Y)
-		+(X::Matrix, Y::Matrix{ADVar}) = adadd(X, Y)
-		+(X::Matrix{ADVar}, Y::Matrix) = adadd(X, Y)
-
-		+(X::Vector{ADVar}, Y::Matrix{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), Y)
-		+(X::Matrix{ADVar}, Y::Vector{ADVar}) = adadd(X, reshape(Y, (size(Y)[1], 1)))
-		+(X::Vector{ADVar}, Y::Vector{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
-
-		+(X::Vector, Y::Matrix{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), Y)
-		+(X::Matrix, Y::Vector{ADVar}) = adadd(X, reshape(Y, (size(Y)[1], 1)))
-		+(X::Vector, Y::Vector{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
-
-		+(X::Vector{ADVar}, Y::Matrix) = adadd(reshape(X, (size(X)[1], 1)), Y)
-		+(X::Matrix{ADVar}, Y::Vector) = adadd(X, reshape(Y, (size(Y)[1], 1)))
-		+(X::Vector{ADVar}, Y::Vector) = adadd(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
-
-		-(X::Matrix{ADVar}, Y::Matrix{ADVar}) = adadd(X, -1 * Y)
-		-(X::Matrix, Y::Matrix{ADVar}) = adadd(X, -1 * Y)
-		-(X::Matrix{ADVar}, Y::Matrix) = adadd(X, -1 * Y)
-
-		-(X::Vector{ADVar}, Y::Matrix{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), -1 * Y)
-		-(X::Matrix{ADVar}, Y::Vector{ADVar}) = adadd(X, -1 * reshape(Y, (size(Y)[1], 1)))
-		-(X::Vector{ADVar}, Y::Vector{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), -1 * reshape(Y, (size(Y)[1], 1)))
-
-		-(X::Vector, Y::Matrix{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), -1 * Y)
-		-(X::Matrix, Y::Vector{ADVar}) = adadd(X, -1 * reshape(Y, (size(Y)[1], 1)))
-		-(X::Vector, Y::Vector{ADVar}) = adadd(reshape(X, (size(X)[1], 1)), -1 * reshape(Y, (size(Y)[1], 1)))
-
-		-(X::Vector{ADVar}, Y::Matrix) = adadd(reshape(X, (size(X)[1], 1)), -1 * Y)
-		-(X::Matrix{ADVar}, Y::Vector) = adadd(X, -1 * reshape(Y, (size(Y)[1], 1)))
-		-(X::Vector{ADVar}, Y::Vector) = adadd(reshape(X, (size(X)[1], 1)), -1 * reshape(Y, (size(Y)[1], 1)))
-
-
-	########### array products 1 ####################
-		function *(X::AbstractArray{ADVar}, a::Number)
-			for i = 1:numel(X)
-		        X[i] = X[i] * a
-		    end
-		    return X
-		end
-		*(a::Number, X::AbstractArray{ADVar}) = X * a
-
-		function *(X::AbstractArray, a::ADVar)
-			Y = similar(X, ADVar)
-			for i = 1:numel(X)
-		        Y[i] = X[i] * a
-		    end
-		    return Y
-		end
-		*(a::ADVar, X::AbstractArray) = X * a
-
-		[ADVar(1, [1]) ADVar(2, [0])] * 4.5
-		4.5 * [ADVar(1, [1]), ADVar(2, [0])]
-
-		[1., 2.] * ADVar(2, [0])
-		[ADVar(1, [1]) ADVar(2, [0])] * ADVar(2, [0])
-		ADVar(2, [0, 0.5]) * [ADVar(1, [1, 0]), ADVar(2, [0, 1])]
-
-	########### array products 2 ####################
-	X = randn(4) * ADVar(2, [1, 1, 0])
-	Y = randn((1,4))
-
-		function admul(X::Matrix, Y::Matrix)
-			# X = ndims(X) == 1 ? reshape(X, (size(X)[1], 1)) : X
-			# Y = ndims(Y) == 1 ? reshape(Y, (size(Y)[1], 1)) : Y
-
-			@assert ndims(X)==2 & ndims(Y)==2
-		    mx, nx = size(X)
-		    my, ny = size(Y)
-
-		    @assert nx == my
-		    Z = Array(ADVar, (mx, ny))
-		    for i = 1:mx
-			    for j = 1:ny
-			    	# Z[i, j] = X[i,:] * Y[:, j]
-			    	Z[i, j] = sum([ X[i, k] * Y[k, j] for k in 1:nx])
-			    end
+			if m1 != n2
+				error("Dimensions do not match")
+			elseif d1 != d2
+				error("Nb of derivatives do not match")
 			end
-		    return Z
+
+			tmp = Array(Float64, (n1, m2, d1))
+			Xv = reshape(X.v[1:(n1*m1)], (n1, m1))
+			Yv = reshape(Y.v[1:(n2*m2)], (n2, m2))
+
+			tmp[1:(n1*m2)] = Xv * Yv
+
+			# tmp = Xv * reshape(Y2[(n2*m2+1):end], (n2, m2*(d1-1)))
+			# tmp += reshape(Y2[(n2*m2+1):end], (n2, m2*(d1-1))) * Yv
+			i1, i2, i3 = 1, 1, 1
+			for i in 2:d1
+				i1 += n1*m1
+				i2 += n2*m2
+				i3 += n1*m2
+				# println(i3:(i3+n1*m2-1)) 
+				tmp[i3:(i3+n1*m2-1)] = Xv * reshape(Y.v[i2:(i2+n2*m2-1)], (n2, m2)) +
+					reshape(X.v[i1:(i1+n1*m1-1)], (n1, m1)) * Yv 
+			end
+			# ADArray(permute(tmp, [3, 1, 2]))
+			ADVar(tmp)
 		end
-		*(X::Matrix{ADVar}, Y::Matrix{ADVar}) = admul(X, Y)
-		*(X::Matrix, Y::Matrix{ADVar}) = admul(X, Y)
-		*(X::Matrix{ADVar}, Y::Matrix) = admul(X, Y)
 
-		*(X::Vector{ADVar}, Y::Matrix{ADVar}) = admul(reshape(X, (size(X)[1], 1)), Y)
-		*(X::Matrix{ADVar}, Y::Vector{ADVar}) = admul(X, reshape(Y, (size(Y)[1], 1)))
-		*(X::Vector{ADVar}, Y::Vector{ADVar}) = admul(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
+		function *(x::ADVar, y::Any)
+			if isa(y, Number)
+				return(ADVar(x.v * y))
+			else
+				if ndims(y) > 2
+					error("second argument has too many dimensions")
+				elseif size(y, 1) != size(x.v, 2)
+					error("Dimensions do not match")
+				elseif ndims(y) == 1
+					y = reshape(y, (length(y), 1))
+				end
 
-		*(X::Vector, Y::Matrix{ADVar}) = admul(reshape(X, (size(X)[1], 1)), Y)
-		*(X::Matrix, Y::Vector{ADVar}) = admul(X, reshape(Y, (size(Y)[1], 1)))
-		*(X::Vector, Y::Vector{ADVar}) = admul(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
+				tmp = Array(Float64, (size(x.v, 1), size(y, 2), size(x.v, 3)))
+				for i in 1:size(x.v, 3) # for each value & derivative layers
+					tmp[:, :, i] = x.v[:, :, i] * y
+				end
+				return(ADVar(tmp))
+			end
+		end
 
-		*(X::Vector{ADVar}, Y::Matrix) = admul(reshape(X, (size(X)[1], 1)), Y)
-		*(X::Matrix{ADVar}, Y::Vector) = admul(X, reshape(Y, (size(Y)[1], 1)))
-		*(X::Vector{ADVar}, Y::Vector) = admul(reshape(X, (size(X)[1], 1)), reshape(Y, (size(Y)[1], 1)))
+		function *(x::Any, y::ADVar)
+			if isa(x, Number)
+				return(ADVar(x * y.v))
+			else
+				if ndims(x) > 2
+					error("first argument has too many dimensions")
+				elseif size(y.v, 1) != size(x, 2)
+					error("Dimensions do not match")
+				elseif ndims(x) == 1
+					x = reshape(x, (length(x), 1))
+				end
 
-		[1 2] * [ADVar(1, [1]), ADVar(2, [0])] 
-		[1 2 ; 3 4] * [ADVar(1, [1]), ADVar(2, [0])] 
-		[1 2 ; 3 4] * [ADVar(1, [1]) ADVar(2, [0]) ; ADVar(3, [1]) ADVar(4, [0])] 
-		[ADVar(1, [1]), ADVar(2, [0])] * [1 2] 
-		[ADVar(1, [1]) ADVar(2, [0])] * [1 2 ; 3 4]
-		[ADVar(1, [1]) ADVar(2, [0]) ; ADVar(3, [1]) ADVar(4, [0])] * [1 2 ; 3 4]
+				tmp = Array(Float64, (size(x, 1), size(y.v, 2), size(y.v, 3)))
+				for i in 1:size(y.v, 3) # for each value & derivative layers
+					tmp[:, :, i] = x * y.v[:, :, i]
+				end
+				return(ADVar(tmp))
+			end
+		end
+
+		a = ADVar(4., [1., 0])
+		b = ADVar(2., [0., 1])
+
+		@assert  vec((a * b).v) == [8., 2, 4]
+		@assert  vec((a * 3).v) == [12., 3, 0]
+
+		@assert  size((a * [1 2]).v) == (1, 2, 3)
+		@assert  [(a * [1 2]).v[i] for i in 1:6] == [4, 8, 1, 2, 0, 0]
+		@assert  size(([1, 2] * a).v) == (2, 1, 3)
+		@assert  [([1, 2] * a).v[i] for i in 1:6] == [4, 8, 1, 2, 0, 0]
 
 	######### division  ######################
-		/(x::ADVar, y::ADVar) = ADVar(x.x / y.x, (x.dx*y.x - y.dx*x.x) / (y.x * y.x))
-		/(x::ADVar, y::Any) = ADVar(x.x / y, x.dx / y) 
-		/(x::Any, y::ADVar) = ADVar(x / y.x, - y.dx * (x / (y.x * y.x)))
+		function /(x::ADVar, y::ADVar)
+			if ! isscalar(x) || ! isscalar(y)
+				error("Division for arrays not implemented yet")
+			end
+		 	ADVar(x.v[1] / y.v[1], (x.v[2:end]*y.v[1] - y.v[2:end]*x.v[1]) / (y.v[1] * y.v[1]))
+		end
+		function /(x::ADVar, y::Any)
+			if !isa(y, Number)
+				error("Division for arrays not implemented yet")
+			end
+			ADVar(x.v / y)
+		end
+		function /(x::Any, y::ADVar)
+			if !isa(x, Number)
+				error("Division of arrays not implemented yet")
+			elseif !isscalar(y)
+				error("Division by arrays not implemented yet")
+			end
+			ADVar(convert(Float64, x), zeros(size(y.v, 3)-1)) / y
+		end
 
-		@assert  (ADVar(4., [1., 0]) / ADVar(2., [1., 0])).x == 2.
-		@assert  (ADVar(4., [1., 0]) / ADVar(2., [0., 1])).dx == [.5, -1]
-		@assert  (ADVar(4., [1., 0]) / 2.).x == 2.
-		@assert  (ADVar(4., [1., 0]) / 2.).dx == [.5, 0]
-		@assert  (1. / ADVar(4., [1., 0])).x == 0.25
-		@assert  (4. / ADVar(4., [0., 1])).dx == [0., -.25]
+		a = ADVar(4., [1., 0])
+		b = ADVar(2., [0., 1])
+isa(4., Number)
+		@assert  vec((a / b).v) == [2, 0.5, -1]
+		@assert  vec((a / 4).v) == [1, 0.25, 0]
+		@assert  vec((4. / a).v) == [1, -0.25, 0]
 
 	######### power  ######################
-		^(x::ADVar, y::ADVar) = ADVar(x.x ^ y.x, (y.x * x.x^(y.x-1.)) * x.dx + (log(x.x) * x.x^y.x) * y.dx)
-		^(x::ADVar, y::Integer) = x ^ ADVar(y, zeros(size(x.dx))) 
-		^(x::ADVar, y::Any) = x ^ ADVar(y, zeros(size(x.dx))) 
-		^(x::Any, y::ADVar) = ADVar(x, zeros(size(y.dx))) ^ y
+		function ^(x::ADVar, y::ADVar)
+			if ! isscalar(x) || ! isscalar(y)
+				error("power for arrays not implemented yet")
+			end
+		 	ADVar(x.v[1] ^ y.v[1], 
+		 		(y.v[1] * x.v[1]^(y.v[1]-1.)) * x.v[2:end] +
+		 		(log(x.v[1]) * x.v[1]^y.v[1]) * y.v[2:end])
+		end
+		^(x::ADVar, y::Integer) = x ^ ADVar(convert(Float64, y), zeros(size(x.v,3)-1)) 
+		^(x::ADVar, y::Float64) = x ^ ADVar(y, zeros(size(x.v,3)-1)) 
+		^(x::Float64, y::ADVar) = ADVar(convert(Float64, x), zeros(size(y.v,3)-1)) ^ y
 
-		@assert (ADVar(3.0, [1., 0]) ^ 3).x == 27.
-		@assert (ADVar(3.0, [1., 0]) ^ 3).dx == [27., 0]
-		@assert (2.0 ^ ADVar(3.0, [1., 0])).x == 8.
-		@assert norm((2.0 ^ ADVar(3.0, [1., 0])).dx - [5.54518, 0] ) < 1e-5
+		x = ADVar(3.0, [1., 0])
+		y = 3.
+		@assert vec((ADVar(3.0, [1., 0]) ^ 3.).v) == [27., 27, 0]
+		@assert norm(vec((2.0 ^ ADVar(3., [1., 0])).v) -
+		[8., 5.54518, 0]) < 1e-5
+		@assert norm(vec((ADVar(3.0, [1., 0]) ^ ADVar(3.0, [0., 1])).v) -
+			[27., 27, 29.6625] ) < 5e-5
 
 	######### misc  ######################
-		log(x::ADVar) = ADVar(log(x.x), x.dx / x.x)
-		conj(x::ADVar) = x
+		function log(x::ADVar)
+			tmp = similar(x.v)
+			tmp[:, :, 1] = log(x.v[:,:, 1])
+			for i in 2:size(x.v,3)
+				tmp[:, :, i] = x.v[:, :, i] ./ x.v[:,:, 1]
+			end
+			ADVar(tmp)
+		end
 
-		@assert abs( (log(ADVar(4, [1, 3]))).x - 1.386294) < 1e-6
-		@assert norm( (log(ADVar(4, [1, 3]))).dx - [0.25, 0.75]) < 1e-6
+		conj(x::ADVar) = x
+		function ctranspose(x::ADVar)
+			tmp = Array(Float64, size(x.v))
+			for i in 1:size(x.v, 3)
+				tmp[:,:,i] = x.v[:,:,i]'
+			end
+			ADVar(tmp)
+		end
+
+		@assert norm( vec(log(ADVar(4., [1., 3])).v) - [1.386294, 0.25, 0.75]) < 1e-6
 
 end
 
