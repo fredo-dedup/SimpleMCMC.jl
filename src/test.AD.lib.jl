@@ -187,15 +187,25 @@ vals = loglik(beta)
 
 
 
+ref_time = 1.0
+a, b = randn((100,100)), randn((100,100))
+@timefactor a*b 10000 # 3.25 sec
 
-a, b, ref_time = randn((100,100)), randn((100,100)), 1.0
-ref_time = @timefactor a*b 10000 # 3.25 sec
+a = randn((100,100))
+@timefactor a' 10000 # 9.45 sec
 
-a, b, ref_time = randn((100,100)), randn((100,100)), 1.0
-ref_time = @timefactor a' 10000 # 9.28 sec
+a = randn((10000,1))
+@timefactor a' 10000 # 12.6 sec
 
-a, b, ref_time = randn((100,100)), randn((100,100)), 1.0
-ref_time = @timefactor reshape(a, (200, 50)) 10000 # 0.016 sec, 600 fois plus rapide !
+a = randn((1,10000))
+@timefactor a' 10000 # 12.7 sec
 
+a = randn((100,100))
+@timefactor reshape(a, (200, 50)) 1000000 # 0.0034 sec, 2500 fois plus rapide !
 
+a = randn((1,10000))
+@timefactor reshape(a, (200, 50)) 1000000 # 0.0033 sec, 4000 fois plus rapide !
+
+a = randn((10000,1))
+@timefactor reshape(a, (200, 50)) 1000000 # 0.0033 sec, 4000 fois plus rapide !
 
