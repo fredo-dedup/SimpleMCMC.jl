@@ -4,10 +4,10 @@
 
 module ADlib
 
-	using Base
+	# using Base
 
 	import Base.+, Base.*, Base./
-	import Base.log, Base.(-), Base.^
+	import Base.log, Base.-, Base.^
 	import Base.conj, Base.ctranspose, Base.transpose
 	import Base.sum, Base.size
 
@@ -18,49 +18,67 @@ module ADlib
 	type ADVar
 		v::Array{Float64,3}
 	end
+	@assert vec(ADVar(ones(Float64, (1, 1, 4))).v) == [1, 1, 1, 1]
 
 	isscalar(x::ADVar) = size(x.v)[1:2] == (1, 1)
 	size(x::ADVar) = size(x.v)
+	size(x::ADVar, d::Any) = size(x.v, d)
+	@assert size(ADVar(ones(Float64, (1, 1, 4))).v) == (1, 1, 4)
+	@assert size(ADVar(ones(Float64, (1, 1, 4)))) == (1, 1, 4)
+	@assert size(ADVar(ones(Float64, (1, 1, 4))), 1) == 1
+	@assert size(ADVar(ones(Float64, (1, 1, 4))), 3) == 4
 
 	function ADVar{T<:Number}(x::T, dim::Integer, index::Integer)
 	 	tmp = Array(Float64, (1,1,dim+1))
 	 	tmp[1:numel(tmp)] = [x, [i==index ? 1.0 : 0.0 for i in 1:dim]]
 	 	ADVar(tmp)
 	end
+	@assert vec(ADVar(1.0, 5, 2).v) == [1., 0, 1, 0, 0, 0]
+	@assert vec(ADVar(1, 5, 2).v) == [1., 0, 1, 0, 0, 0]
 
 	function ADVar{T<:Number, S<:Number}(x::T, d::Vector{S})
 	 	tmp = Array(Float64, (1, 1, length(d)+1))
 	 	tmp[1:numel(tmp)] = [x, d[1:end]]
 	 	ADVar(tmp)
 	end
-
-# import ADlib.ADVar, ADlib.isscalar
-# import Base.+, Base 
-
-	# @assert vec(ADVar(Array(Float64, (1, 1, 4))).v) == [0, 0, 0, 0]
-	# @assert ADVar(fill(0, (2, 3, 2))).v == [0 for i in 1:2, j in 1:3, k in 1:2] # fail
-
-	@assert vec(ADVar(1.0, 5, 2).v) == [1., 0, 1, 0, 0, 0]
-	@assert vec(ADVar(1, 5, 2).v) == [1., 0, 1, 0, 0, 0]
-
 	@assert vec(ADVar(2., [1., 2, 3]).v) == [2., 1, 2, 3] 
-	# @assert vec(ADVar(2., [1., 2, 3]).v) == [2., 1, 2, 3] 
+	@assert vec(ADVar(2., [1, 2, 3]).v) == [2., 1, 2, 3] 
+	@assert vec(ADVar(2, [1., 2, 3]).v) == [2., 1, 2, 3] 
 
+	function ADVar{T<:Number}(x::Vector{T})
+	 	tmp = zeros(Float64, (size(x, 1), 1, size(x, 1)+1))
+	 	tmp[:, 1, 1] = reshape(x, (size(x, 1), 1, 1))
+	 	for i in 1:size(x,1)
+	 		tmp[i, 1, i+1] = 1.0
+	 	end
+	 	ADVar(tmp)
+	end
+	@assert reshape(ADVar([1., 2, 3]).v, 12) == [1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1] 
 
-	# ADVar(x::Int64, dim::Integer, index::Integer) = ADVar(convert(Float64,x), [i==index ? 1.0 : 0.0 for i in 1:dim])
+x= ADVar([1., 2, 3])
+d = 2:3
 
-	# ADVar(x::Number, dx::Vector{Number}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
-	# ADVar(x::Int32, dx::Vector{Int32}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
-	# ADVar(x::Int64, dx::Vector{Int64}) =  ADVar(convert(Float64,x), convert(Vector{Float64}, dx))
-	# ADVar(x::Float64, dx::Vector{Int32}) =  ADVar(x, convert(Vector{Float64}, dx))
-	# ADVar(x::Float64, dx::Vector{Int64}) =  ADVar(x, convert(Vector{Float64}, dx))
-	# ADVar(x::Int32, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
-	# ADVar(x::Int64, dx::Vector{Float64}) =  ADVar(convert(Float64,x), dx)
+	function ref(x::ADVar, d...)
+	 	tmp = ref(x.v[:, :, 1], d)
+	 	tmp2 = Array(Float64, size(tmp,1), size(tmp,2), size(x,3))
+	 	tmp2[:, :, 1] = tmp
+	 	for i in 2:size(x,3)
+	 		tmp2[:, :, i] = ref(x.v[:, :, i], d)
+	 	end
+	 	ADVar(tmp2)
+	end
+
+	ndims(x::ADVar) = ndims(x.v) - 1
+	@assert reshape(ADVar([1., 2, 3])[2:3,:], 8) == [1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1] 
+
+x=[1., 2, 3]
+	# import ADlib.ADVar, ADlib.isscalar
+	# import Base.+, Base 
 
 	######### addition  ######################
 		+(x::ADVar, y::ADVar) = ADVar(x.v + y.v)
 
-		function +{T<:Number}(x::ADVar, y::T)  #TODO rajouter matrices
+		function +{T<:Number}(x::ADVar, y::T)  
 			for i in 1:(size(x.v,1)*size(x.v,2))
 				x.v[i] += y
 			end
@@ -68,7 +86,7 @@ module ADlib
 		end
 		+{T<:Number}(x::T, y::ADVar) = +(y, x)
 
-		function +{T<:Number}(x::ADVar, y::Array{T}) #TODO rajouter matrices
+		function +{T<:Number}(x::ADVar, y::Array{T}) 
 			if ndims(y) > 2
 				error("second argument has too many dimensions")
 			elseif ndims(y) == 1
@@ -139,24 +157,19 @@ module ADlib
 
 			tmp[1:(n1*m2)] = Xv * Yv
 
-			# tmp = Xv * reshape(Y2[(n2*m2+1):end], (n2, m2*(d1-1)))
-			# tmp += reshape(Y2[(n2*m2+1):end], (n2, m2*(d1-1))) * Yv
 			i1, i2, i3 = 1, 1, 1
 			for i in 2:d1
 				i1 += n1*m1
 				i2 += n2*m2
 				i3 += n1*m2
-				# println(i3:(i3+n1*m2-1)) 
 				tmp[i3:(i3+n1*m2-1)] = Xv * reshape(Y.v[i2:(i2+n2*m2-1)], (n2, m2)) +
-					reshape(X.v[i1:(i1+n1*m1-1)], (n1, m1)) * Yv 
+					reshape(X.v[i1:(i1+n1*m1-1)], (n1, m1)) * Yv
 			end
-			# ADArray(permute(tmp, [3, 1, 2]))
 			ADVar(tmp)
 		end
 
 		*{T<:Number}(x::ADVar, y::T) = ADVar(x.v * y)
 		*{T<:Number}(x::T, y::ADVar) = ADVar(x * y.v)
-
 
 		function *{T<:Number}(x::ADVar, y::Array{T})
 			if ndims(y) > 2
@@ -175,23 +188,19 @@ module ADlib
 		end
 
 		function *{T<:Number}(x::Array{T}, y::ADVar)
-			if isa(x, Number)
-				return(ADVar(x * y.v))
-			else
-				if ndims(x) > 2
-					error("first argument has too many dimensions")
-				elseif size(y.v, 1) != size(x, 2)
-					error("Dimensions do not match")
-				elseif ndims(x) == 1
-					x = reshape(x, (length(x), 1))
-				end
-
-				tmp = Array(Float64, (size(x, 1), size(y.v, 2), size(y.v, 3)))
-				for i in 1:size(y.v, 3) # for each value & derivative layers
-					tmp[:, :, i] = x * y.v[:, :, i]
-				end
-				return(ADVar(tmp))
+			if ndims(x) > 2
+				error("first argument has too many dimensions")
+			elseif size(y.v, 1) != size(x, 2)
+				error("Dimensions do not match")
+			elseif ndims(x) == 1
+				x = reshape(x, (length(x), 1))
 			end
+
+			tmp = Array(Float64, (size(x, 1), size(y.v, 2), size(y.v, 3)))
+			for i in 1:size(y.v, 3) # for each value & derivative layers
+				tmp[:, :, i] = x * y.v[:, :, i]
+			end
+			return(ADVar(tmp))
 		end
 
 		a = ADVar(4., [1., 0])
@@ -238,9 +247,8 @@ module ADlib
 		 		(y.v[1] * x.v[1]^(y.v[1]-1.)) * x.v[2:end] +
 		 		(log(x.v[1]) * x.v[1]^y.v[1]) * y.v[2:end])
 		end
-		^(x::ADVar, y::Integer) = x ^ ADVar(convert(Float64, y), zeros(size(x.v,3)-1)) 
-		^(x::ADVar, y::Float64) = x ^ ADVar(y, zeros(size(x.v,3)-1)) 
-		^(x::Float64, y::ADVar) = ADVar(convert(Float64, x), zeros(size(y.v,3)-1)) ^ y
+		^{T<:Number}(x::ADVar, y::T) = x ^ ADVar(y, zeros(size(x.v,3)-1)) 
+		^{T<:Number}(x::T, y::ADVar) = ADVar(x, zeros(size(y.v,3)-1)) ^ y
 
 		x = ADVar(3.0, [1., 0])
 		y = 3.
@@ -252,18 +260,26 @@ module ADlib
 
 	######### misc  ######################
 		function log(x::ADVar)
-			tmp = similar(x.v)
-			tmp[:, :, 1] = log(x.v[:,:, 1])
 			for i in 2:size(x.v,3)
-				tmp[:, :, i] = x.v[:, :, i] ./ x.v[:,:, 1]
+				x.v[:, :, i] = x.v[:, :, i] ./ x.v[:,:, 1]
 			end
-			ADVar(tmp)
+			x.v[:, :, 1] = log(x.v[:,:, 1])
+			x
 		end
+
 		@assert norm( vec(log(ADVar(4., [1., 3])).v) - [1.386294, 0.25, 0.75]) < 1e-6
 
 		conj(x::ADVar) = x
 
 		function transpose(x::ADVar)
+			tmp = Array(Float64, (size(x.v,2), size(x.v,1), size(x.v,3)))
+			for i in 1:size(x.v, 3)
+				tmp[:,:,i] = x.v[:,:,i]' #'
+			end
+			ADVar(tmp)
+		end
+
+		function ctranspose(x::ADVar)
 			tmp = Array(Float64, (size(x.v,2), size(x.v,1), size(x.v,3)))
 			for i in 1:size(x.v, 3)
 				tmp[:,:,i] = x.v[:,:,i]' #'
