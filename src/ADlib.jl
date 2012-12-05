@@ -4,16 +4,18 @@
 
 module ADlib
 
-	# using Base
+	using Base
 
 	import Base.+, Base.*, Base./
 	import Base.log, Base.-, Base.^
 	import Base.conj, Base.ctranspose, Base.transpose
-	import Base.sum, Base.size
+	import Base.sum, Base.size, Base.ndims, Base.ref
+	import Base.Vector
 
 	# supported operators
-	export +, *, /, log, -, ^, conj, ADVar
-	export isscalar
+	export ADVar
+	export +, *, /, log, -, ^, conj
+	export size, ndims
 
 	type ADVar
 		v::Array{Float64,3}
@@ -36,6 +38,9 @@ module ADlib
 	@assert vec(ADVar(1.0, 5, 2).v) == [1., 0, 1, 0, 0, 0]
 	@assert vec(ADVar(1, 5, 2).v) == [1., 0, 1, 0, 0, 0]
 
+	ADVar{T<:Number, S<:Number}(x::T, d::Vector{S}) =
+	(tmp = Array(Float64, (1, 1, length(d)+1)) ; tmp[1:numel(tmp)] = [x, d[1:end]] ;ADVar(tmp))
+
 	function ADVar{T<:Number, S<:Number}(x::T, d::Vector{S})
 	 	tmp = Array(Float64, (1, 1, length(d)+1))
 	 	tmp[1:numel(tmp)] = [x, d[1:end]]
@@ -45,7 +50,7 @@ module ADlib
 	@assert vec(ADVar(2., [1, 2, 3]).v) == [2., 1, 2, 3] 
 	@assert vec(ADVar(2, [1., 2, 3]).v) == [2., 1, 2, 3] 
 
-	function ADVar{T<:Number}(x::Vector{T})
+	function ADVar{T<:Number}(x::Array{T,1})
 	 	tmp = zeros(Float64, (size(x, 1), 1, size(x, 1)+1))
 	 	tmp[:, 1, 1] = reshape(x, (size(x, 1), 1, 1))
 	 	for i in 1:size(x,1)
@@ -67,13 +72,11 @@ d = 2:3
 	 	end
 	 	ADVar(tmp2)
 	end
-
+	
 	ndims(x::ADVar) = ndims(x.v) - 1
-	@assert reshape(ADVar([1., 2, 3])[2:3,:], 8) == [1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1] 
 
-x=[1., 2, 3]
-	# import ADlib.ADVar, ADlib.isscalar
-	# import Base.+, Base 
+	# @assert reshape(ADVar([1., 2, 3])[2:3,:], 8) == [1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1] 
+
 
 	######### addition  ######################
 		+(x::ADVar, y::ADVar) = ADVar(x.v + y.v)
