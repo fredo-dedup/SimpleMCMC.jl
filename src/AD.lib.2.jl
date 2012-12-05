@@ -193,6 +193,9 @@ x=[1., 2, 3]
 			elseif size(y.v, 1) != size(x, 2)
 				error("Dimensions do not match")
 			elseif ndims(x) == 1
+				# if size(y.v,2) == 1 # specific shortcut for inner products
+				# 	return(sum([x[i] * y.v[i] for i in 1::]))
+				# end
 				x = reshape(x, (length(x), 1))
 			end
 
