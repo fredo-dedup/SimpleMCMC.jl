@@ -1,11 +1,11 @@
-# module SimpleMCMC
 
-	# import Base.*
 
-	# export                                  # types
-	#     simpleMCMC,
-	#     expexp,
-	#     parseParams
+
+module SimpleMCMC
+
+	import Base.*
+
+	export simpleRWM, expexp, parseExpr
 
 	####################################################################################
 
@@ -17,193 +17,58 @@
 		end
 	end
 
-	####################################################################
+	#####################################################################
 
-	function parseModel(ex)
-		if typeof(ex) == Expr
-			if ex.args[1]== :~
-				ex = :(acc = acc + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
-			else 
-				ex = Expr(ex.head, { parseModel(e) for e in ex.args}, Any)
-			end
-		end
-		ex
-	end
-
-	# function mlog_normal(x::Float64, sigma::Float64) 
-	# 	tmp = x / sigma
-	# 	-tmp*tmp 
-	# end
-	# function mlog_normal(x::Vector{Float64}, sigma::Float64) 
-	# 	tmp = x / sigma
-	# 	- sum(tmp .* tmp)
-	# end
-
-	###############################################################
-# params
-	function parseParams(ex::Expr)
-		println(ex.head, " -> ")
-		@assert contains([:block, :tuple], ex.head)
-		index = 1
-		assigns = {}
-		for e in ex.args
-			if e.head == :(::)
-				@assert typeof(e.args[1]) == Symbol
-				@assert typeof(e.args[2]) == Expr
-				e2 = e.args[2]
-				if e2.args[1] == :scalar
-					push(assigns, :($(e.args[1]) = beta[$index]))
-					index += 1
-				elseif typeof(e2.args[1]) == Expr
-					e3 = e2.args[1].args
-					if e3[1] == :vector
-						nb = eval(e3[2])
-						push(assigns, :($(e.args[1]) = beta[$index:$(nb+index-1)]))
-						index += nb
-					end
-				end
-			end
-		end
-
-		(index-1, Expr(:block, assigns, Any))
-	end
-
-	###############################################################
-	function simpleMCMC7(model::Expr, params::Expr, steps::Integer, scale::Real)
-		# steps = 10
-		# scale = 0.1
-		local beta
-		local __lp
-		local nbeta
-
-		model2 = parseModel(model)
-		println(model2)
-		(nbeta, parmap) = parseParams(params)
-		println(parmap)
-
-		beta = ones(nbeta)
-
-		println("beta : ", beta, size(beta))
-
-		eval(parmap)
-		println("sigma :", sigma)
-		println("vars : ", vars)
-
-		__lp = 0.0
-		eval(model2)
-		println("__lp :", __lp)
-
-		samples = zeros(Float64, (steps, 2+nbeta))
-
-		loop = quote
-		 	for __i in 1:steps
-				oldbeta, beta = beta, beta + randn(nbeta) * scale
-
-				$parmap # eval(parmap)
-		 		old__lp, __lp = __lp, 0.0
-
-				$model2  # eval(model2)
-				if rand() > exp(__lp - old__lp)
-					__lp, beta = old__lp, oldbeta
-				end
-				samples[__i, :] = vcat(__lp, beta)
-			end
-		end
-		println(loop)
-
-		eval(loop)
-		samples
-	end
-
-	function simpleMCMC9(model::Expr, params::Expr, steps::Integer, scale::Real)
-		# steps = 10
-		# scale = 0.1
-		local beta
-		local nbeta
-
-		model2 = parseModel(model)
-		println(model2)
-		(nbeta, parmap) = parseParams(params)
-		println(parmap)
-
-		beta = ones(nbeta)
-		println("beta : ", beta, size(beta))
-
-		eval(quote
-			function loop(beta::Vector{Float64})
-				local acc
-
-				$parmap
-
-				acc = 0.0
-
-				$model2
-
-				return(acc)
-			end
-		end)
-		__lp = loop(beta)
-		println("loop 1: ", __lp)
-
-		samples = zeros(Float64, (steps, 2+nbeta))
-
-		__lp = -Inf
-	 	for __i in 1:steps
-			oldbeta, beta = beta, beta + randn(nbeta) * scale
-
-	 		old__lp, __lp = __lp, loop(beta)
-
-			if rand() > exp(__lp - old__lp)
-				__lp, beta = old__lp, oldbeta
-			end
-			samples[__i, :] = vcat(__lp, (old__lp != __lp), beta)
-		end
-
-		samples
-	end
-
-	function simpleMCMC10(model::Expr, params::Expr, steps::Integer, burnin::Integer)
-		# (steps = 10, scale = 0.1)
-		local beta, nbeta
+	function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
+		local beta, nparams
 		local jump, S, eta, SS
 		const local target_alpha = 0.234
 
-		model2 = parseModel(model)
-		(nbeta, parmap) = parseParams(params)
+		(model2, param_map, nparams) = parseExpr(model)
 
-		beta = ones(nbeta)
+		if typeof(init) == Array{Float64,1}
+			numel(init) != nparams ? error("$nparams initial values expected, got $(numel(init))") : nothing
+			beta = init
+		elseif typeof(init) <: Real
+			beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
+		else
+			error("cannot assign initial values (should be a Real or vector of Reals)")
+		end
 
 		eval(quote
 			function __loglik(beta::Vector{Float64})
 				local acc
-				$parmap
+				$(Expr(:block, param_map, Any))
 				acc = 0.0
 				$model2
 				return(acc)
 			end
 		end)
 
-		__lp = __loglik(beta)
-		@assert __lp != -Inf
+		__lp = Main.__loglik(beta)
+		__lp == -Inf ? error("Initial values out of model support, try other values") : nothing
 
-		samples = zeros(Float64, (steps, 2+nbeta))
-		S = eye(nbeta)
-	 	for i in 1:steps	 		
-			jump = 0.1 * randn(nbeta)
+		samples = zeros(Float64, (steps, 2+nparams))
+		S = eye(nparams)
+	 	for i in 1:steps	 # i=1; burnin=10		
+	 		print(i, " old beta = ", beta[1])
+			jump = 0.1 * randn(nparams)
 			oldbeta, beta = beta, beta + S * jump
-			# println(diag(S))
+			print("new beta = ", beta[1], " diag = ", diag(S))
 
-	 		old__lp, __lp = __lp, __loglik(beta)
+	 		old__lp, __lp = __lp, Main.__loglik(beta)
+	 		println(" lp= ", __lp)
+
 	 		alpha = min(1, exp(__lp - old__lp))
 			if rand() > exp(__lp - old__lp)
 				__lp, beta = old__lp, oldbeta
 			end
 			samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
 
-			# eta = min(1, nbeta*i^(-2/3))
-			eta = min(1, nbeta * (i <= burnin ? 1 : i-burnin)^(-2/3))
+			eta = min(1, nparams*i^(-2/3))
+			# eta = min(1, nparams * (i <= burnin ? 1 : i-burnin)^(-2/3))
 			SS = (jump * jump') / (jump' * jump)[1,1] * eta * (alpha - target_alpha)
-			SS = S * (eye(nbeta) + SS) * S'
+			SS = S * (eye(nparams) + SS) * S'
 			S = chol(SS)
 			S = S'
 		end
@@ -211,54 +76,24 @@
 		return(samples)
 	end
 
-	function simpleMCMC10(model::Expr, params::Expr, steps::Integer) 
-		simpleMCMC10(model::Expr, params::Expr, steps::Integer, min(1, div(steps,2)))
-	end
+	simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, min(1, div(steps,2)))
+	simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
 
-###################################################################################
+	###################################################################################
 
-ex = quote
-	sigma::Real
-	coefs::Vector(nbeta)
-
-	
-end
-
-
-	function parseModel(ex)
-		if typeof(ex) == Expr
-			if ex.args[1]== :~
-				ex = :(acc = acc + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
-			else 
-				ex = Expr(ex.head, { parseModel(e) for e in ex.args}, Any)
-			end
-		end
-		ex
-	end
-
-
-
-function logpdf(d::Exponential, x::Real)
-    x <= 0. ? -Inf : (-x/d.scale) - log(d.scale)
-end
-
-
+# function logpdf(d::Exponential, x::Real)
+#     x <= 0. ? -Inf : (-x/d.scale) - log(d.scale)
 # end
 
 
+# # end
 
-#####################################################################
 
 
-	function parseExpr(ex::Expr)
-		println(ex.head, " -> ")
-		contains([:block, :tuple], ex.head) ? nothing : error("not a block or tuple")
-
-		parseExpr(ex, {}, 0)
-	end
+	#####################################################################
 
 	function parseExpr(ex::Expr, assigns::Array{Any}, index::Integer)
-# ex = model ; assigns = {} ; index = 1
+		# ex = model ; assigns = {} ; index = 1
 		block = {}
 		for e in ex.args  # e = ex.args[4]
 			if !isa(e, Expr)
@@ -288,15 +123,15 @@ end
 					error("unknown parameter expression $(e)")
 				end
 			
-			elseif e.head == :~
-				e = :(acc = acc + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
-				
+			elseif e.head == :call && e.args[1] == :~
+				e = :(acc = acc + sum(logpdf($(e.args[3]), $(e.args[2]))))
+				# println("++++", e)
 				push(block, e)
 			else 
 				lex = {}
 				for e2 in e.args
 					if typeof(e2) == Expr
-						(e3, assigns, index) = parseExpr(e2, assigns, index::Integer)
+						(e3, assigns, index) = parseExpr(e2, assigns, index)
 					else
 						e3 = e2
 					end
@@ -304,27 +139,12 @@ end
 				end
 				push(block, Expr(e.head, lex, Any))
 			end
-
 			
 		end
-		println("---", block, "---")
+		# println("---", block, "---")
 		return(Expr(ex.head, block, Any), assigns, index)
 	end
 
+	parseExpr(ex::Expr) = parseExpr(ex, {}, 0) # initial function call
 
-
-
-model = quote
-	sigma::scalar
-	vars::vector(nbeta)
-
-	sigma ~ Gamma(2,1)
-	vars ~ Normal(0,1)
-
-	resid = Y - X * vars
-	resid ~ Normal(0, sigma)
-end
-
-parseExpr(model)
-expexp(model)
-expexp(:(vector(nbeta)))
+end  # end of module
