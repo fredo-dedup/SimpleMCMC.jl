@@ -214,4 +214,33 @@
 	function simpleMCMC10(model::Expr, params::Expr, steps::Integer) 
 		simpleMCMC10(model::Expr, params::Expr, steps::Integer, min(1, div(steps,2)))
 	end
+
+###################################################################################
+
+ex = quote
+	sigma::Real
+	coefs::Vector(nbeta)
+
+	
+end
+
+
+	function parseModel(ex)
+		if typeof(ex) == Expr
+			if ex.args[1]== :~
+				ex = :(acc = acc + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
+			else 
+				ex = Expr(ex.head, { parseModel(e) for e in ex.args}, Any)
+			end
+		end
+		ex
+	end
+
+
+
+function logpdf(d::Exponential, x::Real)
+    x <= 0. ? -Inf : (-x/d.scale) - log(d.scale)
+end
+
+
 # end
