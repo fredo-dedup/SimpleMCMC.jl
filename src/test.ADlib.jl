@@ -234,7 +234,59 @@ require("ADlib.jl")
 
 	ref_time = timefactor(:(loglik0(beta)), 10000) # 1.85 sec (7.4 on windows machine)
 	timefactor(:(loglik(beta)), 100, ref_time / 100 * (nbeta+1)) # x10  (x4 on windows machine)
-timefactor(:(loglik0(beta)), 10000)
+	timefactor(:(loglik0(beta)), 10000)
+
+#####   using reverse propagation to calculate gradient  ##############
+
+	function loglik2(beta::Vector{Float64})
+		local dimb::Int32
+		local tmp::Vector{Float64}, dtmp::Vector{Float64}
+		local resid::Vector{Float64}, dresid::Vector{Float64}
+		local ll::Float64, dll::Float64
+		local dbeta::Vector{Float64}
+
+		#  forward pass
+		dimb = numel(beta)
+		ll = 0.0
+		ll += logpdf(Gamma(2, 1), beta[1])
+
+		tmp = beta[2:dimb]
+		ll -= sum(tmp' * tmp)
+		
+		resid = Y - X * tmp
+		ll -= dot(resid, resid) / beta[1]
+
+		# reverse pass
+		dbeta = zeros(Float64, dimb)
+		dll = 1.0
+		dresid = zeros(Float64, size(resid))
+		dtmp = zeros(Float64, size(tmp))
+
+		dbeta[1] += dot(resid, resid) / (beta[1])^2 * dll
+		dresid += -2 * resid / beta[1] * dll
+		dtmp -= reshape( reshape(dresid, (1, length(dresid))) * X, (size(tmp))) 
+		# dtmp = X' * dresid  # transpose not optimal
+		dbeta[2:dimb] = dtmp
+
+		# todo : calc (Gamma)'
+
+		(ll, dbeta)
+	end
+
+	res = loglik2(beta)
+	resref = squeeze(loglik(beta).v)
+
+	println( resref[1] , "   ", res[1])
+	for i in 1:41
+		println( resref[i] , "   ", res[2][i], " diff = ", res[2][i] - resref[i])
+	end
+
+	resref[18]
+	res[2][18]
+
+	timefactor(:(loglik2(beta)), 100, ref_time / 100 * (nbeta+1)) # x0.07 Excellent !!  (0.27 with transpose X)
+	timefactor(:(loglik2(beta)), 1000, ref_time / 10) # x2.86  ok good, expected x2-3
+
 
 ##### idem except transposition replaced by pointwise multiplication
 	function loglik(beta::Array{Float64,1})
