@@ -4,7 +4,7 @@
 
 module ADlib
 
-	# using Base
+	using Base
 
 	import Base.+, Base.*, Base./
 	import Base.log, Base.-, Base.^
@@ -12,7 +12,7 @@ module ADlib
 	import Base.sum, Base.size, Base.ndims, Base.ref
 	import Base.Vector
 
-	# supported operators
+	# extended operator
 	export ADVar
 	export +, *, /, log, -, ^, conj
 	export size, ndims
@@ -60,8 +60,8 @@ module ADlib
 	end
 	@assert reshape(ADVar([1., 2, 3]).v, 12) == [1, 2, 3, 1, 0, 0, 0, 1, 0, 0, 0, 1] 
 
-x= ADVar([1., 2, 3])
-d = 2:3
+	# x= ADVar([1., 2, 3])
+	# d = 2:3
 
 	function ref(x::ADVar, d...)
 	 	tmp = ref(x.v[:, :, 1], d)

@@ -66,7 +66,7 @@ function unfoldBlock(ex::Expr)
 			
 			rhs = e.args[2]
 			if typeof(rhs) == Expr
-				(ue, nv) = unfoldExpr(rhs)
+				ue = unfoldExpr(rhs)
 				if length(ue)==1 # no variable creation necessary
 					push(lb, e)
 				else
@@ -78,7 +78,8 @@ function unfoldBlock(ex::Expr)
 			elseif typeof(rhs) == Symbol
 				push(lb, e)
 			else
-				error("[unfoldBlock] can't parse $e")
+				push(lb, e)
+			# 	error("[unfoldBlock] can't parse $e")
 			end
 
 		elseif e.head == :for  # TODO parse loops
@@ -98,6 +99,137 @@ function unfoldBlock(ex::Expr)
 	Expr(:block, lb, Any)
 end
 
+function localVars(ex::Expr)
+	assert(ex.head == :block, "[localVars] not a block")
+
+	lb = {}
+	for e in ex.args  #  e  = ex.args[2]
+		if e.head == :(=)  # assigment
+			assert(typeof(e.args[1]) == Symbol, "[localVars] not a symbol on LHS of assigment $(e)") # TODO : manage symbol[]
+			
+			push(lb, e.args[1])
+
+		elseif e.head == :line  # TODO parse loops
+
+		elseif e.head == :for  # TODO parse loops
+
+		elseif e.head == :while  # TODO parse loops
+
+		elseif e.head == :if  # TODO parse if structures
+
+		elseif e.head == :block
+			e2 = localVars(e)
+			for v in e2
+				push(lb, v)
+			end
+		else
+			error("[localVars] can't handle $(e.head) expressions")
+		end
+	end
+
+	lb
+end
+
+
+
+##########  backwardSweep ##############
+
+function backwardSweep(ex::Expr, locals::Vector)
+	assert(ex.head == :block, "[backwardSweep] not a block")
+
+	lb = {}
+	for e in ex.args  #  e  = ex.args[2]
+		if e.head == :line   # line number marker, no treatment
+			push(lb, e)
+		elseif e.head == :(=)  # assigment
+			dsym = e.args[1]
+			assert(typeof(dsym) == Symbol, "[backwardSweep] not a symbol on LHS of assigment $(e)") # TODO : manage symbol[]
+			
+			rhs = e.args[2]
+			if typeof(rhs) == Expr
+				for i in 2:length(rhs.args)
+					vsym = rhs.args[i]
+					if contains(locals, vsym)
+						push(lb, derive(rhs, i-1, dsym))
+					end
+				end
+			elseif typeof(rhs) == Symbol
+				dsym2 = symbol("__d$dsym")
+				vsym2 = symbol("__d$rhs")
+				push(lb, :( $vsym2 = $dsym2) )
+			else 
+			end
+
+		elseif e.head == :for  # TODO parse loops
+			# e2 = backwardSweep(e)
+			# push(lb, e2)
+
+		elseif e.head == :while  # TODO parse loops
+			# e2 = backwardSweep(e)
+			# push(lb, e2)
+
+		elseif e.head == :if  # TODO parse if structures
+			# e2 = backwardSweep(e.args[2])
+			# push(lb, e2)
+
+		elseif e.head == :block
+			e2 = backwardSweep(e, locals)
+			push(lb, e2)
+		else
+			error("[backwardSweep] can't handle $(e.head) expressions")
+		end
+	end
+
+	Expr(:block, reverse(lb), Any)
+end
+
+function derive(opex::Expr, index::Integer, dsym::Symbol)
+	op = opex.args[1]  # operator
+	vsym = opex.args[1+index]
+	vsym2 = symbol("__d$vsym")
+	dsym2 = symbol("__d$dsym")
+
+	if op == :+
+		return :($vsym2 += $dsym2)
+	elseif op == :-
+		return :($vsym2 += $(index==1 ? "+" : "-") $dsym2)
+	elseif op == :^
+		if index == 1
+			e = opex.args[3]
+			if e == 2.0
+				return :($vsym2 += 2 * $vsym * $dsym2)
+			else
+				return :($vsym2 += $e * $vsym ^ $(e-1) * $dsym2)
+			end
+		else
+			v = opex.args[2]
+			return :($vsym2 += log($v) * $v ^ $vsym * $dsym2)
+		end
+	elseif op == :*
+		e = :(1.0)
+		for i in 2:length(opex)
+			if i != index+1
+				if i < index+1
+					e = :($e * $(opex.args[i])')
+				else	
+					e = :($e * $(opex.args[i]))
+				end
+			end
+		return :($vsym2 += $e * $dsym2)
+	elseif op == :log
+		return :($vsym2 += $dsym2 / $vsym)
+	elseif op == :/
+		if index == 1
+			e = opex.args[3]
+			return :($vsym2 += $vsym / $e * $dsym2)
+		else
+			v = opex.args[2]
+			return :($vsym2 += - $v / ($vsym*$vsym) * $dsym2)
+		end
+	else
+		error("Can't derive operator $op")
+	end
+end
 
 ##########  unfold Expr ##############
 function unfoldExpr(ex::Expr)
@@ -108,10 +240,11 @@ function unfoldExpr(ex::Expr)
 	na = {ex.args[1]}   # function name
 	for e in ex.args[2:end]  # e = :b
 		if typeof(e) == Expr
-			(ue, nv) = unfoldExpr(e)
+			ue = unfoldExpr(e)
 			for a in ue[1:end-1]
 				push(lb, a)
 			end
+			nv = consume(nameTask)
 			push(lb, :($nv = $(ue[end])))
 			push(na, nv)
 		else
@@ -119,7 +252,7 @@ function unfoldExpr(ex::Expr)
 		end
 	end
 	push(lb, Expr(ex.head, na, Any))
-	(lb, consume(nameTask))
+	lb
 end
 
 function nameFactory()
@@ -128,10 +261,9 @@ function nameFactory()
 	end
 end
 
-@assert unfoldExpr(:(4.0)) == ([], :(4.0)
-@assert unfoldExpr(:(3 + x)) == :(:(), :(3+x))
-@assert unfoldExpr(:(3*b + x)) == (:(t = 3*b), :(t+x))
-@assert unfoldExpr(:(3 + x)) == :(4.0
+nameTask = Task(nameFactory)
+@assert isequal(unfoldExpr(:(3 + x)), [:(3+x)])
+@assert isequal(unfoldExpr(:(3*b + x)), [:(__t1 = 3*b), :(__t1 + x)])
 
 
 ##########  tests ##############
@@ -151,6 +283,25 @@ end
 
 unfoldBlock(ex)
 
+ex = quote
+	a = b +c
+	begin
+		z = 3
+		k = z*z + x
+	end
+	d = 2f - sin(y)
+	ll = log(a+d)
+end
 
+unfoldBlock(ex)
 
+ex = quote
+	(y = x + 13 ; z = y^2 + x ; ll = z)
+end
 
+ex2 = unfoldBlock(ex)
+
+vars = localVars(ex2)
+backwardSweep(ex2, vars)
+
+expexp(:(h'))

@@ -1,9 +1,8 @@
 
-
-
 module SimpleMCMC
 
-	import Base.*
+	using Base
+	# using String
 
 	export simpleRWM, expexp, parseExpr
 
@@ -51,13 +50,13 @@ module SimpleMCMC
 		samples = zeros(Float64, (steps, 2+nparams))
 		S = eye(nparams)
 	 	for i in 1:steps	 # i=1; burnin=10		
-	 		print(i, " old beta = ", beta[1])
+	 		print(i, " old beta = ", round(beta[1],3))
 			jump = 0.1 * randn(nparams)
 			oldbeta, beta = beta, beta + S * jump
-			print("new beta = ", beta[1], " diag = ", diag(S))
+			print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
 
 	 		old__lp, __lp = __lp, Main.__loglik(beta)
-	 		println(" lp= ", __lp)
+	 		println(" lp= ", round(__lp, 3))
 
 	 		alpha = min(1, exp(__lp - old__lp))
 			if rand() > exp(__lp - old__lp)
