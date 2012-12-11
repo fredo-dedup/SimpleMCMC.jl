@@ -147,6 +147,7 @@ function backwardSweep(ex::Expr, locals::Vector)
 			
 			rhs = e.args[2]
 			if typeof(rhs) == Expr
+				println
 				for i in 2:length(rhs.args)
 					vsym = rhs.args[i]
 					if contains(locals, vsym)
@@ -207,7 +208,7 @@ function derive(opex::Expr, index::Integer, dsym::Symbol)
 		end
 	elseif op == :*
 		e = :(1.0)
-		for i in 2:length(opex)
+		for i in 2:length(opex.args)
 			if i != index+1
 				if i < index+1
 					e = :($e * $(opex.args[i])')
@@ -215,6 +216,7 @@ function derive(opex::Expr, index::Integer, dsym::Symbol)
 					e = :($e * $(opex.args[i]))
 				end
 			end
+		end
 		return :($vsym2 += $e * $dsym2)
 	elseif op == :log
 		return :($vsym2 += $dsym2 / $vsym)
@@ -230,6 +232,7 @@ function derive(opex::Expr, index::Integer, dsym::Symbol)
 		error("Can't derive operator $op")
 	end
 end
+
 
 ##########  unfold Expr ##############
 function unfoldExpr(ex::Expr)
@@ -300,8 +303,49 @@ ex = quote
 end
 
 ex2 = unfoldBlock(ex)
-
 vars = localVars(ex2)
 backwardSweep(ex2, vars)
+beta1, beta2 = 1.1, 3.0
+(eval(ex) - 136.75) * 10 # 23.80 ok
 
-expexp(:(h'))
+ex = quote
+	a = 5 + z
+	y = 78
+	z = a * z * y
+end
+vars = localVars(unfoldBlock(ex))
+backwardSweep(unfoldBlock(ex), vars)
+
+ex = quote
+	a = 5 + beta1
+	y = 7beta2 + log(a)
+	z = a * y
+end
+ex2 = unfoldBlock(ex)
+vars = localVars(ex2)
+push(vars, :beta1)
+push(vars, :beta2)
+ex3 = backwardSweep(ex2, vars)
+
+finalexp = quote
+	$ex2
+	$(Expr(:block, {:($(symbol("__d$v")) = 0.0) for v in vars}, Any))  
+	__dz = 1.0
+	# y, __dz, __da, __dt9, __dt10 = 0.0, 1.0, 0.0, 0.0, 0.0
+	$ex3
+	(z, __dbeta1, __dbeta2)
+end
+
+beta1, beta2 = 1.0, 3.0
+eval(finalexp)
+# (136.75055681536833,23.791759469228055,42.0)
+
+eval(ex) #136
+beta1, beta2 = 1.1, 3.0
+(eval(ex) - 136.75) * 10 # 23.80 ok
+beta1, beta2 = 1.0, 3.1
+(eval(ex) - 136.75) * 10 # 42.005 ok
+
+ref_time = timefactor(ex, 1000000)  # 0.26 sec
+timefactor(finalexp, 1000000, ref_time) # x3.5
+
