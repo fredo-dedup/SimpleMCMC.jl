@@ -1,35 +1,3 @@
-############# big lm  10.000 obs x 40 var  ###########
-load("SimpleMCMC.jl")
-import SimpleMCMC.simpleRWM, SimpleMCMC.parseExpr, SimpleMCMC.expexp
-
-load("distributions.jl") 
-import Distributions.Gamma, Distributions.Normal, Distributions.Exponential
-import Distributions.Poisson 
-import Distributions.pdf, Distributions.logpdf
-
-begin
-	srand(1)
-	n = 10000
-	nbeta = 40
-	X = [fill(1, (n,)) randn((n, nbeta-1))]
-	beta0 = randn((nbeta,))
-	Y = X * beta0 + randn((n,))
-end
-
-model = quote
-	vars::vector(nbeta)
-
-	vars ~ Normal(0, 1)
-	resid = Y - X * vars
-	resid ~ Normal(0, 1)
-end
-
-res = simpleRWM(model, 1000)
-
-dlmwrite("c:/temp/mjcl.txt", res)
-
-
-(model2, assgmt, nparams) = parseExpr(model)
 
 expexp(model2)
 expexp(:(a+b+c))
@@ -37,20 +5,6 @@ expexp(:(sum(a,b,c)))
 expexp(:(if a==b ; c=d; elseif a<b ; c=2d; else c=3d; end))
 expexp(:(for i in 1:10; b=3.0;end))
 expexp(:(while d > 4; d+= 1;end))
-
-ex = model2
-args2 = Vector{Any}
-
-type pBlock
-	block::Vector{Expr}
-	lvars::Vector{Symbol}
-	evars::Vector{Symbol}
-end
-pBlock() = pBlock([Expr(:line, {0} , Any)], [:none], [:none])
-# pBlock() = pBlock([Expr(:line, {0} , Any)], {}, {})
-
-a = pBlock()
-a
 
 ##########  unfoldBlock ##############
 
@@ -107,7 +61,7 @@ function localVars(ex::Expr)
 		if e.head == :(=)  # assigment
 			assert(typeof(e.args[1]) == Symbol, "[localVars] not a symbol on LHS of assigment $(e)") # TODO : manage symbol[]
 			
-			push(lb, e.args[1])
+			contains(lb, e.args[1]) ? nothing : push(lb, e.args[1])
 
 		elseif e.head == :line  # TODO parse loops
 
@@ -193,7 +147,13 @@ function derive(opex::Expr, index::Integer, dsym::Symbol)
 	if op == :+
 		return :($vsym2 += $dsym2)
 	elseif op == :-
-		return :($vsym2 += $(index==1 ? "+" : "-") $dsym2)
+		if length(opex.args) == 2  # unary minus
+			return :($vsym2 += -$dsym2)
+		elseif index == 1
+			return :($vsym2 += $dsym2)
+		else
+			return :($vsym2 += -$dsym2)
+		end
 	elseif op == :^
 		if index == 1
 			e = opex.args[3]
@@ -213,20 +173,25 @@ function derive(opex::Expr, index::Integer, dsym::Symbol)
 				if i < index+1
 					e = :($e * $(opex.args[i])')
 				else	
-					e = :($e * $(opex.args[i]))
+					e = :($(opex.args[i]) * $e)
 				end
 			end
 		end
 		return :($vsym2 += $e * $dsym2)
+	elseif op == :dot
+		e = index == 1 ? opex.args[3] : opex.args[2]
+		return :($vsym2 += sum($e) .* $dsym2)
 	elseif op == :log
-		return :($vsym2 += $dsym2 / $vsym)
+		return :($vsym2 += $dsym2 ./ $vsym)
+	elseif op == :exp
+		return :($vsym2 += exp($vsym) .* $dsym2)
 	elseif op == :/
 		if index == 1
 			e = opex.args[3]
-			return :($vsym2 += $vsym / $e * $dsym2)
+			return :($vsym2 += $vsym ./ $e .* $dsym2)
 		else
 			v = opex.args[2]
-			return :($vsym2 += - $v / ($vsym*$vsym) * $dsym2)
+			return :($vsym2 += - $v ./ ($vsym .* $vsym) .* $dsym2)
 		end
 	else
 		error("Can't derive operator $op")
@@ -348,4 +313,91 @@ beta1, beta2 = 1.0, 3.1
 
 ref_time = timefactor(ex, 1000000)  # 0.26 sec
 timefactor(finalexp, 1000000, ref_time) # x3.5
+
+##############################################################
+begin
+	srand(1)
+	n = 100
+	nbeta = 4
+	X = [fill(1, (n,)) randn((n, nbeta-1))]
+	beta0 = randn((nbeta,))
+	Y = (1/(1+exp(-(X * beta0)))) .> rand(n)
+end
+
+model = quote
+	ll = - dot(beta, beta)
+	resid = Y - (1/(1+exp(- X * beta)))
+	ll = ll - dot(resid, resid)
+end
+
+ex2 = unfoldBlock(model)
+vars = localVars(ex2)
+push(vars, :beta)
+ex3 = backwardSweep(ex2, vars)
+
+finalexp = quote
+	$ex2
+	$(Expr(:block, {:($(symbol("__d$v")) = zero($(symbol("$v")))) for v in vars}, Any))  
+#	$(Expr(:block, {:($(symbol("__d$v")) = 0.0) for v in vars}, Any))  
+	__dll = 1.0
+    __d__t27 += __dll
+    __dll += __dll
+    __dresid += .*(sum(resid), __d__t27)
+    __dresid += .*(sum(resid), __d__t27)	#  line 4:
+    __d__t26 += -(__dresid)
+    __d__t25 += .*(./(-(1), .*(__t25, __t25)), __d__t26)
+    __d__t24 += __d__t25
+    __d__t23 += .*(exp(__t23), __d__t24)
+    __dbeta += *(*(1.0, __t22'), __d__t23)
+    __d__t22 += *(__d__t23, *(beta, 1.0)')	#  line 3:
+    __d__t21 += -(__dll)
+    __dbeta += .*(sum(beta), __d__t21)
+    __dbeta += .*(sum(beta), __d__t21)	#  line 2:
+	(ll, __dbeta)
+end
+
+beta = ones(4)
+eval(finalexp)
+eval(ex2)
+
+function HMC(finalexp::Expr, epsilon, L, current_beta)
+	beta = current_beta
+	p = randn(nbeta) # independent standard normal variates
+	current_beta = p
+
+	(ll, dll) = eval(finalexp)	
+	# Make a half step for momentum at the beginning
+	p -= epsilon * dll / 2
+	# Alternate full steps for position and momentum
+	for (i in 1:L)
+		# Make a full step for the position
+		beta += epsilon * p
+		# Make a full step for the momentum, except at end of trajectory
+		if i!=L
+			p -= epsilon * dll
+		end
+	end
+	# Make a half step for momentum at the end.
+	p -= epsilon * dll / 2
+	# Negate momentum at end of trajectory to make the proposal symmetric
+	p = -p
+	# Evaluate potential and kinetic energies at start and end of trajectory
+
+	(ll, dll) = eval(finalexp)	
+	current_U = U(current_q)
+	current_K = sum(current_p^2) / 2
+	proposed_U = U(q)
+	proposed_K = sum(p^2) / 2
+	# Accept or reject the state at end of trajectory, returning either
+	# the position at the end of the trajectory or the initial position
+	if (rand(1) < exp(current_U-proposed_U+current_K-proposed_K))
+	{
+	return (q) # accept
+	}
+	else
+	{
+	return (current_q) # reject
+	}
+}
+
 
