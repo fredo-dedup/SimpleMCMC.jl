@@ -1,7 +1,7 @@
 
 module SimpleMCMC
 
-	using Base
+	# using Base
 	# using String
 
 	export simpleRWM, expexp, parseExpr
@@ -16,7 +16,7 @@ module SimpleMCMC
 		end
 	end
 
-	#####################################################################
+#####################################################################
 
 	function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		local beta, nparams
