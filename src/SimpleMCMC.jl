@@ -355,7 +355,7 @@ module SimpleMCMC
 				push(block, e)
 
 			elseif e.head == :(::)  #  model param declaration
-				typeof(e.args[1]) == Symbol ? nothing : error("not a symbol on LHS of ~ : $(e.args[1])")
+				assert(typeof(e.args[1]) == Symbol, "not a symbol on LHS of :: $(e.args[1])")
 				par = e.args[1]  # param symbol defined here
 
 				if e.args[2] == :scalar  #  simple decl : var::scalar
@@ -369,7 +369,7 @@ module SimpleMCMC
 						if !isa(nb, Integer) || nb < 1 
 							error("invalid size $(e2[2]) = $(nb)")
 						end
-						push(assigns, :($(par) = beta[$(index+1):$(nb+index)]))
+						push(assigns, :($(par) = __beta[$(index+1):$(nb+index)]))
 						index += nb
 					else
 						error("unknown parameter type $(e2[1])")
@@ -382,6 +382,7 @@ module SimpleMCMC
 				e = :(__acc = _acc + sum(logpdf($(e.args[3]), $(e.args[2]))))
 				# println("++++", e)
 				push(block, e)
+				
 			else 
 				lex = {}
 				for e2 in e.args
