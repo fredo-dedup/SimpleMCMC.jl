@@ -1,4 +1,6 @@
-load("SimpleMCMC.jl")
+
+include("SimpleMCMC.jl")
+using SimpleMCMC
 
 expexp(model2)
 expexp(:(a+b+c))
@@ -9,11 +11,11 @@ expexp(:(while d > 4; d+= 1;end))
 
 
 ##########  tests ##############
+nameTask = Task(nameFactory)
 @assert isequal(unfoldExpr(:(3 + x)), [:(3+x)])
 @assert isequal(unfoldExpr(:(3*b + x)), [:(__t1 = 3*b), :(__t1 + x)])
 
 
-nameTask = Task(nameFactory)
 # consume(nameTask)
 
 ex=quote
@@ -176,5 +178,4 @@ function HMC(finalexp::Expr, epsilon, L, current_beta)
 	return (current_q) # reject
 	}
 }
-
 

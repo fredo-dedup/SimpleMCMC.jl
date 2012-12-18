@@ -1,13 +1,15 @@
-#module SimpleMCMC
+module SimpleMCMC
 
-	# using Base
+	using Base 
 
 	export simpleRWM, expexp, parseExpr
 	export unfoldBlock,
-	localVars,
-	backwardSweep,
-	derive,
-	unfoldExpr
+		localVars,
+		backwardSweep,
+		derive,
+		unfoldExpr,
+		nameFactory,
+		nameTask
 
 ##########  unfoldBlock ##############
 
@@ -55,10 +57,10 @@
 				end
 
 			elseif e.head == :for  # TODO parse loops
-
-			elseif e.head == :while  # TODO parse loops
+				error("[unfoldBlock] can't handle $(e.head) expressions")  # TODO
 
 			elseif e.head == :if  # TODO parse if structures
+				error("[unfoldBlock] can't handle $(e.head) expressions")  # TODO
 
 			elseif e.head == :block
 				(e2, nv) = unfoldBlock(e)
@@ -141,16 +143,10 @@
 				end
 
 			elseif e.head == :for  # TODO parse loops
-				# e2 = backwardSweep(e)
-				# push(lb, e2)
-
-			elseif e.head == :while  # TODO parse loops
-				# e2 = backwardSweep(e)
-				# push(lb, e2)
+				error("[backwardSweep] can't handle $(e.head) expressions") # TODO
 
 			elseif e.head == :if  # TODO parse if structures
-				# e2 = backwardSweep(e.args[2])
-				# push(lb, e2)
+				error("[backwardSweep] can't handle $(e.head) expressions")  # TODO
 
 			elseif e.head == :block
 				e2 = backwardSweep(e, locals)
@@ -197,7 +193,7 @@
 		elseif op == :*
 			e = :(1.0)
 			if index == 1
-				return :($vsym2 += $dsym2 * transpose($(opex.args[2])))
+				return :($vsym2 += $dsym2 * transpose($(opex.args[3])))
 			else
 				return :($vsym2 += transpose($(opex.args[2])) * $dsym2)
 			end
@@ -291,7 +287,7 @@
 		(model2, param_map, nparams) = parseExpr(model)
 
 		if typeof(init) == Array{Float64,1}
-			numel(init) != nparams ? error("$nparams initial values expected, got $(numel(init))") : nothing
+			assert(numel(init) == nparams, "$nparams initial values expected, got $(numel(init))")
 			beta = init
 		elseif typeof(init) <: Real
 			beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
@@ -299,6 +295,7 @@
 			error("cannot assign initial values (should be a Real or vector of Reals)")
 		end
 
+		#  log-likelihood function creation
 		eval(quote
 			function __loglik(beta::Vector{Float64})
 				local acc
@@ -309,9 +306,11 @@
 			end
 		end)
 
+		#  first calc
 		__lp = Main.__loglik(beta)
 		__lp == -Inf ? error("Initial values out of model support, try other values") : nothing
 
+		#  main loop
 		samples = zeros(Float64, (steps, 2+nparams))
 		S = eye(nparams)
 	 	for i in 1:steps	 # i=1; burnin=10		
@@ -329,6 +328,7 @@
 			end
 			samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
 
+			#  Adaptive scaling using R.A.M. method
 			eta = min(1, nparams*i^(-2/3))
 			# eta = min(1, nparams * (i <= burnin ? 1 : i-burnin)^(-2/3))
 			SS = (jump * jump') / (jump' * jump)[1,1] * eta * (alpha - target_alpha)
@@ -344,17 +344,6 @@
 	simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
 
 	###################################################################################
-
-# function logpdf(d::Exponential, x::Real)
-#     x <= 0. ? -Inf : (-x/d.scale) - log(d.scale)
-# end
-
-
-# # end
-
-
-
-	#####################################################################
 
 	function parseExpr(ex::Expr, assigns::Array{Any}, index::Integer)
 		println(ex.head)
@@ -410,7 +399,9 @@
 		# println("---", block, "---")
 		return(Expr(ex.head, block, Any), assigns, index)
 	end
-
 	parseExpr(ex::Expr) = parseExpr(ex, {}, 0) # initial function call
 
-# end  # end of module
+	nameTask = Task(nameFactory)
+
+end  # end of module
+
