@@ -1,6 +1,6 @@
 module SimpleMCMC
 
-	using Base 
+	# using Base 
 
 	export simpleRWM, expexp, parseExpr
 	export unfoldBlock,
@@ -14,7 +14,7 @@ module SimpleMCMC
 
 ##########  unfoldBlock ##############
 
-	function unfoldBlock(ex::Expr)
+function unfoldBlock(ex::Expr)
 		assert(ex.head == :block, "[unfoldBlock] not a block")
 
 		lb = {}  # will store expressions
