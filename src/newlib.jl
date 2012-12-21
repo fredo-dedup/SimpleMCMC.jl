@@ -76,12 +76,12 @@ function processExpr(ex::Expr, action::Symbol)
 	else
 		fname = "$(action)_$(ex.head)"
 	end
-	# mycall = Expr(:call, {symbol(fname), :($(esc(ex)))}, Any)
-	mycall = :($symbol(fname)(ex))
-	apply(symbol(fname), ex)
+	mycall = Expr(:call, {symbol(fname), expr(:quote, ex)}, Any)
+	# mycall = :($(fname)($(expr(:quote, ex))))
+	# apply(symbol(fname), ex)
 	# mycall.args[2] = quote
 	# 	$ex
 	# end
 	println("ccaling $mycall")
-	# eval(mycall)
+	eval(mycall)
 end
