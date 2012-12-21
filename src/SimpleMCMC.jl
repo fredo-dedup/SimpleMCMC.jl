@@ -9,7 +9,8 @@ module SimpleMCMC
 		derive,
 		unfoldExpr,
 		nameFactory,
-		nameTask
+		nameTask,
+		findActiveVars
 
 ##########  unfoldBlock ##############
 
@@ -17,19 +18,13 @@ module SimpleMCMC
 		assert(ex.head == :block, "[unfoldBlock] not a block")
 
 		lb = {}  # will store expressions
-		vars = {} # will store variables in the block
-		for e in ex.args  #  e  = ex.args[8]
+		for e in ex.args  #  e  = ex.args[10]
 			if e.head == :line   # line number marker, no treatment
 				push(lb, e)
 			elseif e.head == :(=)  # assigment
 				lhs = e.args[1]
-				if typeof(lhs) == Symbol # simple var case
-					push(vars, lhs)
-				elseif typeof(lhs) == Expr && lhs.head == :ref  # vars with []
-					push(vars, lhs.args[1])
-				else
-					error("[unfoldBlock] not a symbol on LHS of assigment $(e)") 
-				end
+				assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
+					"[unfoldBlock] not a symbol on LHS of assigment $(e)")
 
 				rhs = e.args[2]
 				if typeof(rhs) == Symbol ||  (typeof(rhs) == Expr && rhs.head == :ref)
@@ -43,9 +38,7 @@ module SimpleMCMC
 							push(lb, a)
 							lhs2 = a.args[1]
 							if typeof(lhs2) == Symbol # simple var case
-								push(vars, lhs2)
 							elseif typeof(lhs2) == Expr && lhs2.head == :ref  # vars with []
-								push(vars, lhs2.args[1])
 							else
 								error("[unfoldBlock] not a symbol on LHS of assigment $(e)") 
 							end
@@ -53,7 +46,7 @@ module SimpleMCMC
 						push(lb, :($lhs = $(ue[end])))
 					end
 				else  # unmanaged kind of lhs
-				 	error("[unfoldBlock] can't parse $e")
+				 	error("[unfoldBlock] can't handle RHS of assignment $e")
 				end
 
 			elseif e.head == :for  # TODO parse loops
@@ -63,15 +56,58 @@ module SimpleMCMC
 				error("[unfoldBlock] can't handle $(e.head) expressions")  # TODO
 
 			elseif e.head == :block
-				(e2, nv) = unfoldBlock(e)
+				e2 = unfoldBlock(e)
 				map(x->push(lb,x), e2)  # exprs are inserted in parent block without begin - end
-				map(x->push(vars,x), nv)
 			else
 				error("[unfoldBlock] can't handle $(e.head) expressions")
 			end
 		end
 
-		(Expr(:block, lb, Any), vars)
+		Expr(:block, lb, Any)
+	end
+
+	function findActiveVars(ex::Expr, mvars::Array)
+		assert(ex.head == :block, "[findActiveVars] not a block")
+
+		avars = mvars  # will store active vars, i.e. dependent on model params & impacting __acc
+		for e in ex.args  #  e  = ex.args[4]
+			if e.head == :line   # line number marker, no treatment
+			elseif e.head == :(=)  # assigment
+				lhs = e.args[1]
+				rhs = e.args[2]
+
+				if typeof(rhs) == Symbol 
+					rvars = {rhs}
+				elseif (typeof(rhs) == Expr && rhs.head == :ref)
+					rvars = {rhs.args[1]}
+				elseif (typeof(rhs) == Expr && rhs.head == :call)
+					rvars = rhs.args
+				else  # unmanaged kind of lhs
+				 	error("[findActiveVars] can't handle RHS of assignment $e")
+				end
+
+				if length(intersect(Set(rvars...), Set(avars...))) > 0
+					if typeof(lhs) == Symbol # simple var case
+						push(avars, lhs)
+					elseif typeof(lhs) == Expr && lhs.head == :ref  # vars with []
+						push(avars, lhs.args[1])
+					else
+						error("[findActiveVars] not a symbol on LHS of assigment $(e)") 
+					end
+				end
+
+			elseif e.head == :for  # TODO parse loops
+				error("[findActiveVars] can't handle $(e.head) expressions")  # TODO
+			elseif e.head == :if  # TODO parse if structures
+				error("[findActiveVars] can't handle $(e.head) expressions")  # TODO
+			elseif e.head == :block # never used ?
+				avars = unfoldBlock(e, avars)
+			else
+				error("[findActiveVars] can't handle $(e.head) expressions")
+			end
+		end
+
+		avars
 	end
 
 	function localVars(ex::Expr)
@@ -240,7 +276,7 @@ module SimpleMCMC
 				push(ex2, Expr(:call, {ex.args[1], a1, a2}, Any))
 			end
 
-			for e in ex2  # e = :b
+			for e in ex2  # e = ex2[2]
 				if typeof(e) == Expr
 					ue = unfoldExpr(e)
 					for a in ue[1:end-1]
@@ -355,7 +391,7 @@ module SimpleMCMC
 				push(block, e)
 
 			elseif e.head == :(::)  #  model param declaration
-				typeof(e.args[1]) == Symbol ? nothing : error("not a symbol on LHS of ~ : $(e.args[1])")
+				assert(typeof(e.args[1]) == Symbol, "not a symbol on LHS of :: $(e.args[1])")
 				par = e.args[1]  # param symbol defined here
 
 				if e.args[2] == :scalar  #  simple decl : var::scalar
@@ -369,7 +405,7 @@ module SimpleMCMC
 						if !isa(nb, Integer) || nb < 1 
 							error("invalid size $(e2[2]) = $(nb)")
 						end
-						push(assigns, :($(par) = beta[$(index+1):$(nb+index)]))
+						push(assigns, :($(par) = __beta[$(index+1):$(nb+index)]))
 						index += nb
 					else
 						error("unknown parameter type $(e2[1])")
@@ -382,6 +418,7 @@ module SimpleMCMC
 				e = :(__acc = _acc + sum(logpdf($(e.args[3]), $(e.args[2]))))
 				# println("++++", e)
 				push(block, e)
+
 			else 
 				lex = {}
 				for e2 in e.args
@@ -399,9 +436,9 @@ module SimpleMCMC
 		# println("---", block, "---")
 		return(Expr(ex.head, block, Any), assigns, index)
 	end
+
 	parseExpr(ex::Expr) = parseExpr(ex, {}, 0) # initial function call
 
 	nameTask = Task(nameFactory)
 
 end  # end of module
-

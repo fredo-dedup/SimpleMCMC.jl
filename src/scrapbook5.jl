@@ -1,38 +1,18 @@
-
 include("SimpleMCMC.jl")
 using SimpleMCMC
-
-expexp(model2)
-expexp(:(a+b+c))
-expexp(:(sum(a,b,c)))
-expexp(:(if a==b ; c=d; elseif a<b ; c=2d; else c=3d; end))
-expexp(:(for i in 1:10; b=3.0;end))
-expexp(:(while d > 4; d+= 1;end))
-
 
 ##########  tests ##############
 nameTask = Task(nameFactory)
 @assert isequal(unfoldExpr(:(3 + x)), [:(3+x)])
 @assert isequal(unfoldExpr(:(3*b + x)), [:(__t1 = 3*b), :(__t1 + x)])
 
-
 # consume(nameTask)
 
-ex=quote
-	a[12] = b
-	c = beta[3]
-	d[j] = ll[k:(k+5)]
-	z = sin(beta) / exp(a[45]) * c ^ (d + 5 +k)
-end
-(ex2, vars) = unfoldBlock(ex)
+# start with beta active variable
+# proceed through new definitions, marking dependant variables
 
-ex=quote
-	c = beta[2:10]
-	a = b * c
-end
-(ex2, vars) = unfoldBlock(ex)
-backwardSweep(ex2, vars)
-
+unfoldExpr(:(a+b))
+unfoldExpr(:(a+12*b))
 
 #############################################
 ex = quote
@@ -46,9 +26,10 @@ ex = quote
 	z ~ Normal(0,1)
 end
 (ex2, param_map, nparams) = parseExpr(ex)
-(ex3, vars) = unfoldBlock(ex2)
+ex3 = unfoldBlock(ex2)
+avars = findActiveVars(ex3, map(x->x.args[1], param_map))
 push(vars, :__beta)
-ex4 = backwardSweep(ex3, vars)
+ex4 = backwardSweep(ex3, avars)
 
 ex = quote
 	a = __beta[12]
