@@ -1,19 +1,18 @@
 load("newlib.jl")
 
-e = :(a=b+1)
+import SimpleMCMC.processExpr
+using SimpleMCMC
 
-e
+SimpleMCMC.processExpr(:(a= b+2), :unfold)
+processExpr(:(a= b+2c), :unfold)
+SimpleMCMC.processExpr(:(a[12] = sum(z[i:j])), :unfold)
+SimpleMCMC.processExpr(:(for a in 1:3:a+=2;end), :unfold)
 
-processExpr(:(a= b+2), :unfold)
-processExpr(:(for a in 1:3:a+=2;end), :unfold)
+model = quote
+	a = b+6
+	x = sin(k * z)
+end
 
-unfold_equal(:(a = b +2))
+expexp(model)
+SimpleMCMC.processExpr(model, :unfold)
 
-
-
-f = function("exp")
-f
-apply(Function::"exp",2.0)
-typeof(f)
-
-Function
