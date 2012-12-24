@@ -2,10 +2,10 @@ module SimpleMCMC
 
 export processExpr, expexp
 
-const ACC_NAME = :__acc
-const PARAM_NAME = :__beta
-const TEMP_NAME = :__tmp
-const DERIV_PREFIX = :__d
+const ACC_NAME = "__acc"
+const PARAM_NAME = "__beta"
+const TEMP_NAME = "__tmp"
+const DERIV_PREFIX = "__d"
 
 ##########  main entry point  ############
 function processExpr(ex::Expr, action::Symbol, others...)
@@ -21,16 +21,17 @@ end
 
 ######## unfolding functions ###################
 unfold_line(ex::Expr) = ex
-unfold_for(ex::Expr) = error("[unfold] can't process $(ex.head) expressions")
-unfold_if(ex::Expr) = error("[unfold] can't process $(ex.head) expressions")
-unfold_while(ex::Expr) = error("[unfold] can't process $(ex.head) expressions")
 unfold_ref(ex::Expr) = ex
+
+unfold_error(ex::Expr) = error("[unfold] can't process [$(ex.head)] expressions")
+
+unfold_for(ex::Expr) = unfold_error(ex)
+unfold_if(ex::Expr) = unfold_error(ex)
+unfold_while(ex::Expr) = unfold_error(ex)
 
 unfold_block(ex::Expr) = map(x->processExpr(x, :unfold), ex.args)
 
 function unfold_equal(ex::Expr)
-	lb = {}
-
 	lhs = ex.args[1]
 	assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
 		"[unfold] not a symbol on LHS of assigment $(ex)")
@@ -43,59 +44,56 @@ function unfold_equal(ex::Expr)
 		if isa(ue, Expr)
 			return expr(:(=), lhs, rhs)
 		elseif isa(ue, Tuple)
-			
-			return expr()
-		elength(ue)==1 # simple expression, no variable creation necessary
-		else # several nested expressions
-			for a in ue[1:end-1]
-				push(lb, a)
-				lhs2 = a.args[1]
-				if typeof(lhs2) == Symbol # simple var case
-				elseif typeof(lhs2) == Expr && lhs2.head == :ref  # vars with []
-				else
-					error("[unfold] not a symbol on LHS of assigment $(ex)") 
-				end
-			end
-			push(lb, :($lhs = $(ue[end])))
+			lb = push(ue[1], :($lhs = $(ue[2])))
+			return expr(:block, lb)
 		end
 	else  # unmanaged kind of lhs
 	 	error("[unfold] can't handle RHS of assignment $ex")
 	end
-
-	expr(:(=), lhs, rhs)
 end
 
 function unfold_call(ex::Expr)
-	lb = {}
 	na = {ex.args[1]}   # function name
 	args = ex.args[2:end]  # arguments
 
 	# if more than 2 arguments, convert to nested expressions (easier for derivation)
 	# TODO : probably not valid for all ternary, quaternary, etc.. operators, should work for *, +, sum
+	println(args)
 	while length(args) > 2
 		a2 = pop(args)
 		a1 = pop(args)
 		push(args, expr(:call, ex.args[1], a1, a2))
 	end
 
+	lb = {}
 	for e2 in args  # e2 = args[2]
 		if typeof(e2) == Expr
 			ue = processExpr(e2, :unfold)
-			append!(lb, ue[1:end-1])
-			nv = gensym("tmp")
-			push(lb, :($nv = $(ue[end])))
+			if isa(ue, Tuple)
+				append!(lb, ue[1])
+				lp = ue[2]
+			else
+				lp = ue
+			end
+			nv = gensym(TEMP_NAME)
+			push(lb, :($nv = $(lp)))
 			push(na, nv)
 		else
 			push(na, e2)
 		end
 	end
-	push(lb, expr(ex.head, na))
 
-	return (numel(lb)==1 ? {lb[1]} : {expr(:block, lb)})
+	return numel(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
 end
 
 ######### interpretation pass functions  #############
 
+type varNode
+	pred::Vector{Union(varNode, Nothing)}
+	succ::Union(varNode, Nothing}
+end
+
+varTree
 function findActiveVars(ex::Expr, mvars::Array)
 	assert(ex.head == :block, "[findActiveVars] not a block")
 
