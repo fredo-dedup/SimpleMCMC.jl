@@ -11,6 +11,8 @@ const DERIV_PREFIX = "__d"
 function processExpr(ex::Expr, action::Symbol, others...)
 	if ex.head == :(=) # stringify some symbols
 		fname = "$(action)_equal"
+	elseif ex.head == :(::) # stringify some symbols
+		fname = "$(action)_dcolon"
 	else
 		fname = "$(action)_$(ex.head)"
 	end
@@ -29,7 +31,7 @@ unfold_for(ex::Expr) = unfold_error(ex)
 unfold_if(ex::Expr) = unfold_error(ex)
 unfold_while(ex::Expr) = unfold_error(ex)
 
-unfold_block(ex::Expr) = map(x->processExpr(x, :unfold), ex.args)
+unfold_block(ex::Expr) = expr(:block, map(x->processExpr(x, :unfold), ex.args))
 
 function unfold_equal(ex::Expr)
 	lhs = ex.args[1]
@@ -86,59 +88,87 @@ function unfold_call(ex::Expr)
 	return numel(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
 end
 
-######### interpretation pass functions  #############
+######### active vars scanning functions  #############
 
-type varNode
-	pred::Vector{Union(varNode, Nothing)}
-	succ::Union(varNode, Nothing}
-end
-
-varTree
-function findActiveVars(ex::Expr, mvars::Array)
-	assert(ex.head == :block, "[findActiveVars] not a block")
-
-	avars = mvars  # will store active vars, i.e. dependent on model params & impacting __acc
-	for e in ex.args  #  e  = ex.args[4]
-		if e.head == :line   # line number marker, no treatment
-		elseif e.head == :(=)  # assigment
-			lhs = e.args[1]
-			rhs = e.args[2]
-
-			if typeof(rhs) == Symbol 
-				rvars = {rhs}
-			elseif (typeof(rhs) == Expr && rhs.head == :ref)
-				rvars = {rhs.args[1]}
-			elseif (typeof(rhs) == Expr && rhs.head == :call)
-				rvars = rhs.args
-			else  # unmanaged kind of lhs
-			 	error("[findActiveVars] can't handle RHS of assignment $e")
-			end
-
-			if length(intersect(Set(rvars...), Set(avars...))) > 0
-				if typeof(lhs) == Symbol # simple var case
-					push(avars, lhs)
-				elseif typeof(lhs) == Expr && lhs.head == :ref  # vars with []
-					push(avars, lhs.args[1])
-				else
-					error("[findActiveVars] not a symbol on LHS of assigment $(e)") 
-				end
-			end
-
-		elseif e.head == :for  # TODO parse loops
-			error("[findActiveVars] can't handle $(e.head) expressions")  # TODO
-		elseif e.head == :if  # TODO parse if structures
-			error("[findActiveVars] can't handle $(e.head) expressions")  # TODO
-		elseif e.head == :block # never used ?
-			avars = unfoldBlock(e, avars)
-		else
-			error("[findActiveVars] can't handle $(e.head) expressions")
-		end
+function listVars_equal(ex::Expr, avars::Set{Symbol})
+	ls = ex.args[2].args[2:end]
+	ls = Set{Symbol}( filter(x -> isa(x, Symbol), ls) )
+	if length(intersect(ls, avars)) > 0 
+		 return add(avars, ex.args[1])
 	end
-
 	avars
 end
 
+listVars_line(ex::Expr, avars::Set{Symbol}) = avars
+listVars_ref(ex::Expr, avars::Set{Symbol}) = avars
 
+listVars_error(ex::Expr) = error("[listVars] can't process [$(ex.head)] expressions")
+listVars_for(ex::Expr, avars::Set{Symbol}) = listVars_error(ex)
+listVars_if(ex::Expr, avars::Set{Symbol}) = listVars_error(ex)
+listVars_while(ex::Expr, avars::Set{Symbol}) = listVars_error(ex)
+
+function listVars_block(ex::Expr, avars::Set{Symbol})
+	for ex2 in ex.args
+		avars = processExpr(ex2, :listVars, avars)
+	end
+	avars
+end
+
+######### model params scanning functions  #############
+
+type Parmap
+	map::Dict{Symbol, Expr}
+	index::Integer
+end
+
+function findParams_generic(ex::Expr, params::Parmap)
+	ls = filter(x -> isa(x, Expr), ex.args)
+	for ex2 in ls
+		params = processExpr(ex2, :findParams, params)
+	end
+	params
+end
+
+findParams_line(ex::Expr, params::Parmap) = params
+findParams_ref(ex::Expr, params::Parmap) = params
+findParams_call(ex::Expr, params::Parmap) = params
+
+findParams_error(ex::Expr) = error("[findParams] can't process [$(ex.head)] expressions")
+
+findParams_for(ex::Expr, params::Parmap) = findParams_error(ex)
+findParams_if(ex::Expr, params::Parmap) = findParams_error(ex)
+findParams_while(ex::Expr, params::Parmap) = findParams_error(ex)
+
+findParams_block(ex::Expr, params::Parmap) = findParams_generic(ex, params)
+findParams_equal(ex::Expr, params::Parmap) = findParams_generic(ex, params)
+
+function findParams_dcolon(ex::Expr, params::Parmap)
+	assert(typeof(ex.args[1]) == Symbol, 
+		"not a symbol on LHS of :: $(ex.args[1])")
+	par = ex.args[1]  # param symbol defined here
+	def = ex.args[2]
+
+	if def == :scalar  #  simple decl : var::scalar
+		params.map[par] = :($PARAM_NAME[$(params.index+1)])
+		params.index += 1
+
+	elseif isa(def, Expr) && def.head == :call
+		e2 = def.args
+		if e2[1] == :vector
+			nb = eval(e2[2])
+			assert(isa(nb, Integer) && nb > 0, 
+				"invalid size $(e2[2]) = $(nb)")
+
+			params.map[par] = :($PARAM_NAME[$(params.index+1):$(nb+params.index)])
+			params.index += nb
+		else
+			error("unknown parameter type $(e2[1])")
+		end
+	else
+		error("unknown parameter expression $(ex)")
+	end
+	params
+end
 
 
 
