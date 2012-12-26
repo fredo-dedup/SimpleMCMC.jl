@@ -1,12 +1,12 @@
 load("newlib.jl")
 
 import SimpleMCMC.expexp
-using SimpleMCMC
+#using SimpleMCMC
 
-SimpleMCMC.processExpr(:(a= b+2), :unfold)
-SimpleMCMC.processExpr(:(a= b+2c), :unfold)
-SimpleMCMC.processExpr(:(a[12] = sum(z[i:j])), :unfold)
-SimpleMCMC.processExpr(:(for a in 1:3:a+=2;end), :unfold)
+SimpleMCMC.unfold(:(a= b+2))
+SimpleMCMC.unfold(:(a= b+2c))
+SimpleMCMC.unfold(:(a[12] = sum(z[i:j])))
+SimpleMCMC.unfold(:(for a in 1:3:a+=2;end))
 
 model = quote
 	b::scalar
@@ -16,8 +16,11 @@ model = quote
 	x = sin(k * z)
 end
 
+SimpleMCMC.listVars(model, [:b])
+
 expexp(model)
-model2 = SimpleMCMC.processExpr(model, :unfold)
+model2 = SimpleMCMC.unfold(model)
+SimpleMCMC.processExpr(model, :unfold)
 expexp(model2)
 
 avars = SimpleMCMC.processExpr(model2, :listVars, Set{Symbol}(:b))
@@ -27,3 +30,30 @@ avars = SimpleMCMC.processExpr(model2, :listVars, Set{Symbol}())
 SimpleMCMC.processExpr(model, :findParams, SimpleMCMC.Parmap(Dict{Symbol, Expr}(), 0))
 x=1
 test(x) = (x+=1)
+
+function x()
+	global a
+	a = 12
+	y()
+end
+function y()
+	b = a + 2
+end
+a
+x()
+y()
+x() = (global a; a=12; y(); prinln(a))
+y() = (b=a; a=a+2)
+a
+y()
+
+function foo(n)
+  x = 0
+  for i = 1:n
+    x = x + 1
+  end
+  x
+end
+
+
+foo(10)

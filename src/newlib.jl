@@ -7,29 +7,33 @@ const PARAM_NAME = "__beta"
 const TEMP_NAME = "__tmp"
 const DERIV_PREFIX = "__d"
 
-##########  main entry point  ############
+			  
+##########  dispatcher main entry point  ############
+const smap = [:(=) => :equal,
+			  :(::) => :dcolon]
+
 function processExpr(ex::Expr, action::Symbol, others...)
-	if ex.head == :(=) # stringify some symbols
-		fname = "$(action)_equal"
-	elseif ex.head == :(::) # stringify some symbols
-		fname = "$(action)_dcolon"
+	if has(smap, ex.head) # stringify some symbols
+		func = symbol("$(action)_$(smap[ex.head])")
 	else
-		fname = "$(action)_$(ex.head)"
+		func = symbol("$(action)_$(ex.head)")
 	end
-	mycall = expr(:call, symbol(fname), expr(:quote, ex), others...)
+
+	mycall = expr(:call, func, expr(:quote, ex), others...)
 	println("calling $mycall")
 	eval(mycall)
+#	if eval(:(method_exists($func, (Expr, map(typeof, others)...))))
+#		eval(mycall)
+#	else
+#		error("[$action] can't process [$(ex.head)] expressions")
+#	end
 end
 
 ######## unfolding functions ###################
+unfold(ex::Expr) = processExpr(ex, :unfold) # entry function
+
 unfold_line(ex::Expr) = ex
 unfold_ref(ex::Expr) = ex
-
-unfold_error(ex::Expr) = error("[unfold] can't process [$(ex.head)] expressions")
-
-unfold_for(ex::Expr) = unfold_error(ex)
-unfold_if(ex::Expr) = unfold_error(ex)
-unfold_while(ex::Expr) = unfold_error(ex)
 
 unfold_block(ex::Expr) = expr(:block, map(x->processExpr(x, :unfold), ex.args))
 
@@ -90,29 +94,33 @@ end
 
 ######### active vars scanning functions  #############
 
-function listVars_equal(ex::Expr, avars::Set{Symbol})
+function listVars(ex::Expr, avars) # entry function
+	avars = Set{Symbol}(avars...)
+
+	processExpr(ex, :listVars)
+	avars
+end
+
+#function listVars_equal(ex::Expr, avars::Set{Symbol})
+function listVars_equal(ex::Expr)
 	ls = ex.args[2].args[2:end]
-	ls = Set{Symbol}( filter(x -> isa(x, Symbol), ls) )
+	ls = Set{Symbol}( filter(x -> isa(x, Symbol), ls)... )
 	if length(intersect(ls, avars)) > 0 
 		 return add(avars, ex.args[1])
 	end
 	avars
 end
 
-listVars_line(ex::Expr, avars::Set{Symbol}) = avars
-listVars_ref(ex::Expr, avars::Set{Symbol}) = avars
+#listVars_line(ex::Expr, avars::Set{Symbol}) = avars
+#listVars_ref(ex::Expr, avars::Set{Symbol}) = avars
+listVars_line(ex::Expr) = nothing
+listVars_ref(ex::Expr) = nothing
+listVars_dcolon(ex::Expr) = nothing
 
-listVars_error(ex::Expr) = error("[listVars] can't process [$(ex.head)] expressions")
-listVars_for(ex::Expr, avars::Set{Symbol}) = listVars_error(ex)
-listVars_if(ex::Expr, avars::Set{Symbol}) = listVars_error(ex)
-listVars_while(ex::Expr, avars::Set{Symbol}) = listVars_error(ex)
+#function listVars_block(ex::Expr, avars::Set{Symbol})
+listVars_block(ex::Expr) = 
+	map(x->processExpr(x, :listVars), ex.args)
 
-function listVars_block(ex::Expr, avars::Set{Symbol})
-	for ex2 in ex.args
-		avars = processExpr(ex2, :listVars, avars)
-	end
-	avars
-end
 
 ######### model params scanning functions  #############
 
@@ -171,7 +179,14 @@ function findParams_dcolon(ex::Expr, params::Parmap)
 end
 
 
-
+#function findParams(ex::Expr)
+#	map::Dict{Symbol, Expr}
+#	index::Integer
+#
+#	ex = processExpr(_findParams(ex)
+#	if contains([:block, :(=)], ex.head
+#
+#end
 
 
 
