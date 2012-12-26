@@ -29,6 +29,23 @@ function processExpr(ex::Expr, action::Symbol, others...)
 #	end
 end
 
+function processExpr(ex::Expr, action::Symbol, others...)
+	if has(smap, ex.head) # stringify some symbols
+		func = symbol("$(action)_$(smap[ex.head])")
+	else
+		func = symbol("$(action)_$(ex.head)")
+	end
+
+	mycall = expr(:call, func, expr(:quote, ex), others...)
+	println("calling $mycall")
+	eval(mycall)
+#	if eval(:(method_exists($func, (Expr, map(typeof, others)...))))
+#		eval(mycall)
+#	else
+#		error("[$action] can't process [$(ex.head)] expressions")
+#	end
+end
+
 ######## unfolding functions ###################
 unfold(ex::Expr) = processExpr(ex, :unfold) # entry function
 
@@ -97,29 +114,31 @@ end
 function listVars(ex::Expr, avars) # entry function
 	avars = Set{Symbol}(avars...)
 
+	function listVars_equal(ex::Expr)
+		ls = ex.args[2].args[2:end]
+		ls = Set{Symbol}( filter(x -> isa(x, Symbol), ls)... )
+		if length(intersect(ls, avars)) > 0 
+			 return add(avars, ex.args[1])
+		end
+		#avars
+	end
+
+	listVars_line(ex::Expr) = nothing
+	listVars_ref(ex::Expr) = nothing
+	listVars_dcolon(ex::Expr) = nothing
+
+	#function listVars_block(ex::Expr, avars::Set{Symbol})
+	listVars_block(ex::Expr) = map(x->processExpr(x, :listVars), ex.args)
+#	processListVars(ex) = processExpr(ex, :listVars)
+
 	processExpr(ex, :listVars)
 	avars
 end
 
 #function listVars_equal(ex::Expr, avars::Set{Symbol})
-function listVars_equal(ex::Expr)
-	ls = ex.args[2].args[2:end]
-	ls = Set{Symbol}( filter(x -> isa(x, Symbol), ls)... )
-	if length(intersect(ls, avars)) > 0 
-		 return add(avars, ex.args[1])
-	end
-	avars
-end
 
 #listVars_line(ex::Expr, avars::Set{Symbol}) = avars
 #listVars_ref(ex::Expr, avars::Set{Symbol}) = avars
-listVars_line(ex::Expr) = nothing
-listVars_ref(ex::Expr) = nothing
-listVars_dcolon(ex::Expr) = nothing
-
-#function listVars_block(ex::Expr, avars::Set{Symbol})
-listVars_block(ex::Expr) = 
-	map(x->processExpr(x, :listVars), ex.args)
 
 
 ######### model params scanning functions  #############

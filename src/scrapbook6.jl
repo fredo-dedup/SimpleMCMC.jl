@@ -39,14 +39,15 @@ end
 function y()
 	b = a + 2
 end
-a
+a=13
+
 x()
 y()
-x() = (global a; a=12; y(); prinln(a))
-y() = (b=a; a=a+2)
+x() = (global a2; a2=1; y(); println(a2))
+y() = (global a2; a2=a2+2)
 a
 y()
-
+a2
 function foo(n)
   x = 0
   for i = 1:n
