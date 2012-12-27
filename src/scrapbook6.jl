@@ -16,45 +16,12 @@ model = quote
 	x = sin(k * z)
 end
 
-SimpleMCMC.listVars(model, [:b])
+(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+model2 = SimpleMCMC.unfold(model2)
+SimpleMCMC.listVars(model, keys(pmap))
 
 expexp(model)
 model2 = SimpleMCMC.unfold(model)
 SimpleMCMC.processExpr(model, :unfold)
 expexp(model2)
 
-avars = SimpleMCMC.processExpr(model2, :listVars, Set{Symbol}(:b))
-avars = SimpleMCMC.processExpr(model2, :listVars, Set{Symbol}(:k))
-avars = SimpleMCMC.processExpr(model2, :listVars, Set{Symbol}())
-
-SimpleMCMC.processExpr(model, :findParams, SimpleMCMC.Parmap(Dict{Symbol, Expr}(), 0))
-x=1
-test(x) = (x+=1)
-
-function x()
-	global a
-	a = 12
-	y()
-end
-function y()
-	b = a + 2
-end
-a=13
-
-x()
-y()
-x() = (global a2; a2=1; y(); println(a2))
-y() = (global a2; a2=a2+2)
-a
-y()
-a2
-function foo(n)
-  x = 0
-  for i = 1:n
-    x = x + 1
-  end
-  x
-end
-
-
-foo(10)
