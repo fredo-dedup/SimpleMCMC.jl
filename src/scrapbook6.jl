@@ -18,10 +18,19 @@ end
 
 (model2, nparams, pmap) = SimpleMCMC.findParams(model)
 model2 = SimpleMCMC.unfold(model2)
-SimpleMCMC.listVars(model, keys(pmap))
+avars = SimpleMCMC.listVars(model2, keys(pmap))
+dmodel = SimpleMCMC.backwardSweep(model2, avars)
 
-expexp(model)
-model2 = SimpleMCMC.unfold(model)
-SimpleMCMC.processExpr(model, :unfold)
-expexp(model2)
+model = quote
+	k::vector(3)
+	
+	a = k[1]
+	b = k[2:3]
+	x = sum(b) + e^a
+end
+
+(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+model2 = SimpleMCMC.unfold(model2)
+avars = SimpleMCMC.listVars(model2, keys(pmap))
+dmodel = SimpleMCMC.backwardSweep(model2, avars)
 

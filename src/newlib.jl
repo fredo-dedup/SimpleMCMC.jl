@@ -27,7 +27,7 @@ end
 
 function etype(ex::Expr)
 	nt = has(emap, ex.head) ? emap[ex.head] : symbol(strcat("Expr", ex.head))
-#	println("$(ex.head) - $ex")
+	#println("$(ex.head) ... $ex ...  $nt")
 	eval(:(($nt)($(expr(:quote, ex)))))
 end
 
@@ -37,7 +37,7 @@ function unfold(ex::Expr)
 
 	unfold(ex::Exprline) = nothing
 	unfold(ex::Exprref) = toExpr(ex)
-	function unfold(ex::Exprblock)), ex.args)
+	function unfold(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
@@ -113,14 +113,25 @@ end
 function listVars(ex::Expr, avars) # entry function
 	avars = Set{Symbol}(avars...)
 
+	getSymbols(ex::Symbol) = Set{Symbol}(ex)
+	getSymbols(ex::Expr) = getSymbols(etype(ex))
+	getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
+	getSymbols(ex::Any) = Set{Symbol}()
+
+	function getSymbols(ex::Exprcall)
+		sl = Set{Symbol}()
+		for ex2 in ex.args[2:end]
+			sl = union(sl, getSymbols(ex2))
+		end
+		sl
+	end
+
 	function listVars(ex::Exprequal)
-		ls = ex.args[2].args[2:end]
-		lhs = 
-		if isa(ex.args[2])
-		for ex2 in 
-		ls = Set{Symbol}( filter(x -> isa(x, Symbol), ls)... )
-		if length(intersect(ls, avars)) > 0 
-			 return add(avars, ex.args[1])
+		lhs = getSymbols(ex.args[1])
+		rhs = getSymbols(ex.args[2])
+
+		if length(intersect(rhs, avars)) > 0 
+			 avars = union(avars, lhs)
 		end
 	end
 
@@ -191,6 +202,130 @@ function findParams(ex::Expr)
 	(ex, index, pmap)
 end
 
+##########  backwardSweep ##############
+
+function backwardSweep(ex::Expr, avars::Set{Symbol})
+	assert(ex.head == :block, "[backwardSweep] not a block")
+
+	backwardSweep(ex::Exprline) = nothing
+	function backwardSweep(ex::Exprblock)
+		el = {}
+
+		for ex2 in ex.args
+			ex3 = backwardSweep(etype(ex2))
+			ex3==nothing ? nothing : push(el, ex3)
+		end
+		expr(:block, reverse(el))
+	end
+
+	function backwardSweep(ex::Exprequal)
+		lhs = ex.args[1]
+		if isa(lhs,Symbol) # simple var case
+			dsym = lhs
+		elseif isa(lhs,Expr) && lhs.head == :ref  # vars with []
+			#dsym = expr(:ref, symbol("$(lhs.args[1])$(lhs.args[2])")
+			dsym = lhs
+		else
+			error("[backwardSweep] not a symbol on LHS of assigment $(e)") 
+		end
+		
+		rhs = ex.args[2]
+		dsym2 = symbol("$(DERIV_PREFIX)$dsym")
+		if isa(rhs,Symbol) 
+			vsym2 = symbol("$(DERIV_PREFIX)$rhs")
+			return :( $vsym2 = $dsym2)
+			
+		elseif isa(etype(rhs), Exprref)
+			vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), 
+				rhs.args[2])
+			#symbol("$(DERIV_PREFIX)$rhs")
+			return :( $vsym2 = $dsym2)
+
+		elseif isa(etype(rhs), Exprcall)  
+			el = {}
+			for i in 2:length(rhs.args) #i=3
+				vsym = rhs.args[i]
+				if isa(vsym, Symbol) && contains(avars, vsym)
+				# derive(rhs, 1, :($(dsym)))
+					push(el, derive(rhs, i-1, dsym))
+				end
+			end
+			if numel(el) == 0
+				return nothing
+			elseif numel(el) == 1
+				return el[1]
+			else
+				return expr(:block, el)
+			end
+		else # TODO manage ref expressions
+			error("[backwardSweep] can't derive $rhs")
+		end
+	end
+
+	backwardSweep(etype(ex))
+end
+
+function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
+
+	op = opex.args[1]  # operator
+	vsym = opex.args[1+index]
+	vsym2 = symbol("$(DERIV_PREFIX)$vsym")
+	dsym2 = symbol("$(DERIV_PREFIX)$dsym")
+
+	if op == :+ || op == :sum
+		dop = dsym2
+
+	elseif op == :- 
+		dop = length(opex.args) == 2 || index == 2 ? :(-$dsym2) : dsym2
+
+	elseif op == :^
+		if index == 1
+			e = opex.args[3]
+			if e == 2.0
+				dop = :(2 * $vsym * $dsym2)
+			else
+				dop = :($e * $vsym ^ $(e-1) * $dsym2)
+			end
+		else
+			v = opex.args[2]
+			dop = :(log($v) * $v ^ $vsym * $dsym2)
+		end
+
+	elseif op == :*
+		e = :(1.0)
+		if index == 1
+			dop = :($dsym2 * transpose($(opex.args[3])))
+		else
+			dop = :(transpose($(opex.args[2])) * $dsym2)
+		end
+
+	elseif op == :dot
+		e = index == 1 ? opex.args[3] : opex.args[2]
+		dop = :(sum($e) .* $dsym2)
+
+	elseif op == :log
+		dop = :($dsym2 ./ $vsym)
+
+	elseif op == :exp
+		dop = :(exp($vsym) .* $dsym2)
+
+	elseif op == :sin
+		dop = :(cos($vsym) .* $dsym2)
+
+	elseif op == :/
+		if index == 1
+			e = opex.args[3]
+			dop = :($vsym ./ $e .* $dsym2)
+		else
+			v = opex.args[2]
+			dop = :(- $v ./ ($vsym .* $vsym) .* $dsym2)
+		end
+	else
+		error("[derive] Doesn't know how to derive operator $op")
+	end
+
+	:($vsym2 += $dop)
+end
 
 
 ##########  helper function  to analyse expressions   #############
