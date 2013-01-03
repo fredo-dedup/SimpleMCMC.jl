@@ -1,19 +1,36 @@
 load("newlib.jl")
 
-e = :(a=b+1)
+import SimpleMCMC.expexp
+#using SimpleMCMC
 
-e
+SimpleMCMC.unfold(:(a= b+2))
+SimpleMCMC.unfold(:(a= b+2c))
+SimpleMCMC.unfold(:(a[12] = sum(z[i:j])))
+SimpleMCMC.unfold(:(for a in 1:3:a+=2;end))
 
-processExpr(:(a= b+2), :unfold)
-processExpr(:(for a in 1:3:a+=2;end), :unfold)
+model = quote
+	b::scalar
+	k::vector(5)
+	
+	a = b+6
+	x = sin(k * z)
+end
 
-unfold_equal(:(a = b +2))
+(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+model2 = SimpleMCMC.unfold(model2)
+avars = SimpleMCMC.listVars(model2, keys(pmap))
+dmodel = SimpleMCMC.backwardSweep(model2, avars)
 
+model = quote
+	k::vector(3)
+	
+	a = k[1]
+	b = k[2:3]
+	x = sum(b) + e^a
+end
 
+(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+model2 = SimpleMCMC.unfold(model2)
+avars = SimpleMCMC.listVars(model2, keys(pmap))
+dmodel = SimpleMCMC.backwardSweep(model2, avars)
 
-f = function("exp")
-f
-apply(Function::"exp",2.0)
-typeof(f)
-
-Function
