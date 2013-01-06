@@ -146,6 +146,42 @@ function translateTilde(ex::Expr)
 	translateTilde(etype(ex))
 end
 
+# slightly different behaviour if model gradient is to be calculated
+# TODO : unify
+function translateTilde2(ex::Expr)
+
+	translateTilde(ex::Exprline) = nothing
+	translateTilde(ex::Exprref) = toExpr(ex)
+	translateTilde(ex::Exprequal) = toExpr(ex)
+
+	function translateTilde(ex::Exprblock)
+		al = {}
+		for ex2 in ex.args
+			if isa(ex2, Expr)
+				ex3 = translateTilde(etype(ex2))
+				ex3==nothing ? nothing : push(al, ex3)
+			else
+				push(al, ex2)
+			end
+		end
+		expr(:block, al)
+	end
+
+	function translateTilde(ex::Exprcall)
+		ex.args[1] == :~ ? nothing : return toExpr(ex)
+
+		fn = "logpdf$(ex.args[3].args[1])("
+		for a in ex.args[3].args[2:end]
+			fn = "$fn$a,"
+		end
+		fn = symbol("$fn$(ex.args[2]))")
+		return :($ACC_SYM = $ACC_SYM + sum($fn))
+	end
+
+	translateTilde(etype(ex))
+end
+
+
 ######## unfolds expression before derivation ###################
 function unfold(ex::Expr)
 
@@ -189,12 +225,15 @@ function unfold(ex::Expr)
 		na = {ex.args[1]}   # function name
 		args = ex.args[2:end]  # arguments
 
-		# if more than 2 arguments, convert to nested expressions (easier for derivation)
-		# TODO : not valid for all n-ary operators, should work for *, +, sum
-		while length(args) > 2
-			a2 = pop(args)
-			a1 = pop(args)
-			push(args, expr(:call, ex.args[1], a1, a2))
+		# if more than 2 arguments, +, sum and * are converted  to nested expressions
+		#  (easier for derivation)
+		# TODO : apply to other n-ary (n>2) operators ?
+		if contains([:+, :*, :sum], na) 
+			while length(args) > 2
+				a2 = pop(args)
+				a1 = pop(args)
+				push(args, expr(:call, ex.args[1], a1, a2))
+			end
 		end
 
 		lb = {}
@@ -325,72 +364,127 @@ end
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 	op = opex.args[1]  # operator
-	vsym = opex.args[1+index]
-	vsym2 = symbol("$(DERIV_PREFIX)$vsym")
-	dsym2 = symbol("$(DERIV_PREFIX)$dsym")
+	vs = opex.args[1+index]
+	args = opex.args[2:end]
+	dvs = symbol("$(DERIV_PREFIX)$vs")
+	ds = symbol("$(DERIV_PREFIX)$dsym")
 
-	if op == :+ || op == :sum
-		dop = dsym2
+	println(op, " ", vs, " ", args, " ", dvs, " ", ds)
 
-	elseif op == :- 
-		dop = length(opex.args) == 2 || index == 2 ? :(-$dsym2) : dsym2
+	if length(args) == 1 # unary operators
+		drules_unary = {
+			:- => :(-$ds),
+			:log => :($ds ./ $vs),
+			:sum => ds,
+			:sin => :(cos($vs) .* $ds),
+			:exp => :(exp($vs) .* $ds)
+		}
 
-	elseif op == :^
-		if index == 1
-			e = opex.args[3]
-			if e == 2.0
-				dop = :(2 * $vsym * $dsym2)
-			else
-				dop = :($e * $vsym ^ $(e-1) * $dsym2)
-			end
-		else
-			v = opex.args[2]
-			dop = :(log($v) * $v ^ $vsym * $dsym2)
-		end
+		assert(has(drules_unary, op), "[derive] Doesn't know how to derive unary operator $op")
+		return :($dvs += $(drules_unary[op]) )
 
-	elseif op == :*
-		if index == 1
-			dop = :($dsym2 * transpose($(opex.args[3])))
-		else
-			dop = :(transpose($(opex.args[2])) * $dsym2)
-		end
+	elseif length(args) == 2 # binary operators
+		drules_binary = {
+			:-  => {ds, :(-$ds)},
+			:+  => {ds, ds},
+			:sum  => {ds, ds},
+			:*  => {:($ds * transpose($(args[2]))), 
+					:(transpose($(args[1])) * $ds)},
+			:dot => {:(sum($(args[2])) .* $ds), 
+					 :(sum($(args[1])) .* $ds)},
+			:^ => {:($(args[2]) * $vs ^ ($(args[2])-1) * $ds),
+				   :(log($(args[1])) * $(args[1]) ^ $vs * $ds)},
+			:/ => {:($vs ./ $(args[2]) .* $ds),
+				   :(- $(args[1]) ./ ($vs .* $vs) .* $ds)}
+		}
 
-	elseif op == :dot
-		e = index == 1 ? opex.args[3] : opex.args[2]
-		dop = :(sum($e) .* $dsym2)
+		assert(has(drules_binary, op), "[derive] Doesn't know how to derive binary operator $op")
+		return :($dvs += $(drules_binary[op][index]) )
 
-	elseif op == :log
-		dop = :($dsym2 ./ $vsym)
+	elseif length(args) == 3 # ternary operators
+		drules_ternary = {
+			:sum  => {ds, ds, ds}
+		}
 
-	elseif op == :exp
-		dop = :(exp($vsym) .* $dsym2)
+		assert(has(drules_ternary, op), "[derive] Doesn't know how to derive ternary operator $op")
+		return :($dvs += $(drules_ternary[op][index]) )
 
-	elseif op == :sin
-		dop = :(cos($vsym) .* $dsym2)
-
-	elseif op == :logpdfnormal
-		if index == 1  # first arg (mu)
-			dop = :()
-		elseif index == 2 # second arg (sigma)
-		else # third argument (x)
-
-		end
-		dop = :(cos($vsym) .* $dsym2)
-
-	elseif op == :/
-		if index == 1
-			e = opex.args[3]
-			dop = :($vsym ./ $e .* $dsym2)
-		else
-			v = opex.args[2]
-			dop = :(- $v ./ ($vsym .* $vsym) .* $dsym2)
-		end
 	else
-		error("[derive] Doesn't know how to derive operator $op")
+		error("[derive] Doesn't know how to derive n-ary operator $op")
 	end
 
-	:($vsym2 += $dop)
 end
+
+
+# function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
+
+# 	op = opex.args[1]  # operator
+# 	vsym = opex.args[1+index]
+# 	vsym2 = symbol("$(DERIV_PREFIX)$vsym")
+# 	dsym2 = symbol("$(DERIV_PREFIX)$dsym")
+
+# 	if op == :+ || op == :sum
+# 		dop = dsym2
+
+# 	elseif op == :- 
+# 		dop = length(opex.args) == 2 || index == 2 ? :(-$dsym2) : dsym2
+
+# 	elseif op == :^
+# 		if index == 1
+# 			e = opex.args[3]
+# 			if e == 2.0
+# 				dop = :(2 * $vsym * $dsym2)
+# 			else
+# 				dop = :($e * $vsym ^ $(e-1) * $dsym2)
+# 			end
+# 		else
+# 			v = opex.args[2]
+# 			dop = :(log($v) * $v ^ $vsym * $dsym2)
+# 		end
+
+# 	elseif op == :*
+# 		if index == 1
+# 			dop = :($dsym2 * transpose($(opex.args[3])))
+# 		else
+# 			dop = :(transpose($(opex.args[2])) * $dsym2)
+# 		end
+
+# 	elseif op == :dot
+# 		e = index == 1 ? opex.args[3] : opex.args[2]
+# 		dop = :(sum($e) .* $dsym2)
+
+# 	elseif op == :log
+# 		dop = :($dsym2 ./ $vsym)
+
+# 	elseif op == :exp
+# 		dop = :(exp($vsym) .* $dsym2)
+
+# 	elseif op == :sin
+# 		dop = :(cos($vsym) .* $dsym2)
+
+# 	elseif op == :logpdfnormal
+# 		if index == 1  # first arg (mu)
+# 			dop = :()
+# 		elseif index == 2 # second arg (sigma)
+# 		else # third argument (x)
+
+# 		end
+# 		dop = :(cos($vsym) .* $dsym2)
+
+# 	elseif op == :/
+# 		if index == 1
+# 			e = opex.args[3]
+# 			dop = :($vsym ./ $e .* $dsym2)
+# 		else
+# 			v = opex.args[2]
+# 			dop = :(- $v ./ ($vsym .* $vsym) .* $dsym2)
+# 		end
+# 	else
+# 		error("[derive] Doesn't know how to derive operator $op")
+# 	end
+
+# 	:($vsym2 += $dop)
+# end
 
 ##########################################################################################
 #   Random Walk Metropolis implementation
