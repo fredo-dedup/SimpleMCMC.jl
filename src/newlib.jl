@@ -1,19 +1,25 @@
 module SimpleMCMC
 
-export expexp
+using Base
 
-const ACC_NAME = :__acc
+export expexp, simpleRWM, unfold
+
+const ACC_SYM = :__acc
 const PARAM_SYM = :__beta
-const TEMP_NAME = "__tmp"
-const DERIV_PREFIX = "__d"
+const TEMP_NAME = "tmp"
+const DERIV_PREFIX = "d"
 
-			  
-##########  dispatcher main entry point  ############
+##############################################################################
+#   Model expression processing functions			  
+##############################################################################
+
+##########  creates new types to ease AST exploration  ############
 const emap = [:(=) => :Exprequal,
 			  :(::) => :Exprdcolon]
 
-for ex in [:equal, :dcolon, :call, :block, :for, :if, :ref, :line]
+for ex in [:equal, :dcolon, :call, :block, :ref, :line]
 	nt = symbol(strcat("Expr", ex))
+	println("defining ", nt)
 	eval(quote
 		type $nt
 			head::Symbol
@@ -27,125 +33,34 @@ end
 
 function etype(ex::Expr)
 	nt = has(emap, ex.head) ? emap[ex.head] : symbol(strcat("Expr", ex.head))
+	# nt = symbol(strcat("SimpleMCMC.", nt))
+	if nt == :Exprequal
+		Exprequal(ex)
+	elseif nt == :Exprdcolon
+		Exprdcolon(ex)
+	elseif nt == :Exprblock
+		Exprblock(ex)
+	elseif nt == :Exprref
+		Exprref(ex)
+	elseif nt == :Exprline
+		Exprline(ex)
+	elseif nt == :Exprcall
+		Exprcall(ex)
+	else
+		error("[etype] unmapped expr type $(ex.head)")
+	end
+
+	# println(nt)
+	# f = eval(e,t) -> t(e)
+	# f(ex, nt)
+	# (type(nt))(ex)
+	# eval(:(((e,t)->(t)(e))($(expr(:quote, ex)), nt)))
 	#println("$(ex.head) ... $ex ...  $nt")
-	eval(:(($nt)($(expr(:quote, ex)))))
+	# Exprequal(ex)
+	# eval(:( $nt($(expr(:quote, ex))) ))
 end
 
-######## unfolding functions ###################
-
-function unfold(ex::Expr)
-
-	unfold(ex::Exprline) = nothing
-	unfold(ex::Exprref) = toExpr(ex)
-	function unfold(ex::Exprblock)
-		al = {}
-		for ex2 in ex.args
-			if isa(ex2, Expr)
-				ex3 = unfold(etype(ex2))
-				ex3==nothing ? nothing : push(al, ex3)
-			else
-				push(al, ex2)
-			end
-		end
-		expr(ex.head, al)
-	end
-
-	function unfold(ex::Exprequal)
-		lhs = ex.args[1]
-		assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
-			"[unfold] not a symbol on LHS of assigment $(ex)")
-
-		rhs = ex.args[2]
-		if typeof(rhs) == Symbol
-			return expr(:(=), lhs, rhs)
-		elseif typeof(rhs) == Expr
-			ue = unfold(rhs)
-			if isa(ue, Expr)
-				return expr(:(=), lhs, rhs)
-			elseif isa(ue, Tuple)
-				lb = push(ue[1], :($lhs = $(ue[2])))
-				return expr(:block, lb)
-			end
-		else  # unmanaged kind of lhs
-		 	error("[unfold] can't handle RHS of assignment $ex")
-		end
-	end
-
-	function unfold(ex::Exprcall)
-		na = {ex.args[1]}   # function name
-		args = ex.args[2:end]  # arguments
-
-		# if more than 2 arguments, convert to nested expressions (easier for derivation)
-		# TODO : probably not valid for all ternary, quaternary, etc.. operators, should work for *, +, sum
-		while length(args) > 2
-			a2 = pop(args)
-			a1 = pop(args)
-			push(args, expr(:call, ex.args[1], a1, a2))
-		end
-
-		lb = {}
-		for e2 in args  # e2 = args[2]
-			if typeof(e2) == Expr
-				ue = unfold(e2)
-				if isa(ue, Tuple)
-					append!(lb, ue[1])
-					lp = ue[2]
-				else
-					lp = ue
-				end
-				nv = gensym(TEMP_NAME)
-				push(lb, :($nv = $(lp)))
-				push(na, nv)
-			else
-				push(na, e2)
-			end
-		end
-
-		return numel(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
-	end
-
-	unfold(etype(ex))
-end
-
-
-######### active vars scanning functions  #############
-
-function listVars(ex::Expr, avars) # entry function
-	avars = Set{Symbol}(avars...)
-
-	getSymbols(ex::Symbol) = Set{Symbol}(ex)
-	getSymbols(ex::Expr) = getSymbols(etype(ex))
-	getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
-	getSymbols(ex::Any) = Set{Symbol}()
-
-	function getSymbols(ex::Exprcall)
-		sl = Set{Symbol}()
-		for ex2 in ex.args[2:end]
-			sl = union(sl, getSymbols(ex2))
-		end
-		sl
-	end
-
-	function listVars(ex::Exprequal)
-		lhs = getSymbols(ex.args[1])
-		rhs = getSymbols(ex.args[2])
-
-		if length(intersect(rhs, avars)) > 0 
-			 avars = union(avars, lhs)
-		end
-	end
-
-	listVars(ex::Exprline) = nothing
-	listVars(ex::Exprref) = nothing
-	listVars(ex::Exprdcolon) = nothing
-	listVars(ex::Exprblock) = map(x->listVars(etype(x)), ex.args)
-
-	listVars(etype(ex))
-	avars
-end
-
-######### model params scanning functions  #############
-
+######### extracts model parameters from model expression  #############
 function findParams(ex::Expr)
 
 	function findParams_generic(ex)
@@ -202,8 +117,150 @@ function findParams(ex::Expr)
 	(ex, index, pmap)
 end
 
-##########  backwardSweep ##############
+######### replaces ~ expressions into equivalent log-likelihood accumulator #############
+function translateTilde(ex::Expr)
 
+	translateTilde(ex::Exprline) = nothing
+	translateTilde(ex::Exprref) = toExpr(ex)
+	translateTilde(ex::Exprequal) = toExpr(ex)
+
+	function translateTilde(ex::Exprblock)
+		al = {}
+		for ex2 in ex.args
+			if isa(ex2, Expr)
+				ex3 = translateTilde(etype(ex2))
+				ex3==nothing ? nothing : push(al, ex3)
+			else
+				push(al, ex2)
+			end
+		end
+		expr(:block, al)
+	end
+
+	function translateTilde(ex::Exprcall)
+		ex.args[1] == :~ ? nothing : return toExpr(ex)
+
+		return :($ACC_SYM = $ACC_SYM + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
+	end
+
+	translateTilde(etype(ex))
+end
+
+######## unfolds expression before derivation ###################
+function unfold(ex::Expr)
+
+	unfold(ex::Exprline) = nothing
+	unfold(ex::Exprref) = toExpr(ex)
+	function unfold(ex::Exprblock)
+		al = {}
+		for ex2 in ex.args
+			if isa(ex2, Expr)
+				ex3 = unfold(etype(ex2))
+				ex3==nothing ? nothing : push(al, ex3)
+			else
+				push(al, ex2)
+			end
+		end
+		expr(ex.head, al)
+	end
+
+	function unfold(ex::Exprequal)
+		lhs = ex.args[1]
+		assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
+			"[unfold] not a symbol on LHS of assigment $(ex)")
+
+		rhs = ex.args[2]
+		if isa(rhs, Symbol)
+			return expr(:(=), lhs, rhs)
+		elseif isa(rhs, Expr)
+			ue = unfold(etype(rhs))
+			if isa(ue, Expr)
+				return expr(:(=), lhs, rhs)
+			elseif isa(ue, Tuple)
+				lb = push(ue[1], :($lhs = $(ue[2])))
+				return expr(:block, lb)
+			end
+		else  # unmanaged kind of lhs
+		 	error("[unfold] can't handle RHS of assignment $ex")
+		end
+	end
+
+	function unfold(ex::Exprcall)
+		na = {ex.args[1]}   # function name
+		args = ex.args[2:end]  # arguments
+
+		# if more than 2 arguments, convert to nested expressions (easier for derivation)
+		# TODO : not valid for all n-ary operators, should work for *, +, sum
+		while length(args) > 2
+			a2 = pop(args)
+			a1 = pop(args)
+			push(args, expr(:call, ex.args[1], a1, a2))
+		end
+
+		lb = {}
+		for e2 in args  # e2 = args[2]
+			if isa(e2, Expr)
+				ue = unfold(etype(e2))
+				if isa(ue, Tuple)
+					append!(lb, ue[1])
+					lp = ue[2]
+				else
+					lp = ue
+				end
+				nv = gensym(TEMP_NAME)
+				push(lb, :($nv = $(lp)))
+				push(na, nv)
+			else
+				push(na, e2)
+			end
+		end
+
+		return numel(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
+	end
+
+	unfold(etype(ex))
+end
+
+
+######### identifies derivation vars (descendants of model parameters)  #############
+# TODO : further filtering to keep only those influencing the accumulator
+
+function listVars(ex::Expr, avars) # entry function
+	avars = Set{Symbol}(avars...)
+
+	getSymbols(ex::Symbol) = Set{Symbol}(ex)
+	getSymbols(ex::Expr) = getSymbols(etype(ex))
+	getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
+	getSymbols(ex::Any) = Set{Symbol}()
+
+	function getSymbols(ex::Exprcall)
+		sl = Set{Symbol}()
+		for ex2 in ex.args[2:end]
+			sl = union(sl, getSymbols(ex2))
+		end
+		sl
+	end
+
+	function listVars(ex::Exprequal)
+		lhs = getSymbols(ex.args[1])
+		rhs = getSymbols(ex.args[2])
+
+		if length(intersect(rhs, avars)) > 0 
+			 avars = union(avars, lhs)
+		end
+	end
+
+	listVars(ex::Exprline) = nothing
+	listVars(ex::Exprref) = nothing
+	listVars(ex::Exprdcolon) = nothing
+	listVars(ex::Exprblock) = map(x->listVars(etype(x)), ex.args)
+
+	listVars(etype(ex))
+	avars
+end
+
+
+######### builds the gradient expression from unfolded expression ##############
 function backwardSweep(ex::Expr, avars::Set{Symbol})
 	assert(ex.head == :block, "[backwardSweep] not a block")
 
@@ -292,7 +349,6 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 		end
 
 	elseif op == :*
-		e = :(1.0)
 		if index == 1
 			dop = :($dsym2 * transpose($(opex.args[3])))
 		else
@@ -312,6 +368,15 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	elseif op == :sin
 		dop = :(cos($vsym) .* $dsym2)
 
+	elseif op == :logpdfnormal
+		if index == 1  # first arg (mu)
+			dop = :()
+		elseif index == 2 # second arg (sigma)
+		else # third argument (x)
+
+		end
+		dop = :(cos($vsym) .* $dsym2)
+
 	elseif op == :/
 		if index == 1
 			e = opex.args[3]
@@ -326,6 +391,77 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 	:($vsym2 += $dop)
 end
+
+##########################################################################################
+#   Random Walk Metropolis implementation
+##########################################################################################
+
+function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
+	local beta, nparams
+	local jump, S, eta, SS
+	const local target_alpha = 0.234
+
+	(model2, param_map, nparams) = parseExpr(model)
+
+	if typeof(init) == Array{Float64,1}
+		assert(numel(init) == nparams, "$nparams initial values expected, got $(numel(init))")
+		beta = init
+	elseif typeof(init) <: Real
+		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
+	else
+		error("cannot assign initial values (should be a Real or vector of Reals)")
+	end
+
+	#  log-likelihood function creation
+	eval(quote
+		function __loglik(beta::Vector{Float64})
+			local acc
+			$(Expr(:block, param_map, Any))
+			acc = 0.0
+			$model2
+			return(acc)
+		end
+	end)
+
+	#  first calc
+	__lp = Main.__loglik(beta)
+	__lp == -Inf ? error("Initial values out of model support, try other values") : nothing
+
+	#  main loop
+	samples = zeros(Float64, (steps, 2+nparams))
+	S = eye(nparams)
+ 	for i in 1:steps	 # i=1; burnin=10		
+ 		# print(i, " old beta = ", round(beta[1],3))
+		jump = 0.1 * randn(nparams)
+		oldbeta, beta = beta, beta + S * jump
+		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
+
+ 		old__lp, __lp = __lp, Main.__loglik(beta)
+ 		# println(" lp= ", round(__lp, 3))
+
+ 		alpha = min(1, exp(__lp - old__lp))
+		if rand() > exp(__lp - old__lp)
+			__lp, beta = old__lp, oldbeta
+		end
+		samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
+
+		#  Adaptive scaling using R.A.M. method
+		eta = min(1, nparams*i^(-2/3))
+		# eta = min(1, nparams * (i <= burnin ? 1 : i-burnin)^(-2/3))
+		SS = (jump * jump') / (jump' * jump)[1,1] * eta * (alpha - target_alpha)
+		SS = S * (eye(nparams) + SS) * S'
+		S = chol(SS)
+		S = S'
+	end
+
+	return(samples)
+end
+
+simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, min(1, div(steps,2)))
+simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
+
+
+
 
 
 ##########  helper function  to analyse expressions   #############
