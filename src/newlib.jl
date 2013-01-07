@@ -117,7 +117,7 @@ function findParams(ex::Expr)
 	(ex, index, pmap)
 end
 
-######### replaces ~ expressions into equivalent log-likelihood accumulator #############
+######### translates ~ expressions into equivalent log-likelihood accumulator #############
 function translateTilde(ex::Expr)
 
 	translateTilde(ex::Exprline) = nothing
@@ -170,12 +170,14 @@ function translateTilde2(ex::Expr)
 	function translateTilde(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
-		fn = "logpdf$(ex.args[3].args[1])("
+		args = {symbol("logpdf$(ex.args[3].args[1])")}
+		# cat(args, ex.args[3].args[2:end])
+		# push(args, ex.args[2])
 		for a in ex.args[3].args[2:end]
-			fn = "$fn$a,"
+			push(args, a)
 		end
-		fn = symbol("$fn$(ex.args[2]))")
-		return :($ACC_SYM = $ACC_SYM + sum($fn))
+		push(args, ex.args[2])
+		return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
 	end
 
 	translateTilde(etype(ex))
@@ -415,76 +417,6 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 end
 
-
-# function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
-
-# 	op = opex.args[1]  # operator
-# 	vsym = opex.args[1+index]
-# 	vsym2 = symbol("$(DERIV_PREFIX)$vsym")
-# 	dsym2 = symbol("$(DERIV_PREFIX)$dsym")
-
-# 	if op == :+ || op == :sum
-# 		dop = dsym2
-
-# 	elseif op == :- 
-# 		dop = length(opex.args) == 2 || index == 2 ? :(-$dsym2) : dsym2
-
-# 	elseif op == :^
-# 		if index == 1
-# 			e = opex.args[3]
-# 			if e == 2.0
-# 				dop = :(2 * $vsym * $dsym2)
-# 			else
-# 				dop = :($e * $vsym ^ $(e-1) * $dsym2)
-# 			end
-# 		else
-# 			v = opex.args[2]
-# 			dop = :(log($v) * $v ^ $vsym * $dsym2)
-# 		end
-
-# 	elseif op == :*
-# 		if index == 1
-# 			dop = :($dsym2 * transpose($(opex.args[3])))
-# 		else
-# 			dop = :(transpose($(opex.args[2])) * $dsym2)
-# 		end
-
-# 	elseif op == :dot
-# 		e = index == 1 ? opex.args[3] : opex.args[2]
-# 		dop = :(sum($e) .* $dsym2)
-
-# 	elseif op == :log
-# 		dop = :($dsym2 ./ $vsym)
-
-# 	elseif op == :exp
-# 		dop = :(exp($vsym) .* $dsym2)
-
-# 	elseif op == :sin
-# 		dop = :(cos($vsym) .* $dsym2)
-
-# 	elseif op == :logpdfnormal
-# 		if index == 1  # first arg (mu)
-# 			dop = :()
-# 		elseif index == 2 # second arg (sigma)
-# 		else # third argument (x)
-
-# 		end
-# 		dop = :(cos($vsym) .* $dsym2)
-
-# 	elseif op == :/
-# 		if index == 1
-# 			e = opex.args[3]
-# 			dop = :($vsym ./ $e .* $dsym2)
-# 		else
-# 			v = opex.args[2]
-# 			dop = :(- $v ./ ($vsym .* $vsym) .* $dsym2)
-# 		end
-# 	else
-# 		error("[derive] Doesn't know how to derive operator $op")
-# 	end
-
-# 	:($vsym2 += $dop)
-# end
 
 ##########################################################################################
 #   Random Walk Metropolis implementation

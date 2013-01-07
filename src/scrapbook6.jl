@@ -39,3 +39,16 @@ model2 = SimpleMCMC.unfold(model2)
 avars = SimpleMCMC.listVars(model2, keys(pmap))
 dmodel = SimpleMCMC.backwardSweep(model2, avars)
 
+model = quote
+	x ~ Normal(k, sin(s))
+end
+model2 = SimpleMCMC.translateTilde2(model)
+SimpleMCMC.unfold(model2)
+expexp(model2)
+
+model = quote 
+	acc = +(acc, sum(logpdfNormal(5,2,x)) )
+end
+expexp(model)
+
+SimpleMCMC.unfold(model)
