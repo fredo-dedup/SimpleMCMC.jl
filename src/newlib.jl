@@ -442,6 +442,58 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 end
 
+logpdfNormal(mu, sigma, x) = logpdf(Normal(mu, sigma), x)
+logpdfWeibull(shape, scale, x) = logpdf(Weibull(shape, scale), x)
+logpdfUniform(a, b, x) = logpdf(Uniform(a, b), x)
+
+######### builds the full functions ##############
+
+function buildFunction(model::Expr)
+	
+	(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+	model3 = SimpleMCMC.translateTilde(model2)
+
+	assigns = [ expr(:(=), k, v) for (k,v) in pairs(pmap)]
+	f = quote
+		function __loglik($PARAM_SYM::Vector{Float64})
+			local $ACC_SYM
+			$(Expr(:block, assigns, Any))
+			$ACC_SYM = 0.0
+			$model3
+			return($ACC_SYM)
+		end
+	end
+	(f, nparams)
+end
+
+function buildFunctionWithGradient(model::Expr, )
+	
+	(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+	model3 = SimpleMCMC.translateTilde(model2)
+	model4 = SimpleMCMC.translateTilde2(model2)
+	model4 = SimpleMCMC.unfold(model4)
+	avars = SimpleMCMC.listVars(model4, keys(pmap))
+	dmodel = SimpleMCMC.backwardSweep(model4, avars)
+
+	assigns = [ expr(:(=), k, v) for (k,v) in pairs(pmap)]
+	f = quote
+		function __loglik($PARAM_SYM::Vector{Float64})
+			local $ACC_SYM
+			$(Expr(:block, assigns, Any))
+
+			$ACC_SYM = 0.0
+			$model4
+
+			$(Expr(:block, {:($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))) for v in avars}, Any))  
+
+			$dmodel
+			($ACC_SYM, $(symbol("$DERIV_PREFIX$PARAM_SYM")))
+		end
+	end
+
+	(f, nparams)
+end
+
 
 ##########################################################################################
 #   Random Walk Metropolis implementation

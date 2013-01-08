@@ -1,5 +1,7 @@
 load("newlib.jl")
-# include("newlib.jl")
+
+include("../../Distributions.jl/src/distributions.jl")
+using Distributions
 
 import SimpleMCMC.expexp
 
@@ -18,6 +20,15 @@ model = quote
 	x ~ Weibull(2,a)
 end
 
+(f, n) = SimpleMCMC.buildFunction(model)
+z = 12.0
+eval(f)
+__loglik([1.,1,1,1,1,1])
+
+(f, n) = SimpleMCMC.buildFunctionWithGradient(model)
+eval(f)
+__loglik([1.,1,1,1,1,1])
+
 (model2, nparams, pmap) = SimpleMCMC.findParams(model)
 # model2 = SimpleMCMC.translateTilde(model2)
 model2 = SimpleMCMC.translateTilde2(model2)
@@ -30,13 +41,25 @@ model = quote
 	x ~ Weibull(1, 2)
 end
 (model2, nparams, pmap) = SimpleMCMC.findParams(model)
-# model2 = SimpleMCMC.translateTilde(model2)
-model2 = SimpleMCMC.translateTilde2(model2)
-model2 = SimpleMCMC.unfold(model2)
-avars = SimpleMCMC.listVars(model2, keys(pmap))
-dmodel = SimpleMCMC.backwardSweep(model2, avars)
+model3 = SimpleMCMC.translateTilde(model2)
+model4 = SimpleMCMC.translateTilde2(model2)
+model4 = SimpleMCMC.unfold(model4)
+avars = SimpleMCMC.listVars(model4, keys(pmap))
+dmodel = SimpleMCMC.backwardSweep(model4, avars)
+dmodel
 
+x = 1.0
+__acc = 0.0
+eval(model21)
+model21
+eval(model4)
 
+dset = Expr(:block, {:($(symbol("__d$v")) = zero($(symbol("$v")))) for v in avars}, Any)
+eval(dset)
+avars
+d__acc = 0.0
+d##tmp#19 = 0.0
+, d##tmp#18, dx = 0.0, 0.0, 0.0, 0.0
 
 
 model = quote
