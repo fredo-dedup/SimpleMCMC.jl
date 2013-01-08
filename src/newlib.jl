@@ -1,3 +1,4 @@
+
 module SimpleMCMC
 
 using Base
@@ -371,7 +372,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	dvs = symbol("$(DERIV_PREFIX)$vs")
 	ds = symbol("$(DERIV_PREFIX)$dsym")
 
-	println(op, " ", vs, " ", args, " ", dvs, " ", ds)
+	# println(op, " ", vs, " ", args, " ", dvs, " ", ds)
 
 	if length(args) == 1 # unary operators
 		drules_unary = {
@@ -405,7 +406,31 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 	elseif length(args) == 3 # ternary operators
 		drules_ternary = {
-			:sum  => {ds, ds, ds}
+			:sum  => {ds, ds, ds},
+
+			:logpdfNormal => {	# mu
+								:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
+							  	# sigma
+					 		  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
+							  	# x
+					 		  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
+					 		  	},
+
+			:logpdfUniform => {	# a
+								:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
+								# b
+					 		  	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
+					 		  	# x
+					 		  	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
+					 		  	},
+
+			:logpdfWeibull => {	# shape
+								:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
+								# scale
+					 		   	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
+					 		   	# x
+					 		   	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
+					 		   	}
 		}
 
 		assert(has(drules_ternary, op), "[derive] Doesn't know how to derive ternary operator $op")

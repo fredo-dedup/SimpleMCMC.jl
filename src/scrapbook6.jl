@@ -2,7 +2,6 @@ load("newlib.jl")
 # include("newlib.jl")
 
 import SimpleMCMC.expexp
-using SimpleMCMC
 
 SimpleMCMC.unfold(:(a= b+2))
 SimpleMCMC.unfold(:(b+2))
@@ -25,6 +24,20 @@ model2 = SimpleMCMC.translateTilde2(model2)
 model2 = SimpleMCMC.unfold(model2)
 avars = SimpleMCMC.listVars(model2, keys(pmap))
 dmodel = SimpleMCMC.backwardSweep(model2, avars)
+
+model = quote
+	x::scalar
+	x ~ Weibull(1, 2)
+end
+(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+# model2 = SimpleMCMC.translateTilde(model2)
+model2 = SimpleMCMC.translateTilde2(model2)
+model2 = SimpleMCMC.unfold(model2)
+avars = SimpleMCMC.listVars(model2, keys(pmap))
+dmodel = SimpleMCMC.backwardSweep(model2, avars)
+
+
+
 
 model = quote
 	k::vector(3)
