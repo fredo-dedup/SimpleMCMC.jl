@@ -3,8 +3,10 @@
 load("../src/SimpleMCMC.jl")
 using SimpleMCMC
 
-require("../../Distributions.jl/src/distributions.jl")
+load("Distributions")
 using Distributions
+import Distributions.logpdf
+import Distributions.Normal
 
 # simulate dataset
 begin
@@ -30,7 +32,7 @@ end
 # eval(func)
 # __loglik([0.9 for i in 1:11])
 
-res = SimpleMCMC.simpleRWM(model, 10)
+res = SimpleMCMC.simpleRWM(model, 1000)
 
 
 (a,b) = 
