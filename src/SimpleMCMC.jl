@@ -1,9 +1,11 @@
 
 module SimpleMCMC
 
-using Base
+# using Base
 
-export expexp, simpleRWM, unfold
+# export simpleRWM, simpleHMC
+# export simpleRWM
+export buildFunction, buildFunctionWithGradient
 
 const ACC_SYM = :__acc
 const PARAM_SYM = :__beta
@@ -20,7 +22,7 @@ const emap = [:(=) => :Exprequal,
 
 for ex in [:equal, :dcolon, :call, :block, :ref, :line]
 	nt = symbol(strcat("Expr", ex))
-	println("defining ", nt)
+	# println("defining ", nt)
 	eval(quote
 		type $nt
 			head::Symbol
@@ -96,7 +98,7 @@ function findParams(ex::Expr)
 		elseif isa(def, Expr) && def.head == :call
 			e2 = def.args
 			if e2[1] == :vector
-				nb = eval(e2[2])
+				nb = Main.eval(e2[2])
 				assert(isa(nb, Integer) && nb > 0, 
 					"invalid vector size $(e2[2]) = $(nb)")
 
@@ -171,7 +173,7 @@ function translateTilde2(ex::Expr)
 	function translateTilde(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
-		args = {symbol("logpdf$(ex.args[3].args[1])")}
+		args = {symbol("SimpleMCMC.logpdf$(ex.args[3].args[1])")}
 		# cat(args, ex.args[3].args[2:end])
 		# push(args, ex.args[2])
 		for a in ex.args[3].args[2:end]
@@ -183,7 +185,6 @@ function translateTilde2(ex::Expr)
 
 	translateTilde(etype(ex))
 end
-
 
 ######## unfolds expression before derivation ###################
 function unfold(ex::Expr)
@@ -263,10 +264,8 @@ function unfold(ex::Expr)
 	unfold(etype(ex))
 end
 
-
 ######### identifies derivation vars (descendants of model parameters)  #############
 # TODO : further filtering to keep only those influencing the accumulator
-
 function listVars(ex::Expr, avars) # entry function
 	avars = Set{Symbol}(avars...)
 
@@ -300,7 +299,6 @@ function listVars(ex::Expr, avars) # entry function
 	listVars(etype(ex))
 	avars
 end
-
 
 ######### builds the gradient expression from unfolded expression ##############
 function backwardSweep(ex::Expr, avars::Set{Symbol})
@@ -365,7 +363,6 @@ function backwardSweep(ex::Expr, avars::Set{Symbol})
 end
 
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
-
 	op = opex.args[1]  # operator
 	vs = opex.args[1+index]
 	args = opex.args[2:end]
@@ -408,7 +405,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 		drules_ternary = {
 			:sum  => {ds, ds, ds},
 
-			:logpdfNormal => {	# mu
+			symbol("SimpleMCMC.logpdfNormal") => {	# mu
 								:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
 							  	# sigma
 					 		  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
@@ -416,7 +413,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					 		  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
 					 		  	},
 
-			:logpdfUniform => {	# a
+			symbol("logpdfUniform") => {	# a
 								:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
 								# b
 					 		  	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
@@ -424,7 +421,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					 		  	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
 					 		  	},
 
-			:logpdfWeibull => {	# shape
+			symbol("logpdfWeibull") => {	# shape
 								:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
 								# scale
 					 		   	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
@@ -439,7 +436,6 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	else
 		error("[derive] Doesn't know how to derive n-ary operator $op")
 	end
-
 end
 
 logpdfNormal(mu, sigma, x) = logpdf(Normal(mu, sigma), x)
@@ -504,9 +500,12 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	local jump, S, eta, SS
 	const local target_alpha = 0.234
 
-	# creates function, 
-	(model2, param_map, nparams) = parseExpr(model)
+	# build function, count the number of parameters
+	(ll_func, nparams) = buildFunction(model)
+	# create function in Main (!)
+	Main.eval(ll_func)
 
+	# build the initial values
 	if typeof(init) == Array{Float64,1}
 		assert(numel(init) == nparams, "$nparams initial values expected, got $(numel(init))")
 		beta = init
@@ -516,24 +515,14 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		error("cannot assign initial values (should be a Real or vector of Reals)")
 	end
 
-	#  log-likelihood function creation
-	eval(quote
-		function __loglik(beta::Vector{Float64})
-			local acc
-			$(Expr(:block, param_map, Any))
-			acc = 0.0
-			$model2
-			return(acc)
-		end
-	end)
-
 	#  first calc
 	__lp = Main.__loglik(beta)
-	__lp == -Inf ? error("Initial values out of model support, try other values") : nothing
+	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
-	samples = zeros(Float64, (steps, 2+nparams))
-	S = eye(nparams)
+	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
+
+	S = eye(nparams) # initial value for jump scaling matrix
  	for i in 1:steps	 # i=1; burnin=10		
  		# print(i, " old beta = ", round(beta[1],3))
 		jump = 0.1 * randn(nparams)
@@ -541,32 +530,104 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
 
  		old__lp, __lp = __lp, Main.__loglik(beta)
- 		# println(" lp= ", round(__lp, 3))
 
  		alpha = min(1, exp(__lp - old__lp))
 		if rand() > exp(__lp - old__lp)
 			__lp, beta = old__lp, oldbeta
 		end
-		samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
+ 		println("$i : lp= $(round(__lp, 3))")
+		draws[i, :] = vcat(__lp, (old__lp != __lp), beta)
 
 		#  Adaptive scaling using R.A.M. method
 		eta = min(1, nparams*i^(-2/3))
 		# eta = min(1, nparams * (i <= burnin ? 1 : i-burnin)^(-2/3))
-		SS = (jump * jump') / (jump' * jump)[1,1] * eta * (alpha - target_alpha)
+		SS = (jump * jump') / dot(jump, jump) * eta * (alpha - target_alpha)
 		SS = S * (eye(nparams) + SS) * S'
 		S = chol(SS)
 		S = S'
 	end
 
-	return(samples)
+	# temp = copy(samples)
+	# println(size(temp))
+	# (temp, 1.0, "abcd", size(temp))
+
+	# x = copy(temp[ 1,1])
+	# println("  x = $x")
+
+	return draws[(burnin+1):steps, :]
 end
 
-simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, min(1, div(steps,2)))
+simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, max(1, div(steps,2)))
 simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
 
+##########################################################################################
+#   Canonical HMC implementation
+##########################################################################################
 
+function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, length::Integer, stepsize::Float64)
+	local beta, nparams
+	local jump, S, eta, SS
+	const local target_alpha = 0.234
 
+	# build function, count the number of parameters
+	(ll_func, nparams) = buildFunctionWithGradient(model)
+	# create function in Main (!)
+	Main.eval(ll_func)
 
+	# build the initial values
+	if typeof(init) == Array{Float64,1}
+		assert(numel(init) == nparams, "$nparams initial values expected, got $(numel(init))")
+		beta = init
+	elseif typeof(init) <: Real
+		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
+	else
+		error("cannot assign initial values (should be a Real or vector of Reals)")
+	end
+
+	#  first calc
+	(__lp, grad) = Main.__loglik(beta)
+	assert(__lp != -Inf, "Initial values out of model support, try other values")
+
+	#  main loop
+	samples = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
+
+	S = eye(nparams) # initial value for jump scaling matrix
+ 	for i in 1:steps	 # i=1; burnin=10		
+ 		# print(i, " old beta = ", round(beta[1],3))
+		jump = 0.1 * randn(nparams)
+		oldbeta, beta = beta, beta + S * jump
+		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
+
+ 		old__lp, __lp = __lp, Main.__loglik(beta)
+
+ 		alpha = min(1, exp(__lp - old__lp))
+		if rand() > exp(__lp - old__lp)
+			__lp, beta = old__lp, oldbeta
+		end
+ 		println("$i : lp= $(round(__lp, 3))")
+		samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
+
+		#  Adaptive scaling using R.A.M. method
+		eta = min(1, nparams*i^(-2/3))
+		# eta = min(1, nparams * (i <= burnin ? 1 : i-burnin)^(-2/3))
+		SS = (jump * jump') / dot(jump, jump) * eta * (alpha - target_alpha)
+		SS = S * (eye(nparams) + SS) * S'
+		S = chol(SS)
+		S = S'
+	end
+
+	temp = copy(samples)
+	# println(size(temp))
+	# (temp, 1.0, "abcd", size(temp))
+
+	x = copy(temp[ 1,1])
+	println("  x = $x")
+
+	return eval(:(x))
+end
+
+simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, max(1, div(steps,2)))
+simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
 
 ##########  helper function  to analyse expressions   #############
 

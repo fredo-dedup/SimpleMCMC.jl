@@ -1,27 +1,53 @@
-library("SimpleMCMC.jl")
+######### linear regression 1000 obs x 10 var  ###########
+
+load("../src/SimpleMCMC.jl")
 using SimpleMCMC
 
-######### big linera regression 10.000 obs x 40 var  ###########
-srand(1)
-n = 10000
-nbeta = 40
-X = [fill(1, (n,)) randn((n, nbeta-1))]
-beta0 = randn((nbeta,))
-Y = X * beta0 + randn((n,))
+require("../../Distributions.jl/src/distributions.jl")
+using Distributions
 
-model = quote
-	sigma::scalar
-	vars::vector(nbeta)
-
-	vars ~ Normal(0, 1)  # Normal prior, variance 1.0
-	resid = Y - X * vars
-	resid ~ Normal(0, sigma)  
+# simulate dataset
+begin
+	srand(1)
+	n = 1000
+	nbeta = 10
+	X = [fill(1, (n,)) randn((n, nbeta-1))]
+	beta0 = randn((nbeta,))
+	Y = X * beta0 + randn((n,))
 end
 
-res = simpleRWM(model, 10000)
+# define model
+model = quote
+	vars::vector(nbeta)
 
+	vars ~ Normal(0, 1.0)  # Normal prior, variance 1.0 for predictors
+	resid = Y - X * vars
+	resid ~ Normal(0, 1.0)  
+end
+
+# (func, np) = SimpleMCMC.buildFunctionWithGradient(model)
+# (func, np) = SimpleMCMC.buildFunction(model)
+# eval(func)
+# __loglik([0.9 for i in 1:11])
+
+res = SimpleMCMC.simpleRWM(model, 10)
+
+
+(a,b) = 
+SimpleMCMC.simpleRWM(model, 200, 100)
+f = n -> SimpleMCMC.simpleRWM(model, n, 10, 0.9)
+f(1000)
+
+simpleRWM
+
+tmp[1,1]
+
+
+size(res)
+res
 dlmwrite("/tmp/mjcl.txt", res)
 
+__loglik([ 1. for i in 1:41])
 
 ############  small lm  ###############
 
