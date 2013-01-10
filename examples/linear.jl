@@ -10,8 +10,8 @@ using Distributions
 begin
 	srand(1)
 	n = 1000
-	nbeta = 10
-	X = [fill(1, (n,)) randn((n, nbeta-1))]
+	nbeta = 10 # number of predictors, including intercept
+	X = [ones(n) randn((n, nbeta-1))]
 	beta0 = randn((nbeta,))
 	Y = X * beta0 + randn((n,))
 end
@@ -25,76 +25,19 @@ model = quote
 	resid ~ Normal(0, 1.0)  
 end
 
-# (func, np) = SimpleMCMC.buildFunctionWithGradient(model)
-# (func, np) = SimpleMCMC.buildFunction(model)
-SimpleMCMC.findParams(model)
-	(model2, nparams, pmap) = SimpleMCMC.findParams(model)
-	model3 = SimpleMCMC.translateTilde(model2)
+# run random walk metropolis (1000 steps, 500 for burnin)
+res = simpleRWM(model, 1000)
+
+# calculated parameters and original values side by side
+[ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ]
 
 
-# eval(func)
-# __loglik([0.9 for i in 1:11])
+# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
+res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.1)
+SimpleMCMC.buildFunctionWithGradient(model)
 
-load("simple-mcmc/src/SimpleMCMC.jl"); 
-res = SimpleMCMC.simpleRWM(model, 1000)
-size(res)
-
-(a,b) = 
-SimpleMCMC.simpleRWM(model, 200, 100)
-f = n -> SimpleMCMC.simpleRWM(model, n, 10, 0.9)
-f(1000)
-
-simpleRWM
-
-tmp[1,1]
-
-
-size(res)
-res
-dlmwrite("/tmp/mjcl.txt", res)
-
-__loglik([ 1. for i in 1:41])
-
-############  small lm  ###############
-
-begin
-	srand(1)
-	n = 100
-	nbeta = 4
-	X = [fill(1, (n,)) randn((n, nbeta-1))]
-	beta0 = randn((nbeta,))
-	Y = X * beta0 + randn((n,))
-end
-
-res = simpleRWM(model, 100000)
-
-dlmwrite("/tmp/mjcl.txt", res)
-
-############  binary logistic response  ###############
-
-begin
-	srand(1)
-	n = 100
-	nbeta = 4
-	X = [fill(1, (n,)) randn((n, nbeta-1))]
-	beta0 = randn((nbeta,))
-	Y = (1/(1+exp(-(X * beta0)))) .> rand(n)
-end
-mean(Y)
-
-model = quote
-	vars::vector(nbeta)
-
-	vars ~ Normal(0, 1)
-	resid = Y - (1/(1+exp(- X * vars)))
-	resid ~ Normal(0, 1)
-end
-
-
-res = simpleRWM(model, 100000)
-
-dlmwrite("/tmp/mjcl.txt", res)
-
+# calculated parameters and original values side by side
+[ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ]
 
 
 

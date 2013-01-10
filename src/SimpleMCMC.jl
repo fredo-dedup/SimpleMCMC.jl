@@ -3,8 +3,7 @@ module SimpleMCMC
 
 # using Base
 
-# export simpleRWM, simpleHMC
-# export simpleRWM
+export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
 
 const ACC_SYM = :__acc
@@ -404,7 +403,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 		drules_ternary = {
 			:sum  => {ds, ds, ds},
 
-			symbol("SimpleMCMC.logpdfNormal") => {	# mu
+			:logpdfNormal => {	# mu
 								:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
 							  	# sigma
 					 		  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
@@ -412,7 +411,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					 		  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
 					 		  	},
 
-			symbol("logpdfUniform") => {	# a
+			:logpdfUniform => {	# a
 								:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
 								# b
 					 		  	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
@@ -420,7 +419,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					 		  	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
 					 		  	},
 
-			symbol("logpdfWeibull") => {	# shape
+			:logpdfWeibull => {	# shape
 								:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
 								# scale
 					 		   	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
@@ -471,7 +470,7 @@ function buildFunctionWithGradient(model::Expr)
 	avars = listVars(model4, keys(pmap))
 	dmodel = backwardSweep(model4, avars)
 
-	assigns = [ expr(:(=), k, v) for (k,v) in pairs(pmap)]
+	assigns = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
 	f = quote
 		function __loglik($PARAM_SYM::Vector{Float64})
 			local $ACC_SYM
@@ -492,7 +491,7 @@ end
 
 
 ##########################################################################################
-#   Random Walk Metropolis implementation
+#   Random Walk Metropolis function
 ##########################################################################################
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
@@ -540,7 +539,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		if rand() > exp(__lp - old__lp)
 			__lp, beta = old__lp, oldbeta
 		end
- 		println("$i : lp= $(round(__lp, 3))")
+ 		# println("$i : lp= $(round(__lp, 3))")
 		draws[i, :] = vcat(__lp, (old__lp != __lp), beta)
 
 		#  Adaptive scaling using R.A.M. method
@@ -552,13 +551,6 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		S = S'
 	end
 
-	# temp = copy(samples)
-	# println(size(temp))
-	# (temp, 1.0, "abcd", size(temp))
-
-	# x = copy(temp[ 1,1])
-	# println("  x = $x")
-
 	draws[(burnin+1):steps, :]
 end
 
@@ -566,17 +558,13 @@ simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, max(1, div(step
 simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
 
 ##########################################################################################
-#   Canonical HMC implementation
+#   Canonical HMC function
 ##########################################################################################
 
-function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, length::Integer, stepsize::Float64)
-	local beta, nparams
-	local jump, S, eta, SS
-	const local target_alpha = 0.234
-
+function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
 	# build function, count the number of parameters
 	(ll_func, nparams) = buildFunctionWithGradient(model)
-	# create function in Main (!)
+	# create function (in Main !)
 	Main.eval(ll_func)
 
 	# build the initial values
@@ -594,45 +582,46 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, leng
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
-	samples = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
+	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
 
-	S = eye(nparams) # initial value for jump scaling matrix
- 	for i in 1:steps	 # i=1; burnin=10		
- 		# print(i, " old beta = ", round(beta[1],3))
-		jump = 0.1 * randn(nparams)
-		oldbeta, beta = beta, beta + S * jump
+ 	for i in 1:steps
+ 
+ 		jump0 = 0.1 * randn(nparams)
+		beta0 = beta
+		__lp0 = __lp
+
+		jump = jump0 - stepsize * grad / 2.0
+		for j in 1:(isteps-1)
+			beta += stepsize * jump
+			(__lp, grad) = Main.__loglik(beta)
+			jump -= stepsize * grad
+		end
+		beta += stepsize * jump
+		(__lp, grad) = Main.__loglik(beta)
+		jump -= stepsize * grad / 2.0
+
+		jump = -jump
 		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
+
 
  		old__lp, __lp = __lp, Main.__loglik(beta)
 
  		alpha = min(1, exp(__lp - old__lp))
-		if rand() > exp(__lp - old__lp)
-			__lp, beta = old__lp, oldbeta
+		if rand() > exp((__lp + dot(jump,jump)/2.0) - (__lp0 + dot(jump0,jump0)/2.0))
+			__lp, beta = __lp0, beta0
 		end
  		println("$i : lp= $(round(__lp, 3))")
-		samples[i, :] = vcat(__lp, (old__lp != __lp), beta)
+		samples[i, :] = vcat(__lp, (__lp0 != __lp), beta)
 
-		#  Adaptive scaling using R.A.M. method
-		eta = min(1, nparams*i^(-2/3))
-		# eta = min(1, nparams * (i <= burnin ? 1 : i-burnin)^(-2/3))
-		SS = (jump * jump') / dot(jump, jump) * eta * (alpha - target_alpha)
-		SS = S * (eye(nparams) + SS) * S'
-		S = chol(SS)
-		S = S'
 	end
 
-	temp = copy(samples)
-	# println(size(temp))
-	# (temp, 1.0, "abcd", size(temp))
-
-	x = copy(temp[ 1,1])
-	println("  x = $x")
-
-	return eval(:(x))
+	draws[(burnin+1):steps, :]
 end
 
-simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, max(1, div(steps,2)))
-simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
+simpleHMC(model::Expr, steps::Integer, isteps::Integer, stepsize::Float64) = 
+	simpleHMC(model, steps, max(1, div(steps,2)), isteps, stepsize)
+simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsize::Float64) = 
+	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
 
 ##########  helper function  to analyse expressions   #############
 
