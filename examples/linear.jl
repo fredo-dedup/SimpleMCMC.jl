@@ -27,12 +27,17 @@ end
 
 # (func, np) = SimpleMCMC.buildFunctionWithGradient(model)
 # (func, np) = SimpleMCMC.buildFunction(model)
+SimpleMCMC.findParams(model)
+	(model2, nparams, pmap) = SimpleMCMC.findParams(model)
+	model3 = SimpleMCMC.translateTilde(model2)
+
+
 # eval(func)
 # __loglik([0.9 for i in 1:11])
 
 load("simple-mcmc/src/SimpleMCMC.jl"); 
-res = SimpleMCMC.simpleRWM(model, 10, 2)
-
+res = SimpleMCMC.simpleRWM(model, 1000)
+size(res)
 
 (a,b) = 
 SimpleMCMC.simpleRWM(model, 200, 100)

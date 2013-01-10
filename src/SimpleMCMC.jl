@@ -66,11 +66,11 @@ end
 ######### extracts model parameters from model expression  #############
 function findParams(ex::Expr)
 
-	function findParams(ex::Exprblock)
+	function explore(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
-				ex3 = findParams(etype(ex2))
+				ex3 = explore(etype(ex2))
 				ex3==nothing ? nothing : push(al, ex3)
 			else
 				push(al, ex2)
@@ -79,12 +79,12 @@ function findParams(ex::Expr)
 		expr(ex.head, al)
 	end
 
-	findParams(ex::Exprline) = toExpr(ex)
-	findParams(ex::Exprref) = toExpr(ex)
-	findParams(ex::Exprcall) = toExpr(ex)
-	findParams(ex::Exprequal) = toExpr(ex)
+	explore(ex::Exprline) = toExpr(ex)
+	explore(ex::Exprref) = toExpr(ex)
+	explore(ex::Exprcall) = toExpr(ex)
+	explore(ex::Exprequal) = toExpr(ex)
 
-	function findParams(ex::Exprdcolon)
+	function explore(ex::Exprdcolon)
 		assert(typeof(ex.args[1]) == Symbol, 
 			"not a symbol on LHS of :: $(ex.args[1])")
 		par = ex.args[1]  # param symbol defined here
@@ -115,22 +115,22 @@ function findParams(ex::Expr)
 	pmap = Dict{Symbol, Expr}()
 	index = 0
 
-	ex = findParams(etype(ex))
+	ex = explore(etype(ex))
 	(ex, index, pmap)
 end
 
 ######### translates ~ expressions into equivalent log-likelihood accumulator #############
 function translateTilde(ex::Expr)
 
-	translateTilde(ex::Exprline) = nothing
-	translateTilde(ex::Exprref) = toExpr(ex)
-	translateTilde(ex::Exprequal) = toExpr(ex)
+	explore(ex::Exprline) = nothing
+	explore(ex::Exprref) = toExpr(ex)
+	explore(ex::Exprequal) = toExpr(ex)
 
-	function translateTilde(ex::Exprblock)
+	function explore(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
-				ex3 = translateTilde(etype(ex2))
+				ex3 = explore(etype(ex2))
 				ex3==nothing ? nothing : push(al, ex3)
 			else
 				push(al, ex2)
@@ -139,28 +139,28 @@ function translateTilde(ex::Expr)
 		expr(:block, al)
 	end
 
-	function translateTilde(ex::Exprcall)
+	function explore(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
 		return :($ACC_SYM = $ACC_SYM + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
 	end
 
-	translateTilde(etype(ex))
+	explore(etype(ex))
 end
 
 # slightly different behaviour if model gradient is to be calculated
 # TODO : unify
 function translateTilde2(ex::Expr)
 
-	translateTilde(ex::Exprline) = nothing
-	translateTilde(ex::Exprref) = toExpr(ex)
-	translateTilde(ex::Exprequal) = toExpr(ex)
+	explore(ex::Exprline) = nothing
+	explore(ex::Exprref) = toExpr(ex)
+	explore(ex::Exprequal) = toExpr(ex)
 
-	function translateTilde(ex::Exprblock)
+	function explore(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
-				ex3 = translateTilde(etype(ex2))
+				ex3 = explore(etype(ex2))
 				ex3==nothing ? nothing : push(al, ex3)
 			else
 				push(al, ex2)
@@ -169,7 +169,7 @@ function translateTilde2(ex::Expr)
 		expr(:block, al)
 	end
 
-	function translateTilde(ex::Exprcall)
+	function explore(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
 		args = {symbol("SimpleMCMC.logpdf$(ex.args[3].args[1])")}
@@ -182,19 +182,19 @@ function translateTilde2(ex::Expr)
 		return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
 	end
 
-	translateTilde(etype(ex))
+	explore(etype(ex))
 end
 
 ######## unfolds expression before derivation ###################
 function unfold(ex::Expr)
 
-	unfold(ex::Exprline) = nothing
-	unfold(ex::Exprref) = toExpr(ex)
-	function unfold(ex::Exprblock)
+	explore(ex::Exprline) = nothing
+	explore(ex::Exprref) = toExpr(ex)
+	function explore(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
-				ex3 = unfold(etype(ex2))
+				ex3 = explore(etype(ex2))
 				ex3==nothing ? nothing : push(al, ex3)
 			else
 				push(al, ex2)
@@ -203,7 +203,7 @@ function unfold(ex::Expr)
 		expr(ex.head, al)
 	end
 
-	function unfold(ex::Exprequal)
+	function explore(ex::Exprequal)
 		lhs = ex.args[1]
 		assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
 			"[unfold] not a symbol on LHS of assigment $(ex)")
@@ -212,7 +212,7 @@ function unfold(ex::Expr)
 		if isa(rhs, Symbol)
 			return expr(:(=), lhs, rhs)
 		elseif isa(rhs, Expr)
-			ue = unfold(etype(rhs))
+			ue = explore(etype(rhs))
 			if isa(ue, Expr)
 				return expr(:(=), lhs, rhs)
 			elseif isa(ue, Tuple)
@@ -224,7 +224,7 @@ function unfold(ex::Expr)
 		end
 	end
 
-	function unfold(ex::Exprcall)
+	function explore(ex::Exprcall)
 		na = {ex.args[1]}   # function name
 		args = ex.args[2:end]  # arguments
 
@@ -242,7 +242,7 @@ function unfold(ex::Expr)
 		lb = {}
 		for e2 in args  # e2 = args[2]
 			if isa(e2, Expr)
-				ue = unfold(etype(e2))
+				ue = explore(etype(e2))
 				if isa(ue, Tuple)
 					append!(lb, ue[1])
 					lp = ue[2]
@@ -260,7 +260,7 @@ function unfold(ex::Expr)
 		return numel(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
 	end
 
-	unfold(etype(ex))
+	explore(etype(ex))
 end
 
 ######### identifies derivation vars (descendants of model parameters)  #############
@@ -281,7 +281,7 @@ function listVars(ex::Expr, avars) # entry function
 		sl
 	end
 
-	function listVars(ex::Exprequal)
+	function explore(ex::Exprequal)
 		lhs = getSymbols(ex.args[1])
 		rhs = getSymbols(ex.args[2])
 
@@ -290,12 +290,12 @@ function listVars(ex::Expr, avars) # entry function
 		end
 	end
 
-	listVars(ex::Exprline) = nothing
-	listVars(ex::Exprref) = nothing
-	listVars(ex::Exprdcolon) = nothing
-	listVars(ex::Exprblock) = map(x->listVars(etype(x)), ex.args)
+	explore(ex::Exprline) = nothing
+	explore(ex::Exprref) = nothing
+	explore(ex::Exprdcolon) = nothing
+	explore(ex::Exprblock) = map(x->explore(etype(x)), ex.args)
 
-	listVars(etype(ex))
+	explore(etype(ex))
 	avars
 end
 
@@ -303,18 +303,18 @@ end
 function backwardSweep(ex::Expr, avars::Set{Symbol})
 	assert(ex.head == :block, "[backwardSweep] not a block")
 
-	backwardSweep(ex::Exprline) = nothing
-	function backwardSweep(ex::Exprblock)
+	explore(ex::Exprline) = nothing
+	function explore(ex::Exprblock)
 		el = {}
 
 		for ex2 in ex.args
-			ex3 = backwardSweep(etype(ex2))
+			ex3 = explore(etype(ex2))
 			ex3==nothing ? nothing : push(el, ex3)
 		end
 		expr(:block, reverse(el))
 	end
 
-	function backwardSweep(ex::Exprequal)
+	function explore(ex::Exprequal)
 		lhs = ex.args[1]
 		if isa(lhs,Symbol) # simple var case
 			dsym = lhs
@@ -358,7 +358,7 @@ function backwardSweep(ex::Expr, avars::Set{Symbol})
 		end
 	end
 
-	backwardSweep(etype(ex))
+	explore(etype(ex))
 end
 
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
@@ -448,7 +448,7 @@ function buildFunction(model::Expr)
 	(model2, nparams, pmap) = findParams(model)
 	model3 = translateTilde(model2)
 
-	assigns = [ expr(:(=), k, v) for (k,v) in pairs(pmap)]
+	assigns = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
 	f = quote
 		function __loglik($PARAM_SYM::Vector{Float64})
 			local $ACC_SYM
