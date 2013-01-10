@@ -1,9 +1,9 @@
 ######### linear regression 1000 obs x 10 var  ###########
 
-load("../src/SimpleMCMC.jl")
+load("simple-mcmc/src/SimpleMCMC.jl")
 using SimpleMCMC
 
-require("../../Distributions.jl/src/distributions.jl")
+require("Distributions.jl/src/distributions.jl")
 using Distributions
 
 # simulate dataset
@@ -30,7 +30,8 @@ end
 # eval(func)
 # __loglik([0.9 for i in 1:11])
 
-res = SimpleMCMC.simpleRWM(model, 10)
+load("simple-mcmc/src/SimpleMCMC.jl"); 
+res = SimpleMCMC.simpleRWM(model, 10, 2)
 
 
 (a,b) = 

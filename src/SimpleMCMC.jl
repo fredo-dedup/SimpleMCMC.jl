@@ -66,7 +66,7 @@ end
 ######### extracts model parameters from model expression  #############
 function findParams(ex::Expr)
 
-	function findParams_generic(ex)
+	function findParams(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
@@ -82,8 +82,7 @@ function findParams(ex::Expr)
 	findParams(ex::Exprline) = toExpr(ex)
 	findParams(ex::Exprref) = toExpr(ex)
 	findParams(ex::Exprcall) = toExpr(ex)
-	findParams(ex::Exprblock) = findParams_generic(ex)
-	findParams(ex::Exprequal) = findParams_generic(ex)
+	findParams(ex::Exprequal) = toExpr(ex)
 
 	function findParams(ex::Exprdcolon)
 		assert(typeof(ex.args[1]) == Symbol, 
@@ -446,8 +445,8 @@ logpdfUniform(a, b, x) = logpdf(Uniform(a, b), x)
 
 function buildFunction(model::Expr)
 	
-	(model2, nparams, pmap) = SimpleMCMC.findParams(model)
-	model3 = SimpleMCMC.translateTilde(model2)
+	(model2, nparams, pmap) = findParams(model)
+	model3 = translateTilde(model2)
 
 	assigns = [ expr(:(=), k, v) for (k,v) in pairs(pmap)]
 	f = quote
@@ -459,6 +458,7 @@ function buildFunction(model::Expr)
 			return($ACC_SYM)
 		end
 	end
+
 	(f, nparams)
 end
 
@@ -500,9 +500,14 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	local jump, S, eta, SS
 	const local target_alpha = 0.234
 
+	nparams = 10
+
+	# check burnin steps consistency
+	assert(steps >= burnin && burnin >= 0 && steps > 0, "Steps should be >= to burnin, and both positive")
+
 	# build function, count the number of parameters
-	(ll_func, nparams) = buildFunction(model)
-	# create function in Main (!)
+	ll_func, nparams = buildFunction(model)
+	# create function (in Main !)
 	Main.eval(ll_func)
 
 	# build the initial values
@@ -554,7 +559,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	# x = copy(temp[ 1,1])
 	# println("  x = $x")
 
-	return draws[(burnin+1):steps, :]
+	draws[(burnin+1):steps, :]
 end
 
 simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, max(1, div(steps,2)))
