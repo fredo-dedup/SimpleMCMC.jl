@@ -1,7 +1,9 @@
-
 module SimpleMCMC
 
-# using Base
+using Base
+
+# require("Distributions")
+# using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -369,6 +371,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 	# println(op, " ", vs, " ", args, " ", dvs, " ", ds)
 
+	# TODO : all the dict expressions are evaluated, should be deferred
 	if length(args) == 1 # unary operators
 		drules_unary = {
 			:- => :(-$ds),
