@@ -32,13 +32,14 @@ end
 # run random walk metropolis (1000 steps, 500 for burnin)
 res = simpleRWM(model, 1000)
 
+# show original values and calculated distributions means side by side
 [ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ]
-# res = SimpleMCMC.simpleRWM(model, 1000)
 
 
 # run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
 res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.1)
 SimpleMCMC.buildFunctionWithGradient(model)
+SimpleMCMC.translateTilde2(SimpleMCMC.findParams(model)[1])
 
 # calculated parameters and original values side by side
 [ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ]

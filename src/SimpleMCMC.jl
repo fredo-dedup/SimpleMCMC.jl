@@ -2,8 +2,9 @@ module SimpleMCMC
 
 using Base
 
-# require("Distributions")
-# using Distributions
+load("Distributions.jl/src/distributions.jl")  # windows machine
+# require("Distributions") # linux
+using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -54,13 +55,11 @@ function etype(ex::Expr)
 		error("[etype] unmapped expr type $(ex.head)")
 	end
 
-	# println(nt)
+	#TODO : turn all this in a loop on expression heads
 	# f = eval(e,t) -> t(e)
 	# f(ex, nt)
 	# (type(nt))(ex)
 	# eval(:(((e,t)->(t)(e))($(expr(:quote, ex)), nt)))
-	#println("$(ex.head) ... $ex ...  $nt")
-	# Exprequal(ex)
 	# eval(:( $nt($(expr(:quote, ex))) ))
 end
 
@@ -173,7 +172,8 @@ function translateTilde2(ex::Expr)
 	function explore(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
-		args = {symbol("SimpleMCMC.logpdf$(ex.args[3].args[1])")}
+		fn = symbol("logpdf$(ex.args[3].args[1])")
+		args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
 		# cat(args, ex.args[3].args[2:end])
 		# push(args, ex.args[2])
 		for a in ex.args[3].args[2:end]
@@ -372,6 +372,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	# println(op, " ", vs, " ", args, " ", dvs, " ", ds)
 
 	# TODO : all the dict expressions are evaluated, should be deferred
+	# TODO : cleanup, factorize this mess
 	if length(args) == 1 # unary operators
 		drules_unary = {
 			:- => :(-$ds),
@@ -404,44 +405,83 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 	elseif length(args) == 3 # ternary operators
 		drules_ternary = {
-			:sum  => {ds, ds, ds},
+			:sum  => {ds, ds, ds} #,
 
-			:logpdfNormal => {	# mu
-								:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
-							  	# sigma
-					 		  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
-							  	# x
-					 		  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
-					 		  	},
+			# expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) => {	# mu
+			# 					:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
+			# 				  	# sigma
+			# 		 		  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
+			# 				  	# x
+			# 		 		  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
+			# 		 		  	},
 
-			:logpdfUniform => {	# a
-								:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
-								# b
-					 		  	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
-					 		  	# x
-					 		  	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
-					 		  	},
+			# :logpdfUniform => {	# a
+			# 					:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
+			# 					# b
+			# 		 		  	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
+			# 		 		  	# x
+			# 		 		  	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
+			# 		 		  	},
 
-			:logpdfWeibull => {	# shape
-								:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
-								# scale
-					 		   	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
-					 		   	# x
-					 		   	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
-					 		   	}
+			# :logpdfWeibull => {	# shape
+			# 					:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
+			# 					# scale
+			# 		 		   	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
+			# 		 		   	# x
+			# 		 		   	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
+			# 		 		   	}
 		}
 
-		assert(has(drules_ternary, op), "[derive] Doesn't know how to derive ternary operator $op")
-		return :($dvs += $(drules_ternary[op][index]) )
+		if isa(op, Symbol)
+			assert(has(drules_ternary, op), "[derive] Doesn't know how to derive ternary operator $op")
+			return :($dvs += $(drules_ternary[op][index]) )
+
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal))
+			rules = {	# mu
+						:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
+					  	# sigma
+					  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
+					  	# x
+					  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
+					}
+			return :($dvs += $(rules[index]) )
+
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform))
+			rules = {	# a
+						:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
+						# b
+					 	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
+					 	# x
+					 	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
+					}
+			return :($dvs += $(rules[index]) )
+
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull))
+			rules = {	# shape
+						:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
+						# scale
+					 	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
+					 	# x
+					 	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
+					}
+			return :($dvs += $(rules[index]) )
+
+		else
+			error("[derive] Doesn't know how to derive ternary operator $op")	
+		end
 
 	else
 		error("[derive] Doesn't know how to derive n-ary operator $op")
 	end
 end
 
+###############  hooks into Distributions library  ###################
+
+#TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
+#TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
 logpdfNormal(mu, sigma, x) = logpdf(Normal(mu, sigma), x)
 logpdfWeibull(shape, scale, x) = logpdf(Weibull(shape, scale), x)
-logpdfUniform(a, b, x) = logpdf(Uniform(a, b), x)
+logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
 
 ######### builds the full functions ##############
 
@@ -474,18 +514,31 @@ function buildFunctionWithGradient(model::Expr)
 	dmodel = backwardSweep(model4, avars)
 
 	assigns = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
+
+	if length(pmap) == 1
+		dexp = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
+	else
+		dexp = {:vcat}
+		dexp = vcat(dexp, { symbol("$DERIV_PREFIX$v") for v in keys(pmap)})
+		dexp = expr(:call, dexp)
+	end
+
+	del(avars, ACC_SYM) # remove accumulator, special treatment needed
+
 	f = quote
 		function __loglik($PARAM_SYM::Vector{Float64})
 			local $ACC_SYM
 			$(Expr(:block, assigns, Any))
-
-			$ACC_SYM = 0.0
+			# first pass
+			$ACC_SYM = 0.
 			$model4
 
-			$(Expr(:block, {:($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))) for v in avars}, Any))  
+			# derivatives init
+			$(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0
+			$(expr(:block, {:($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))) for v in avars}))  
 
 			$dmodel
-			($ACC_SYM, $(symbol("$DERIV_PREFIX$PARAM_SYM")))
+			($ACC_SYM, $dexp)
 		end
 	end
 
