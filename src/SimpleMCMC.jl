@@ -2,8 +2,8 @@ module SimpleMCMC
 
 using Base
 
-load("Distributions.jl/src/distributions.jl")  # windows machine
-# require("Distributions") # linux
+# load("Distributions.jl/src/distributions.jl")  # windows machine
+require("Distributions") # linux
 using Distributions
 
 export simpleRWM, simpleHMC
@@ -71,9 +71,9 @@ function findParams(ex::Expr)
 		for ex2 in ex.args
 			if isa(ex2, Expr)
 				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push(al, ex3)
+				ex3==nothing ? nothing : push!(al, ex3)
 			else
-				push(al, ex2)
+				push!(al, ex2)
 			end
 		end
 		expr(ex.head, al)
@@ -131,9 +131,9 @@ function translateTilde(ex::Expr)
 		for ex2 in ex.args
 			if isa(ex2, Expr)
 				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push(al, ex3)
+				ex3==nothing ? nothing : push!(al, ex3)
 			else
-				push(al, ex2)
+				push!(al, ex2)
 			end
 		end
 		expr(:block, al)
@@ -161,9 +161,9 @@ function translateTilde2(ex::Expr)
 		for ex2 in ex.args
 			if isa(ex2, Expr)
 				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push(al, ex3)
+				ex3==nothing ? nothing : push!(al, ex3)
 			else
-				push(al, ex2)
+				push!(al, ex2)
 			end
 		end
 		expr(:block, al)
@@ -175,11 +175,11 @@ function translateTilde2(ex::Expr)
 		fn = symbol("logpdf$(ex.args[3].args[1])")
 		args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
 		# cat(args, ex.args[3].args[2:end])
-		# push(args, ex.args[2])
+		# push!(args, ex.args[2])
 		for a in ex.args[3].args[2:end]
-			push(args, a)
+			push!(args, a)
 		end
-		push(args, ex.args[2])
+		push!(args, ex.args[2])
 		return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
 	end
 
@@ -196,9 +196,9 @@ function unfold(ex::Expr)
 		for ex2 in ex.args
 			if isa(ex2, Expr)
 				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push(al, ex3)
+				ex3==nothing ? nothing : push!(al, ex3)
 			else
-				push(al, ex2)
+				push!(al, ex2)
 			end
 		end
 		expr(ex.head, al)
@@ -217,7 +217,7 @@ function unfold(ex::Expr)
 			if isa(ue, Expr)
 				return expr(:(=), lhs, rhs)
 			elseif isa(ue, Tuple)
-				lb = push(ue[1], :($lhs = $(ue[2])))
+				lb = push!(ue[1], :($lhs = $(ue[2])))
 				return expr(:block, lb)
 			end
 		else  # unmanaged kind of lhs
@@ -236,7 +236,7 @@ function unfold(ex::Expr)
 			while length(args) > 2
 				a2 = pop(args)
 				a1 = pop(args)
-				push(args, expr(:call, ex.args[1], a1, a2))
+				push!(args, expr(:call, ex.args[1], a1, a2))
 			end
 		end
 
@@ -251,14 +251,14 @@ function unfold(ex::Expr)
 					lp = ue
 				end
 				nv = gensym(TEMP_NAME)
-				push(lb, :($nv = $(lp)))
-				push(na, nv)
+				push!(lb, :($nv = $(lp)))
+				push!(na, nv)
 			else
-				push(na, e2)
+				push!(na, e2)
 			end
 		end
 
-		return numel(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
+		return length(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
 	end
 
 	explore(etype(ex))
@@ -310,7 +310,7 @@ function backwardSweep(ex::Expr, avars::Set{Symbol})
 
 		for ex2 in ex.args
 			ex3 = explore(etype(ex2))
-			ex3==nothing ? nothing : push(el, ex3)
+			ex3==nothing ? nothing : push!(el, ex3)
 		end
 		expr(:block, reverse(el))
 	end
@@ -344,12 +344,12 @@ function backwardSweep(ex::Expr, avars::Set{Symbol})
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
 				# derive(rhs, 1, :($(dsym)))
-					push(el, derive(rhs, i-1, dsym))
+					push!(el, derive(rhs, i-1, dsym))
 				end
 			end
-			if numel(el) == 0
+			if length(el) == 0
 				return nothing
-			elseif numel(el) == 1
+			elseif length(el) == 1
 				return el[1]
 			else
 				return expr(:block, el)
@@ -523,7 +523,7 @@ function buildFunctionWithGradient(model::Expr)
 		dexp = expr(:call, dexp)
 	end
 
-	del(avars, ACC_SYM) # remove accumulator, special treatment needed
+	delete!(avars, ACC_SYM) # remove accumulator, special treatment needed
 
 	f = quote
 		function __loglik($PARAM_SYM::Vector{Float64})
@@ -567,7 +567,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 
 	# build the initial values
 	if typeof(init) == Array{Float64,1}
-		assert(numel(init) == nparams, "$nparams initial values expected, got $(numel(init))")
+		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
 		beta = init
 	elseif typeof(init) <: Real
 		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
@@ -625,7 +625,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 
 	# build the initial values
 	if typeof(init) == Array{Float64,1}
-		assert(numel(init) == nparams, "$nparams initial values expected, got $(numel(init))")
+		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
 		beta = init
 	elseif typeof(init) <: Real
 		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
@@ -642,7 +642,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 
  	for i in 1:steps
  
- 		jump0 = 0.1 * randn(nparams)
+ 		jump0 = randn(nparams)
 		beta0 = beta
 		__lp0 = __lp
 
@@ -650,24 +650,22 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 		for j in 1:(isteps-1)
 			beta += stepsize * jump
 			(__lp, grad) = Main.__loglik(beta)
-			jump -= stepsize * grad
+			# println("     $j : lp= $(round(__lp, 3))")
+			jump += stepsize * grad
 		end
 		beta += stepsize * jump
 		(__lp, grad) = Main.__loglik(beta)
+		# println("     $isteps : lp= $(round(__lp, 3))")
 		jump -= stepsize * grad / 2.0
 
 		jump = -jump
 		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
 
-
- 		old__lp, __lp = __lp, Main.__loglik(beta)
-
- 		alpha = min(1, exp(__lp - old__lp))
 		if rand() > exp((__lp + dot(jump,jump)/2.0) - (__lp0 + dot(jump0,jump0)/2.0))
 			__lp, beta = __lp0, beta0
 		end
- 		println("$i : lp= $(round(__lp, 3))")
-		samples[i, :] = vcat(__lp, (__lp0 != __lp), beta)
+ 		# println("$i : lp= $(round(__lp, 3))")
+		draws[i, :] = vcat(__lp, (__lp0 != __lp), beta)
 
 	end
 
@@ -675,7 +673,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 end
 
 simpleHMC(model::Expr, steps::Integer, isteps::Integer, stepsize::Float64) = 
-	simpleHMC(model, steps, max(1, div(steps,2)), isteps, stepsize)
+simpleHMC(model, steps, max(1, div(steps,2)), isteps, stepsize)
 simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsize::Float64) = 
 	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
 
