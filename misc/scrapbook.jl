@@ -29,8 +29,6 @@ l0, grad = __loglik([2.01])
 l0, grad = __loglik([1.99])
 l0, grad = __loglik([1.01])
 
-
-
 ################################
 Y = [1., 2, 3, 4]
 X = [0. 1; 0 1; 1 1; 1 2]
@@ -52,6 +50,19 @@ l0, grad = __loglik(ones(2))
 [ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]
 
 
+vars = ones(2)
+resid=Y - X * vars
+dresid = zeros(4)
+dresid += /(sum(+(-(resid),0)),1.0)
+dvars = zeros(2) 
+dvars += transpose(X) * dresid
 
 
+################################
+
+myf, np = SimpleMCMC.buildFunctionWithGradient(model)
+eval(myf)
+
+l0, grad = __loglik(ones(nbeta))
+[ [ (beta=ones(nbeta) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:nbeta ] grad]
 

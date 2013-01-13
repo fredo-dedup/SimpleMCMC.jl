@@ -3,7 +3,6 @@ module SimpleMCMC
 using Base
 
 # load("Distributions.jl/src/distributions.jl")  # windows machine
-require("Distributions") # linux
 using Distributions
 
 export simpleRWM, simpleHMC
@@ -442,7 +441,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					  	# sigma
 					  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
 					  	# x
-					  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
+					  	:((- $(args[3]) + $(args[1]) ) ./ $(args[2]))
 					}
 			return :($dvs += $(rules[index]) )
 
@@ -481,7 +480,7 @@ end
 #TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
 logpdfNormal(mu, sigma, x) = logpdf(Normal(mu, sigma), x)
 logpdfWeibull(shape, scale, x) = logpdf(Weibull(shape, scale), x)
-logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
+logpdfUniform(a, b, x) = logpdf(Distributions.Uniform(a, b), x)
 
 ######### builds the full functions ##############
 
