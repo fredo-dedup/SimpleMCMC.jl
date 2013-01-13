@@ -23,7 +23,7 @@ For sampling using gradient (simpleHMC), the reverse mode automated derivation i
 
 An example model spec should be enough to illustrate the DSL : 
 
-`
+```
 model = quote
 	b::scalar
 	k::vector(5)
@@ -33,7 +33,7 @@ model = quote
 
 	x ~ Weibull(a, 2.0)
 end
-`
+```
 
 - `::` indicates variables to be sampled : `b::scalar` declares a scalar model parameter b, `k::vector(5)` declares a vector k of size 5. The size can be also be an expression as long as it is evaluates to a stricly positive integer (an error will be thrown otherwise).
 - Statements with the operator ~ (`x ~ Weibull(a, 2.0)`) declare how to build the model likelihood, here this says that x should have a Weibull distributions (any continuous distribution of the "Distribution.jl" module can be used for Random Walk Metropolis, sampling methods using the gradient are limited to those with partial derivatives defined) of shape `a` and scale `2`
@@ -64,7 +64,7 @@ by (steps - burnin) rows.
 
 ### Linear regression
 
-`
+```
 # Generate values
 
 srand(1)
@@ -85,7 +85,7 @@ end
 
 # run random walk metropolis (10000 steps, 500 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000)
-`
+```
 
 ## Issues
 Sometimes calling logpdf(_Distributions_) outside the distribution definition seem to hang Julia, have to look into that...
