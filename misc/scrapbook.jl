@@ -66,3 +66,23 @@ eval(myf)
 l0, grad = __loglik(ones(nbeta))
 [ [ (beta=ones(nbeta) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:nbeta ] grad]
 
+
+
+################################
+
+model = quote
+	x::scalar
+	x ~ Uniform(-10., 10.)  
+end
+
+include("../src/SimpleMCMC.jl")
+require("Distributions")
+using Distributions
+import Distributions.Uniform
+
+
+myf, np = SimpleMCMC.buildFunction(model)
+eval(myf)
+
+__loglik([11.])
+res = SimpleMCMC.simpleRWM(model,100)

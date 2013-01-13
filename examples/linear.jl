@@ -2,11 +2,7 @@
 
 include("../src/SimpleMCMC.jl")
 
-# require("Distributions.jl/src/distributions.jl")
 using Distributions
-
-import Distributions.logpdf
-import Distributions.Normal
 
 # simulate dataset
 begin
