@@ -1,14 +1,8 @@
 ######### linear regression 1000 obs x 10 var  ###########
 
-load("simple-mcmc/src/SimpleMCMC.jl")
-using SimpleMCMC
+include("../src/SimpleMCMC.jl")
 
-require("Distributions.jl/src/distributions.jl")
-# load("Distributions")
 using Distributions
-
-import Distributions.logpdf
-import Distributions.Normal
 
 # simulate dataset
 begin
@@ -29,20 +23,18 @@ model = quote
 	resid ~ Normal(0, 1.0)  
 end
 
-# run random walk metropolis (1000 steps, 500 for burnin)
-res = simpleRWM(model, 1000)
+# run random walk metropolis (10000 steps, 500 for burnin)
+res = SimpleMCMC.simpleRWM(model, 10000)
 
-# show original values and calculated distributions means side by side
-[ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ]
+mean(res[:,2]) # accept rate
+[ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # original and calculated values side by side
 
 
-# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.1)
-SimpleMCMC.buildFunctionWithGradient(model)
-SimpleMCMC.translateTilde2(SimpleMCMC.findParams(model)[1])
+# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 5 inner steps, 0.001 inner step size)
+res = SimpleMCMC.simpleHMC(model, 10000, 5, 1e-3)
 
-# calculated parameters and original values side by side
-[ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ]
+mean(res[:,2]) # accept rate
+[ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # original and calculated values side by side
 
 
 
