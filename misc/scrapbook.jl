@@ -71,8 +71,8 @@ l0, grad = __loglik(ones(nbeta))
 ################################
 
 model = quote
-	x::scalar
-	x ~ Uniform(-10., 10.)  
+	x::real
+	x ~ Normal(0., 1.)  
 end
 
 include("../src/SimpleMCMC.jl")
@@ -83,6 +83,25 @@ import Distributions.Uniform
 
 myf, np = SimpleMCMC.buildFunction(model)
 eval(myf)
+myf, np = SimpleMCMC.buildFunctionWithGradient(model)
+eval(myf)
 
-__loglik([11.])
-res = SimpleMCMC.simpleRWM(model,100)
+SimpleMCMC.expexp(:( a += b))
+
+__loglik([1.])
+__loglik([1.01])
+
+res = SimpleMCMC.simpleRWM(model,10000)
+
+writedlm("/tmp/dump.txt", res)
+
+################################
+model = quote
+	b::real
+	k::real(5)
+	
+	a = b+6
+	x = sin(dot(k, z))
+
+	x ~ Weibull(a, 2.0)
+end

@@ -23,26 +23,26 @@ For sampling using gradient (simpleHMC), the reverse mode automated derivation i
 
 An example model spec should be enough to illustrate the DSL : 
 
-`
+```
 model = quote
-	b::scalar
-	k::vector(5)
+	b::real
+	k::real(5)
 	
 	a = b+6
 	x = sin(dot(k, z))
 
 	x ~ Weibull(a, 2.0)
 end
-`
+```
 
-- `::` indicates variables to be sampled : `b::scalar` declares a scalar model parameter b, `k::vector(5)` declares a vector k of size 5. The size can be also be an expression as long as it is evaluates to a stricly positive integer (an error will be thrown otherwise).
+- `::` indicates variables to be sampled : `b::real` declares a scalar model parameter b, `k::real(5)` declares a vector k of size 5. The size can be also be an expression as long as it is evaluates to a stricly positive integer (an error will be thrown otherwise).
 - Statements with the operator ~ (`x ~ Weibull(a, 2.0)`) declare how to build the model likelihood, here this says that x should have a Weibull distributions (any continuous distribution of the "Distribution.jl" module can be used for Random Walk Metropolis, sampling methods using the gradient are limited to those with partial derivatives defined) of shape `a` and scale `2`
 - other statements are evaluated normaly and can either use and define model-local variables (`a`, `x`) or use variables defined in the calling environment (`z`)
 
 ## The sampling functions
 Currently, we have `simpleRWM` running a random walk metropolis and `simpleHMC` running an Hamiltonian Monte-Carlo with a reverse mode gradient calculation (for the curious you can run SimpleMCMC.buildFunctionWithGradient(model) to get the generated code).
 
-Calling syntax
+###Calling syntax
 - `simpleRWM(model, steps, burnin, init)` : `init` can either be a vector (same size as the number of parameters) or a real that will be assigned to all parameters
 - `simpleRWM(model, steps, burnin)` : with inital values set to 1.0
 - `simpleRWM(model, steps)` : with burnin equal to half of steps
@@ -51,7 +51,7 @@ Calling syntax
 - `simpleHMC(model, steps, burnin, length, stepsize)` : with inital values set to 1.0
 - `simpleHMC(model, steps, length, stepsize)` : with burnin equal to half of steps
 
-Return value
+###Return value
 A Float64 Matrix with : 
 - the first column containing the log-likelihoog
 - the second column containing a flag indicating acceptance or rejection
@@ -64,7 +64,7 @@ by (steps - burnin) rows.
 
 ### Linear regression
 
-`
+```
 # Generate values
 
 srand(1)
@@ -85,10 +85,10 @@ end
 
 # run random walk metropolis (10000 steps, 500 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000)
-`
+```
 
 ## Issues
-Sometimes calling logpdf(_Distributions_) outside the distribution definition seem to hang Julia, have to look into that...
+Hangs a lot when apparently calling logpdf(_Distributions_) outside the distribution support, have to look into that...
 
 
 ## Ideas for improvements
