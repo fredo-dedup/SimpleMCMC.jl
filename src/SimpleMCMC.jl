@@ -4,7 +4,7 @@ using Base
 
 load("Distributions.jl/src/distributions.jl")  # windows machine
 # require("Distributions") # linux
-using Distributions
+# using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -479,7 +479,7 @@ end
 
 #TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
 #TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
-logpdfNormal(mu, sigma, x) = logpdf(Normal(mu, sigma), x)
+logpdfNormal(mu, sigma, x) = Distributions.logpdf(Normal(mu, sigma), x)
 logpdfWeibull(shape, scale, x) = logpdf(Weibull(shape, scale), x)
 logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
 
