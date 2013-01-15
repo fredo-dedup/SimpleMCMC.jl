@@ -3,9 +3,9 @@ module SimpleMCMC
 using Base
 
 # windows 
-load("../../Distributions.jl/src/distributions.jl")
-push!(args...) = push(args...) # windows julia not up to date
-delete!(args...) = del(args...) # windows julia not up to date
+load("../../Distributions.jl/src/Distributions.jl")
+push!(args...) = push(args...) # windows julia version not up to date
+delete!(args...) = del(args...) # windows julia version not up to date
 
 # linux
 # using Distributions
@@ -43,10 +43,9 @@ for ex in [:equal, :dcolon, :pequal, :call, :block, :ref, :line]
 end
 
 function etype(ex::Expr)
-	#TODO : turn all this in a loop on expression heads
+	#TODO : turn all this into a Dict lookup
 
 	nt = has(emap, ex.head) ? emap[ex.head] : symbol(strcat("Expr", ex.head))
-	# nt = symbol(strcat("SimpleMCMC.", nt))
 	if nt == :Exprequal
 		Exprequal(ex)
 	elseif nt == :Exprpequal
@@ -93,13 +92,13 @@ function parseModel(ex::Expr, gradient::Bool)
 		par = ex.args[1]  # param symbol defined here
 		def = ex.args[2]
 
-		if def == :real  #  simple decl : var::scalar
+		if def == :real  #  single param declaration
 			pmap[par] = :($PARAM_SYM[$(index+1)])
 			index += 1
 
 		elseif isa(def, Expr) && def.head == :call
 			e2 = def.args
-			if e2[1] == :real
+			if e2[1] == :real #  vector param declaration
 				nb = Main.eval(e2[2])
 				assert(isa(nb, Integer) && nb > 0, 
 					"invalid vector size $(e2[2]) = $(nb)")
@@ -161,20 +160,13 @@ function unfold(ex::Expr)
 		for ex2 in ex.args # ex2 = ex.args[1]
 			if isa(ex2, Expr)
 				explore(etype(ex2))
-				# if ex3==nothing
-				# 	# nothing to add
-				# elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
-				# 	al = vcat(al, ex3.args)
-				# else
-				# 	push!(al, ex3)
-				# end
 			else  # is that possible ??
 				push!(el, ex2)
 			end
 		end
 	end
 
-	function explore(ex::Exprequal) # ex = ex2
+	function explore(ex::Exprequal) 
 		lhs = ex.args[1]
 		assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
 			"[unfold] not a symbol on LHS of assigment $(ex)")
@@ -190,7 +182,7 @@ function unfold(ex::Expr)
 		end
 	end
 
-	function explore(ex::Exprcall) # ex = rhs
+	function explore(ex::Exprcall) 
 		na = {ex.args[1]}   # function name
 		args = ex.args[2:end]  # arguments
 
@@ -205,7 +197,7 @@ function unfold(ex::Expr)
 			end
 		end
 
-		for e2 in args  # e2 = args[1]
+		for e2 in args  
 			if isa(e2, Expr) # only refs and calls will work
 				ue = explore(etype(e2))
 				nv = gensym(TEMP_NAME)
@@ -216,7 +208,6 @@ function unfold(ex::Expr)
 			end
 		end
 
-		# return length(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
 		expr(ex.head, na)
 	end
 
@@ -228,8 +219,8 @@ end
 ######### identifies derivation vars (descendants of model parameters)  #############
 # TODO : further filtering to keep only those influencing the accumulator
 # ERROR : add variable renaming when set several times (+ name tracking for accumulator)
-function listVars(ex::Vector, avars) # ex, avars = exparray, keys(pmap)
-	# avars : parameter names whose descendants are to be listed by this function
+function listVars(ex::Vector, avars) 
+	# 'avars' : parameter names whose descendants are to be listed by this function
 
 	getSymbols(ex::Expr) = getSymbols(etype(ex))
 	getSymbols(ex::Symbol) = Set{Symbol}(ex)
@@ -263,23 +254,6 @@ end
 function backwardSweep(ex::Vector, avars::Set{Symbol})
 
 	explore(ex::Exprline) = nothing
-	
-	# function explore(ex::Exprblock)
-	# 	el = {}
-
-	# 	for ex2 in ex.args
-	# 		ex3 = explore(etype(ex2))
-	# 		if ex3==nothing
-	# 			# nothing to add
-	# 		elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
-	# 			el = vcat(el, ex3.args)
-	# 		else
-	# 			push!(el, ex3)
-	# 		end
-	# 		ex3==nothing ? nothing : push!(el, ex3)
-	# 	end
-	# 	expr(:block, reverse(el))
-	# end
 
 	function explore(ex::Exprequal)
 		lhs = ex.args[1]
@@ -314,7 +288,7 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 	end
 
 	el = {}
-	for ex2 in reverse(ex) # ex2 = reverse(exparray)[1]
+	for ex2 in reverse(ex)
 		assert(isa(ex2, Expr), "[backwardSweep] not an expression : $ex2")
 		explore(etype(ex2))
 	end
@@ -328,8 +302,6 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	args = opex.args[2:end]
 	dvs = symbol("$(DERIV_PREFIX)$vs")
 	ds = symbol("$(DERIV_PREFIX)$dsym")
-
-	# println(op, " ", vs, " ", args, " ", dvs, " ", ds)
 
 	# TODO : all the dict expressions are evaluated, should be deferred
 	# TODO : cleanup, factorize this mess
@@ -432,7 +404,7 @@ function buildFunctionWithGradient(model::Expr)
 	avars = listVars(exparray, keys(pmap))
 	dmodel = backwardSweep(exparray, avars)
 
-	# start to build body of function
+	# build body of function
 	body = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
 
 	push!(body, :($ACC_SYM = 0.)) 
@@ -440,7 +412,7 @@ function buildFunctionWithGradient(model::Expr)
 	body = vcat(body, exparray)
 
 	push!(body, :($(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0))
-	for v in delete!(avars, ACC_SYM) # remove accumulator, special treatment needed
+	for v in delete!(avars, ACC_SYM) # remove accumulator, treated above
 		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
 	end
 
@@ -460,23 +432,6 @@ function buildFunctionWithGradient(model::Expr)
 	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
 				expr(:block, body))
 
-	# f = quote
-	# 	function __loglik($PARAM_SYM::Vector{Float64})
-	# 		local $ACC_SYM
-	# 		$(Expr(:block, assigns, Any))
-	# 		# first pass
-	# 		$ACC_SYM = 0.0
-	# 		$model3
-
-	# 		# derivatives init
-	# 		$(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0
-	# 		$(expr(:block, {:($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))) for v in avars}))  
-
-	# 		$dmodel
-	# 		($ACC_SYM, $dexp)
-	# 	end
-	# end
-
 	(func, nparams)
 end
 
@@ -486,52 +441,51 @@ end
 ##########################################################################################
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
-	local beta, nparams
-	local jump, S, eta, SS
 	const local target_alpha = 0.234
 
 	nparams = 10
 
 	# check burnin steps consistency
-	assert(steps >= burnin && burnin >= 0 && steps > 0, "Steps should be >= to burnin, and both positive")
+	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
+	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
+	assert(steps > 0, "Steps ($steps) should be > 0")
 
 	# build function, count the number of parameters
 	ll_func, nparams = buildFunction(model)
-	# create function (in Main !)
-	Main.eval(ll_func)
+	Main.eval(ll_func) # create function in Main !
+	llcall = expr(:call, expr(:., :Main, expr(:quote, LLFUNC_SYM)), :__beta)
 
 	# build the initial values
 	if typeof(init) == Array{Float64,1}
 		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
-		beta = init
+		__beta = init
 	elseif typeof(init) <: Real
-		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
+		__beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
 	else
 		error("cannot assign initial values (should be a Real or vector of Reals)")
 	end
 
 	#  first calc
-	__lp = Main.__loglik(beta)
+	__lp = Main.__loglik(__beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
 
 	S = eye(nparams) # initial value for jump scaling matrix
- 	for i in 1:steps	 # i=1; burnin=10		
- 		# print(i, " old beta = ", round(beta[1],3))
+ 	for i in 1:steps	
+ 		# print(i, " old beta = ", round(__beta[1],3))
 		jump = 0.1 * randn(nparams)
-		oldbeta, beta = beta, beta + S * jump
-		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
+		old__beta, __beta = __beta, __beta + S * jump
+		# print("new beta = ", round(__beta[1], 3), " diag = ", round(diag(S), 3))
 
- 		old__lp, __lp = __lp, Main.__loglik(beta)
+ 		old__lp, __lp = __lp, Main.__loglik(__beta) # eval(llcall)
 
  		alpha = min(1, exp(__lp - old__lp))
 		if rand() > exp(__lp - old__lp)
-			__lp, beta = old__lp, oldbeta
+			__lp, __beta = old__lp, old__beta
 		end
- 		# println("$i : lp= $(round(__lp, 3))")
-		draws[i, :] = vcat(__lp, (old__lp != __lp), beta)
+		draws[i, :] = vcat(__lp, (old__lp != __lp), __beta) # println("$i : lp= $(round(__lp, 3))")
 
 		#  Adaptive scaling using R.A.M. method
 		eta = min(1, nparams*i^(-2/3))
@@ -545,7 +499,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	draws[(burnin+1):steps, :]
 end
 
-simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, max(1, div(steps,2)))
+simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, min(steps-1, div(steps,2)))
 simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
 
 ##########################################################################################
@@ -553,23 +507,30 @@ simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps
 ##########################################################################################
 
 function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
+	# TODO : manage cases when loglik = -Inf in inner loop
+
+	# check burnin steps consistency
+	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
+	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
+	assert(steps > 0, "Steps ($steps) should be > 0")
+
 	# build function, count the number of parameters
 	(ll_func, nparams) = buildFunctionWithGradient(model)
-	# create function (in Main !)
-	Main.eval(ll_func)
+	Main.eval(ll_func) # create function (in Main !)
+	llcall = expr(:call, expr(:., :Main, expr(:quote, LLFUNC_SYM)), :__beta)
 
 	# build the initial values
 	if typeof(init) == Array{Float64,1}
 		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
-		beta = init
+		__beta = init
 	elseif typeof(init) <: Real
-		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
+		__beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
 	else
 		error("cannot assign initial values (should be a Real or vector of Reals)")
 	end
 
 	#  first calc
-	(__lp, grad) = Main.__loglik(beta)
+	(__lp, grad) = Main.__loglik(__beta) # eval(llcall)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
@@ -578,29 +539,25 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
  	for i in 1:steps
  
  		jump0 = randn(nparams)
-		beta0 = beta
+		__beta0 = __beta
 		__lp0 = __lp
 
 		jump = jump0 - stepsize * grad / 2.0
 		for j in 1:(isteps-1)
-			beta += stepsize * jump
-			(__lp, grad) = Main.__loglik(beta)
-			# println("     $j : lp= $(round(__lp, 3))")
+			__beta += stepsize * jump
+			(__lp, grad) = Main.__loglik(__beta) # eval(llcall) # println("     $j : lp= $(round(__lp, 3))")
 			jump += stepsize * grad
 		end
-		beta += stepsize * jump
-		(__lp, grad) = Main.__loglik(beta)
-		# println("     $isteps : lp= $(round(__lp, 3))")
+		__beta += stepsize * jump
+		(__lp, grad) = Main.__loglik(__beta) # eval(llcall) # println("     $isteps : lp= $(round(__lp, 3))")
 		jump -= stepsize * grad / 2.0
 
-		jump = -jump
-		# print("new beta = ", round(beta[1], 3), " diag = ", round(diag(S), 3))
+		jump = -jump # print("new beta = ", round(__beta[1], 3), " diag = ", round(diag(S), 3))
 
 		if rand() > exp((__lp + dot(jump,jump)/2.0) - (__lp0 + dot(jump0,jump0)/2.0))
-			__lp, beta = __lp0, beta0
+			__lp, __beta = __lp0, __beta0
 		end
- 		# println("$i : lp= $(round(__lp, 3))")
-		draws[i, :] = vcat(__lp, (__lp0 != __lp), beta)
+		draws[i, :] = vcat(__lp, (__lp0 != __lp), __beta) # println("$i : lp= $(round(__lp, 3))")
 
 	end
 
@@ -608,7 +565,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 end
 
 simpleHMC(model::Expr, steps::Integer, isteps::Integer, stepsize::Float64) = 
-simpleHMC(model, steps, max(1, div(steps,2)), isteps, stepsize)
+simpleHMC(model, steps, min(steps-1, div(steps,2)), isteps, stepsize)
 simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsize::Float64) = 
 	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
 

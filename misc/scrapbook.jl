@@ -76,20 +76,35 @@ model = quote
 end
 
 include("../src/SimpleMCMC.jl")
-require("Distributions")
+load("../../Distributions.jl/src/Distributions")
 using Distributions
-import Distributions.Uniform
+import Distributions.logpdf
 
 push
-myf, np = SimpleMCMC.buildFunction(model)
 myf, np = SimpleMCMC.buildFunction(model)
 eval(myf)
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 eval(myf)
+SimpleMCMC.expexp(myf)
+SimpleMCMC.expexp(:( Distributions.normal(0,1)))
 
-SimpleMCMC.expexp(:( a += b))
+eval(myf.args[2].args[3])
+__beta = ones(10)
+vars = __beta[1:10]
+__acc = 1.0
+__acc = +(__acc, sum(Distributions.logpdf(Distributions.Normal(0, 1.0), vars)))
+resid = -(Y, *(X, vars))
+__acc = +(__acc, sum(Distributions.logpdf(Distributions.Normal(0, 1.0), resid)))
+return __acc
 
-__loglik([1.])
+
+__loglik(ones(10))
+test = :__loglik
+Main.eval(:( $test(ones(10))))
+SimpleMCMC.expexp(:((Main.($test))(ones(10))))
+
+
+__beta = ones(10)
 __loglik([1.01])
 
 res = SimpleMCMC.simpleRWM(model,10000)
@@ -106,3 +121,10 @@ model = quote
 
 	x ~ Weibull(a, 2.0)
 end
+
+include("../src/SimpleMCMC.jl")
+
+myf, np, pmap = SimpleMCMC.parseModel(model, true)
+dump(myf)
+SimpleMCMC.unfold(myf)
+ex=myf
