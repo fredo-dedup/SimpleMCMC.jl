@@ -2,8 +2,11 @@ module SimpleMCMC
 
 using Base
 
-# load("Distributions.jl/src/distributions.jl")  # windows machine
-using Distributions
+# windows 
+load("../../Distributions.jl/src/distributions.jl")
+push!(args...) = push(args...)
+# linux
+# using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient

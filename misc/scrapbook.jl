@@ -72,7 +72,7 @@ l0, grad = __loglik(ones(nbeta))
 
 model = quote
 	x::scalar
-	x ~ Uniform(-10., 10.)  
+	x ~ Normal(0,1)  
 end
 
 include("../src/SimpleMCMC.jl")
@@ -80,7 +80,8 @@ require("Distributions")
 using Distributions
 import Distributions.Uniform
 
-
+push
+myf, np = SimpleMCMC.buildFunction(model)
 myf, np = SimpleMCMC.buildFunction(model)
 eval(myf)
 
