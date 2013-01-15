@@ -4,7 +4,9 @@ using Base
 
 # windows 
 load("../../Distributions.jl/src/distributions.jl")
-push!(args...) = push(args...)
+push!(args...) = push(args...) # windows julia not up to date
+delete!(args...) = del(args...) # windows julia not up to date
+
 # linux
 # using Distributions
 
@@ -22,9 +24,10 @@ const DERIV_PREFIX = "d"
 
 ##########  creates new types to ease AST exploration  ############
 const emap = [:(=) => :Exprequal,
-			  :(::) => :Exprdcolon]
+			  :(::) => :Exprdcolon,
+			  :(+=) => :Exprpequal]
 
-for ex in [:equal, :dcolon, :call, :block, :ref, :line]
+for ex in [:equal, :dcolon, :pequal, :call, :block, :ref, :line]
 	nt = symbol(strcat("Expr", ex))
 	# println("defining ", nt)
 	eval(quote
@@ -43,6 +46,8 @@ function etype(ex::Expr)
 	# nt = symbol(strcat("SimpleMCMC.", nt))
 	if nt == :Exprequal
 		Exprequal(ex)
+	elseif nt == :Exprpequal
+		Exprpequal(ex)
 	elseif nt == :Exprdcolon
 		Exprdcolon(ex)
 	elseif nt == :Exprblock
@@ -81,10 +86,10 @@ function findParams(ex::Expr)
 		expr(ex.head, al)
 	end
 
-	explore(ex::Exprline) = toExpr(ex)
-	explore(ex::Exprref) = toExpr(ex)
-	explore(ex::Exprcall) = toExpr(ex)
-	explore(ex::Exprequal) = toExpr(ex)
+	explore(ex::Exprline) = nothing  # remove #line statements
+	explore(ex::Exprref) = toExpr(ex) # no processing
+	explore(ex::Exprcall) = toExpr(ex) # no processing
+	explore(ex::Exprequal) = toExpr(ex) # no processing
 
 	function explore(ex::Exprdcolon)
 		assert(typeof(ex.args[1]) == Symbol, 
@@ -92,13 +97,13 @@ function findParams(ex::Expr)
 		par = ex.args[1]  # param symbol defined here
 		def = ex.args[2]
 
-		if def == :scalar  #  simple decl : var::scalar
+		if def == :real  #  simple decl : var::scalar
 			pmap[par] = :($PARAM_SYM[$(index+1)])
 			index += 1
 
 		elseif isa(def, Expr) && def.head == :call
 			e2 = def.args
-			if e2[1] == :vector
+			if e2[1] == :real
 				nb = Main.eval(e2[2])
 				assert(isa(nb, Integer) && nb > 0, 
 					"invalid vector size $(e2[2]) = $(nb)")
@@ -193,12 +198,19 @@ function unfold(ex::Expr)
 
 	explore(ex::Exprline) = nothing
 	explore(ex::Exprref) = toExpr(ex)
+
 	function explore(ex::Exprblock)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
 				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push!(al, ex3)
+				if ex3==nothing
+					# nothing to add
+				elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
+					al = vcat(al, ex3.args)
+				else
+					push!(al, ex3)
+				end
 			else
 				push!(al, ex2)
 			end
@@ -268,6 +280,7 @@ end
 
 ######### identifies derivation vars (descendants of model parameters)  #############
 # TODO : further filtering to keep only those influencing the accumulator
+# ERROR : add variable renaming when set several times (+ name tracking for accuulator)
 function listVars(ex::Expr, avars) # entry function
 	avars = Set{Symbol}(avars...)
 
@@ -307,11 +320,19 @@ function backwardSweep(ex::Expr, avars::Set{Symbol})
 	assert(ex.head == :block, "[backwardSweep] not a block")
 
 	explore(ex::Exprline) = nothing
+	
 	function explore(ex::Exprblock)
 		el = {}
 
 		for ex2 in ex.args
 			ex3 = explore(etype(ex2))
+			if ex3==nothing
+				# nothing to add
+			elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
+				el = vcat(el, ex3.args)
+			else
+				push!(el, ex3)
+			end
 			ex3==nothing ? nothing : push!(el, ex3)
 		end
 		expr(:block, reverse(el))
@@ -408,30 +429,6 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	elseif length(args) == 3 # ternary operators
 		drules_ternary = {
 			:sum  => {ds, ds, ds} #,
-
-			# expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) => {	# mu
-			# 					:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
-			# 				  	# sigma
-			# 		 		  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
-			# 				  	# x
-			# 		 		  	:(sum(- $(args[3]) + $(args[1]) ) / $(args[2]))
-			# 		 		  	},
-
-			# :logpdfUniform => {	# a
-			# 					:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
-			# 					# b
-			# 		 		  	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
-			# 		 		  	# x
-			# 		 		  	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
-			# 		 		  	},
-
-			# :logpdfWeibull => {	# shape
-			# 					:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
-			# 					# scale
-			# 		 		   	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
-			# 		 		   	# x
-			# 		 		   	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
-			# 		 		   	}
 		}
 
 		if isa(op, Symbol)
@@ -444,9 +441,9 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					  	# sigma
 					  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
 					  	# x
-					  	:((- $(args[3]) + $(args[1]) ) ./ $(args[2]))
+					  	:(($(args[1]) - $(args[3]) ) ./ $(args[2]))
 					}
-			return :($dvs += $(rules[index]) )
+			return :($dvs += $(rules[index]) .* $ds)
 
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform))
 			rules = {	# a
@@ -456,7 +453,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					 	# x
 					 	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
 					}
-			return :($dvs += $(rules[index]) )
+			return :($dvs += $(rules[index]) .* $ds)
 
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull))
 			rules = {	# shape
@@ -466,7 +463,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 					 	# x
 					 	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
 					}
-			return :($dvs += $(rules[index]) )
+			return :($dvs += $(rules[index]) .* $ds)
 
 		else
 			error("[derive] Doesn't know how to derive ternary operator $op")	
@@ -679,7 +676,7 @@ simpleHMC(model, steps, max(1, div(steps,2)), isteps, stepsize)
 simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsize::Float64) = 
 	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
 
-##########  helper function  to analyse expressions   #############
+##########  helper function to analyse expressions   #############
 
 function expexp(ex::Expr, ident...)
 	ident = (length(ident)==0 ? 0 : ident[1])::Integer
