@@ -15,6 +15,7 @@ export buildFunction, buildFunctionWithGradient
 
 const ACC_SYM = :__acc
 const PARAM_SYM = :__beta
+const LLFUNC_SYM = :__loglik
 const TEMP_NAME = "tmp"
 const DERIV_PREFIX = "d"
 
@@ -42,6 +43,8 @@ for ex in [:equal, :dcolon, :pequal, :call, :block, :ref, :line]
 end
 
 function etype(ex::Expr)
+	#TODO : turn all this in a loop on expression heads
+
 	nt = has(emap, ex.head) ? emap[ex.head] : symbol(strcat("Expr", ex.head))
 	# nt = symbol(strcat("SimpleMCMC.", nt))
 	if nt == :Exprequal
@@ -61,17 +64,15 @@ function etype(ex::Expr)
 	else
 		error("[etype] unmapped expr type $(ex.head)")
 	end
-
-	#TODO : turn all this in a loop on expression heads
-	# f = eval(e,t) -> t(e)
-	# f(ex, nt)
-	# (type(nt))(ex)
-	# eval(:(((e,t)->(t)(e))($(expr(:quote, ex)), nt)))
-	# eval(:( $nt($(expr(:quote, ex))) ))
 end
 
-######### extracts model parameters from model expression  #############
-function findParams(ex::Expr)
+######### parses model to extracts parameters and rewrite ~ operators #############
+function parseModel(ex::Expr, gradient::Bool)
+	# 'gradient' specifies if gradient is to be calculated later because it affects ~ translation
+
+	explore(ex::Exprline) = nothing  # remove #line statements
+	explore(ex::Exprref) = toExpr(ex) # no processing
+	explore(ex::Exprequal) = toExpr(ex) # no processing
 
 	function explore(ex::Exprblock)
 		al = {}
@@ -85,11 +86,6 @@ function findParams(ex::Expr)
 		end
 		expr(ex.head, al)
 	end
-
-	explore(ex::Exprline) = nothing  # remove #line statements
-	explore(ex::Exprref) = toExpr(ex) # no processing
-	explore(ex::Exprcall) = toExpr(ex) # no processing
-	explore(ex::Exprequal) = toExpr(ex) # no processing
 
 	function explore(ex::Exprdcolon)
 		assert(typeof(ex.args[1]) == Symbol, 
@@ -119,6 +115,25 @@ function findParams(ex::Expr)
 		nothing
 	end
 
+	function explore(ex::Exprcall)
+		ex.args[1] == :~ ? nothing : return toExpr(ex)
+
+		if gradient
+			fn = symbol("logpdf$(ex.args[3].args[1])")
+			args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
+			args = vcat(args, ex.args[3].args[2:end])
+			push!(args, ex.args[2])
+			return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
+
+		else	
+			args = {expr(:., :Distributions, expr(:quote, symbol("logpdf"))),
+					expr(:call, expr(:., :Distributions, expr(:quote, ex.args[3].args[1])), ex.args[3].args[2:end]...),
+					ex.args[2]}
+			return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
+		end
+
+	end
+
 	pmap = Dict{Symbol, Expr}()
 	index = 0
 
@@ -126,127 +141,63 @@ function findParams(ex::Expr)
 	(ex, index, pmap)
 end
 
-######### translates ~ expressions into equivalent log-likelihood accumulator #############
-function translateTilde(ex::Expr)
+###############  hooks into Distributions library  ###################
 
-	explore(ex::Exprline) = nothing
-	explore(ex::Exprref) = toExpr(ex)
-	explore(ex::Exprequal) = toExpr(ex)
+#TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
+#TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
+logpdfNormal(mu, sigma, x) = Distributions.logpdf(Distributions.Normal(mu, sigma), x)
+logpdfWeibull(shape, scale, x) = Distributions.logpdf(Distributions.Weibull(shape, scale), x)
+logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
 
-	function explore(ex::Exprblock)
-		al = {}
-		for ex2 in ex.args
-			if isa(ex2, Expr)
-				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push!(al, ex3)
-			else
-				push!(al, ex2)
-			end
-		end
-		expr(:block, al)
-	end
 
-	function explore(ex::Exprcall)
-		ex.args[1] == :~ ? nothing : return toExpr(ex)
-
-		return :($ACC_SYM = $ACC_SYM + sum(logpdf($(ex.args[3]), $(ex.args[2]))))
-	end
-
-	explore(etype(ex))
-end
-
-# slightly different behaviour if model gradient is to be calculated
-# TODO : unify
-function translateTilde2(ex::Expr)
-
-	explore(ex::Exprline) = nothing
-	explore(ex::Exprref) = toExpr(ex)
-	explore(ex::Exprequal) = toExpr(ex)
-
-	function explore(ex::Exprblock)
-		al = {}
-		for ex2 in ex.args
-			if isa(ex2, Expr)
-				ex3 = explore(etype(ex2))
-				ex3==nothing ? nothing : push!(al, ex3)
-			else
-				push!(al, ex2)
-			end
-		end
-		expr(:block, al)
-	end
-
-	function explore(ex::Exprcall)
-		ex.args[1] == :~ ? nothing : return toExpr(ex)
-
-		fn = symbol("logpdf$(ex.args[3].args[1])")
-		args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
-		# cat(args, ex.args[3].args[2:end])
-		# push!(args, ex.args[2])
-		for a in ex.args[3].args[2:end]
-			push!(args, a)
-		end
-		push!(args, ex.args[2])
-		return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
-	end
-
-	explore(etype(ex))
-end
-
-######## unfolds expression before derivation ###################
+######## unfolds expressions to prepare derivation ###################
 function unfold(ex::Expr)
+	# TODO : assumes there is only refs or calls within equal expressions, improve (add blocks ?)
 
 	explore(ex::Exprline) = nothing
 	explore(ex::Exprref) = toExpr(ex)
 
 	function explore(ex::Exprblock)
-		al = {}
-		for ex2 in ex.args
+		for ex2 in ex.args # ex2 = ex.args[1]
 			if isa(ex2, Expr)
-				ex3 = explore(etype(ex2))
-				if ex3==nothing
-					# nothing to add
-				elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
-					al = vcat(al, ex3.args)
-				else
-					push!(al, ex3)
-				end
-			else
-				push!(al, ex2)
+				explore(etype(ex2))
+				# if ex3==nothing
+				# 	# nothing to add
+				# elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
+				# 	al = vcat(al, ex3.args)
+				# else
+				# 	push!(al, ex3)
+				# end
+			else  # is that possible ??
+				push!(el, ex2)
 			end
 		end
-		expr(ex.head, al)
 	end
 
-	function explore(ex::Exprequal)
+	function explore(ex::Exprequal) # ex = ex2
 		lhs = ex.args[1]
 		assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
 			"[unfold] not a symbol on LHS of assigment $(ex)")
 
 		rhs = ex.args[2]
 		if isa(rhs, Symbol)
-			return expr(:(=), lhs, rhs)
-		elseif isa(rhs, Expr)
-			ue = explore(etype(rhs))
-			if isa(ue, Expr)
-				return expr(:(=), lhs, rhs)
-			elseif isa(ue, Tuple)
-				lb = push!(ue[1], :($lhs = $(ue[2])))
-				return expr(:block, lb)
-			end
+			push!(el, expr(:(=), lhs, rhs))
+		elseif isa(rhs, Expr) # only refs and calls will work
+				ue = explore(etype(rhs)) # explore will return something in this case
+				push!(el, expr(:(=), lhs, ue))
 		else  # unmanaged kind of lhs
 		 	error("[unfold] can't handle RHS of assignment $ex")
 		end
 	end
 
-	function explore(ex::Exprcall)
+	function explore(ex::Exprcall) # ex = rhs
 		na = {ex.args[1]}   # function name
 		args = ex.args[2:end]  # arguments
 
 		# if more than 2 arguments, +, sum and * are converted  to nested expressions
 		#  (easier for derivation)
 		# TODO : apply to other n-ary (n>2) operators ?
-		if contains([:+, :*, :sum], na) 
+		if contains([:+, :*, :sum], na[1]) 
 			while length(args) > 2
 				a2 = pop(args)
 				a1 = pop(args)
@@ -254,38 +205,34 @@ function unfold(ex::Expr)
 			end
 		end
 
-		lb = {}
-		for e2 in args  # e2 = args[2]
-			if isa(e2, Expr)
+		for e2 in args  # e2 = args[1]
+			if isa(e2, Expr) # only refs and calls will work
 				ue = explore(etype(e2))
-				if isa(ue, Tuple)
-					append!(lb, ue[1])
-					lp = ue[2]
-				else
-					lp = ue
-				end
 				nv = gensym(TEMP_NAME)
-				push!(lb, :($nv = $(lp)))
+				push!(el, :($nv = $(ue)))
 				push!(na, nv)
 			else
 				push!(na, e2)
 			end
 		end
 
-		return length(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
+		# return length(lb)==0 ? expr(ex.head, na) : (lb, expr(ex.head, na))
+		expr(ex.head, na)
 	end
 
+	el = {}
 	explore(etype(ex))
+	el
 end
 
 ######### identifies derivation vars (descendants of model parameters)  #############
 # TODO : further filtering to keep only those influencing the accumulator
-# ERROR : add variable renaming when set several times (+ name tracking for accuulator)
-function listVars(ex::Expr, avars) # entry function
-	avars = Set{Symbol}(avars...)
+# ERROR : add variable renaming when set several times (+ name tracking for accumulator)
+function listVars(ex::Vector, avars) # ex, avars = exparray, keys(pmap)
+	# avars : parameter names whose descendants are to be listed by this function
 
-	getSymbols(ex::Symbol) = Set{Symbol}(ex)
 	getSymbols(ex::Expr) = getSymbols(etype(ex))
+	getSymbols(ex::Symbol) = Set{Symbol}(ex)
 	getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
 	getSymbols(ex::Any) = Set{Symbol}()
 
@@ -297,53 +244,48 @@ function listVars(ex::Expr, avars) # entry function
 		sl
 	end
 
-	function explore(ex::Exprequal)
-		lhs = getSymbols(ex.args[1])
-		rhs = getSymbols(ex.args[2])
+	avars = Set{Symbol}(avars...)
+	for ex2 in ex # ex2 = ex[1]
+		assert(isa(ex2, Expr), "[processVars] not an expression : $ex2")
+
+		lhs = getSymbols(ex2.args[1])
+		rhs = getSymbols(ex2.args[2])
 
 		if length(intersect(rhs, avars)) > 0 
 			 avars = union(avars, lhs)
 		end
 	end
 
-	explore(ex::Exprline) = nothing
-	explore(ex::Exprref) = nothing
-	explore(ex::Exprdcolon) = nothing
-	explore(ex::Exprblock) = map(x->explore(etype(x)), ex.args)
-
-	explore(etype(ex))
 	avars
 end
 
 ######### builds the gradient expression from unfolded expression ##############
-function backwardSweep(ex::Expr, avars::Set{Symbol})
-	assert(ex.head == :block, "[backwardSweep] not a block")
+function backwardSweep(ex::Vector, avars::Set{Symbol})
 
 	explore(ex::Exprline) = nothing
 	
-	function explore(ex::Exprblock)
-		el = {}
+	# function explore(ex::Exprblock)
+	# 	el = {}
 
-		for ex2 in ex.args
-			ex3 = explore(etype(ex2))
-			if ex3==nothing
-				# nothing to add
-			elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
-				el = vcat(el, ex3.args)
-			else
-				push!(el, ex3)
-			end
-			ex3==nothing ? nothing : push!(el, ex3)
-		end
-		expr(:block, reverse(el))
-	end
+	# 	for ex2 in ex.args
+	# 		ex3 = explore(etype(ex2))
+	# 		if ex3==nothing
+	# 			# nothing to add
+	# 		elseif isa(etype(ex3), Exprblock) # if block insert block args instead of block expr
+	# 			el = vcat(el, ex3.args)
+	# 		else
+	# 			push!(el, ex3)
+	# 		end
+	# 		ex3==nothing ? nothing : push!(el, ex3)
+	# 	end
+	# 	expr(:block, reverse(el))
+	# end
 
 	function explore(ex::Exprequal)
 		lhs = ex.args[1]
 		if isa(lhs,Symbol) # simple var case
 			dsym = lhs
 		elseif isa(lhs,Expr) && lhs.head == :ref  # vars with []
-			#dsym = expr(:ref, symbol("$(lhs.args[1])$(lhs.args[2])")
 			dsym = lhs
 		else
 			error("[backwardSweep] not a symbol on LHS of assigment $(e)") 
@@ -353,36 +295,31 @@ function backwardSweep(ex::Expr, avars::Set{Symbol})
 		dsym2 = symbol("$(DERIV_PREFIX)$dsym")
 		if isa(rhs,Symbol) 
 			vsym2 = symbol("$(DERIV_PREFIX)$rhs")
-			return :( $vsym2 = $dsym2)
+			push!(el, :( $vsym2 = $dsym2))
 			
 		elseif isa(etype(rhs), Exprref)
-			vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), 
-				rhs.args[2])
-			#symbol("$(DERIV_PREFIX)$rhs")
-			return :( $vsym2 = $dsym2)
+			vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2])
+			push!(el, :( $vsym2 = $dsym2))
 
 		elseif isa(etype(rhs), Exprcall)  
-			el = {}
 			for i in 2:length(rhs.args) #i=3
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
-				# derive(rhs, 1, :($(dsym)))
 					push!(el, derive(rhs, i-1, dsym))
 				end
 			end
-			if length(el) == 0
-				return nothing
-			elseif length(el) == 1
-				return el[1]
-			else
-				return expr(:block, el)
-			end
-		else # TODO manage ref expressions
+		else 
 			error("[backwardSweep] can't derive $rhs")
 		end
 	end
 
-	explore(etype(ex))
+	el = {}
+	for ex2 in reverse(ex) # ex2 = reverse(exparray)[1]
+		assert(isa(ex2, Expr), "[backwardSweep] not an expression : $ex2")
+		explore(etype(ex2))
+	end
+
+	el
 end
 
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
@@ -474,45 +411,40 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	end
 end
 
-###############  hooks into Distributions library  ###################
-
-#TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
-#TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
-logpdfNormal(mu, sigma, x) = Distributions.logpdf(Normal(mu, sigma), x)
-logpdfWeibull(shape, scale, x) = logpdf(Weibull(shape, scale), x)
-logpdfUniform(a, b, x) = logpdf(Distributions.Uniform(a, b), x)
 
 ######### builds the full functions ##############
 
 function buildFunction(model::Expr)
-	
-	(model2, nparams, pmap) = findParams(model)
-	model3 = translateTilde(model2)
+	(model2, nparams, pmap) = parseModel(model, false)
 
-	assigns = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
-	f = quote
-		function __loglik($PARAM_SYM::Vector{Float64})
-			local $ACC_SYM
-			$(Expr(:block, assigns, Any))
-			$ACC_SYM = 0.0
-			$model3
-			return($ACC_SYM)
-		end
-	end
+	assigns = {expr(:(=), k, v) for (k,v) in pairs(pmap)}
 
-	(f, nparams)
+	body = expr(:block, vcat(assigns, {:($ACC_SYM = 0.)}, model2.args, {:(return($ACC_SYM))}))
+	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	body)
+
+	(func, nparams)
 end
 
 function buildFunctionWithGradient(model::Expr)
 	
-	(model2, nparams, pmap) = findParams(model)
-	model3 = translateTilde(model2)
-	model4 = translateTilde2(model2)
-	model4 = unfold(model4)
-	avars = listVars(model4, keys(pmap))
-	dmodel = backwardSweep(model4, avars)
+	(model2, nparams, pmap) = parseModel(model, true)
+	exparray = unfold(model2)
+	avars = listVars(exparray, keys(pmap))
+	dmodel = backwardSweep(exparray, avars)
 
-	assigns = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
+	# start to build body of function
+	body = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
+
+	push!(body, :($ACC_SYM = 0.)) 
+
+	body = vcat(body, exparray)
+
+	push!(body, :($(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0))
+	for v in delete!(avars, ACC_SYM) # remove accumulator, special treatment needed
+		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
+	end
+
+	body = vcat(body, dmodel)
 
 	if length(pmap) == 1
 		dexp = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
@@ -522,26 +454,30 @@ function buildFunctionWithGradient(model::Expr)
 		dexp = expr(:call, dexp)
 	end
 
-	delete!(avars, ACC_SYM) # remove accumulator, special treatment needed
+	push!(body, :(($ACC_SYM, $dexp)))
 
-	f = quote
-		function __loglik($PARAM_SYM::Vector{Float64})
-			local $ACC_SYM
-			$(Expr(:block, assigns, Any))
-			# first pass
-			$ACC_SYM = 0.
-			$model4
+	# build function
+	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
+				expr(:block, body))
 
-			# derivatives init
-			$(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0
-			$(expr(:block, {:($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))) for v in avars}))  
+	# f = quote
+	# 	function __loglik($PARAM_SYM::Vector{Float64})
+	# 		local $ACC_SYM
+	# 		$(Expr(:block, assigns, Any))
+	# 		# first pass
+	# 		$ACC_SYM = 0.0
+	# 		$model3
 
-			$dmodel
-			($ACC_SYM, $dexp)
-		end
-	end
+	# 		# derivatives init
+	# 		$(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0
+	# 		$(expr(:block, {:($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))) for v in avars}))  
 
-	(f, nparams)
+	# 		$dmodel
+	# 		($ACC_SYM, $dexp)
+	# 	end
+	# end
+
+	(func, nparams)
 end
 
 
