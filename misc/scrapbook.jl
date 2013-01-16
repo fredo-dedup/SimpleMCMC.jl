@@ -107,8 +107,10 @@ SimpleMCMC.expexp(:((Main.($test))(ones(10))))
 __beta = ones(10)
 __loglik([1.01])
 
-res = SimpleMCMC.simpleRWM(model,10000)
 
+res = SimpleMCMC.simpleRWM(model,10000)
+res = SimpleMCMC.simpleHMC(model, 10000, 2, 0.1)
+res = SimpleMCMC.simpleHMC(model, 10000, 4, 5e-3)
 writedlm("/tmp/dump.txt", res)
 
 ################################
@@ -128,3 +130,23 @@ myf, np, pmap = SimpleMCMC.parseModel(model, true)
 dump(myf)
 SimpleMCMC.unfold(myf)
 ex=myf
+
+
+
+	(model2, nparams, pmap) = SimpleMCMC.parseModel(model, true)
+	exparray = SimpleMCMC.unfold(model2)
+	avars = SimpleMCMC.listVars(exparray, keys(pmap))
+	dmodel = SimpleMCMC.backwardSweep(exparray, avars)
+
+	# build body of function
+	body = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
+
+	push!(body, :($(SimpleMCMC.ACC_SYM) = 0.)) 
+
+	body = vcat(body, exparray)
+
+	push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$(SimpleMCMC.ACC_SYM)")) = 1.0))
+	delete!(avars, SimpleMCMC.ACC_SYM) # remove accumulator, treated above
+	for v in avars
+		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
+	end

@@ -76,7 +76,7 @@ Y = X * beta0 + randn((n,))
 
 # define model
 model = quote
-	vars::vector(nbeta)
+	vars::real(nbeta)
 
 	vars ~ Normal(0, 1.0)  # Normal prior, variance 1.0 for predictors
 	resid = Y - X * vars
