@@ -16,7 +16,6 @@ For sampling without gradient (simpleRWM), basically the full Julia language can
 For sampling using gradient (simpleHMC), the reverse mode automated derivation implemented in this library adds significant limits : 
 - No control flow operators (if, for loops, ..) are currently possible. These will necessitate a bit more work on the parsing functions. Note that very often for loops can be replaced by matrix/vector operations (see examples) so this may not be such a big limitation.
 - Only a subset of julia's operators and functions can be derived (an error message will appear otherwise). The list can easily be extended though.
-- The gradient will probably be false if the same variable is set several times within the model.
 - If reference within vector/matrix depends directly or indirectly on a model parameter (for example  `shift = X[ round(sigma)]` ) , the gradient will be false.
 - Only a few of the continuous distributions of the 'Distributions' library are implemented : Normal, Uniform and Weibull. The list can easily be extended here too.
 
