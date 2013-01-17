@@ -3,12 +3,12 @@ module SimpleMCMC
 using Base
 
 # windows 
-load("../../Distributions.jl/src/Distributions.jl")
-push!(args...) = push(args...) # windows julia version not up to date
-delete!(args...) = del(args...) # windows julia version not up to date
+# load("../../Distributions.jl/src/Distributions.jl")
+# push!(args...) = push(args...) # windows julia version not up to date
+# delete!(args...) = del(args...) # windows julia version not up to date
 
 # linux
-# using Distributions
+using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -63,6 +63,20 @@ function etype(ex::Expr)
 	else
 		error("[etype] unmapped expr type $(ex.head)")
 	end
+end
+
+##########  helper function to get symbols appearing in AST ############
+getSymbols(ex::Expr) = getSymbols(etype(ex))
+getSymbols(ex::Symbol) = Set{Symbol}(ex)
+getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
+getSymbols(ex::Any) = Set{Symbol}()
+
+function getSymbols(ex::Exprcall)
+	sl = Set{Symbol}()
+	for ex2 in ex.args[2:end]
+		sl = union(sl, getSymbols(ex2))
+	end
+	sl
 end
 
 ######### parses model to extracts parameters and rewrite ~ operators #############
@@ -213,6 +227,27 @@ function unfold(ex::Expr)
 
 	el = {}
 	explore(etype(ex))
+
+	# before returning, rename variable set several times as this would make
+	#  the automated derivation fail
+	subst = Dict{Symbol, Symbol}()
+	used = {}
+	for ex2 in el # ex2 = exparray[3]
+		lhs = getSymbols(ex2.args[1])[1]  # there should be only one
+		rhs = getSymbols(ex2.args[2])
+
+		print("$ex2  ($lhs/$rhs)")
+		if has(used, lhs) # var already set once
+			avars = union(avars, lhs)
+			println("found reused $lhs")
+		else # var set for the first time
+			push(used, lhs)
+			println("adding $lhs")
+		end
+		lhs = getSymbol(ex2.args[1])
+		if has()
+	end
+
 	el
 end
 
@@ -412,7 +447,8 @@ function buildFunctionWithGradient(model::Expr)
 	body = vcat(body, exparray)
 
 	push!(body, :($(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0))
-	for v in delete!(avars, ACC_SYM) # remove accumulator, treated above
+	delete!(avars, ACC_SYM)
+	for v in avars # remove accumulator, treated above
 		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
 	end
 

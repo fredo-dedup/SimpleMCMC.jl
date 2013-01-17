@@ -16,7 +16,7 @@ end
 
 # define model
 model = quote
-	vars::vector(nbeta)
+	vars::real(nbeta)
 
 	vars ~ Normal(0, 1.0)  # Normal prior, variance 1.0 for predictors
 	resid = Y - ( 1 / (1. + exp(X * vars)) )
