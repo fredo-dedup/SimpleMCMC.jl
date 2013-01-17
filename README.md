@@ -85,14 +85,16 @@ end
 
 # run random walk metropolis (10000 steps, 500 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000)
+# or a Hamiltonian Monte-Carlo (with 5 inner steps of size 0.1)
+res = SimpleMCMC.simpleHMC(model, 1000, 5, 1e-1)
 ```
 
 ## Issues
-Hangs a lot when apparently calling logpdf(_Distributions_) outside the distribution support, have to look into that...
-
+- Hangs a lot when apparently calling logpdf(_Distributions_) outside the distribution support, have to look into that...
+- Gradient generated code is not optimized, could be better...
 
 ## Ideas for improvements
-- Build a serious /test directory
+- Build a serious test directory
 - Add adaptative algorithms for simpleHMC for inner steps and stepsize parameters (using NUTS ?)
 - Convert the set of jags/bugs examples, run them and compare timings
 - See if optimizing the generated gradient code is possible
