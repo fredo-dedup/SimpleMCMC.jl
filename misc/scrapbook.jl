@@ -150,3 +150,43 @@ ex=myf
 	for v in avars
 		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
 	end
+
+
+############################################################################
+
+model = quote
+    b::real(3)
+    
+    b[2] ~ Normal(0,1)
+    z = b * X
+    z ~ Weibull(a, 2.0)
+end
+
+include("../src/SimpleMCMC.jl")
+
+(model2, nparams, pmap) = SimpleMCMC.parseModel(model, true)
+exparray = SimpleMCMC.unfold(model2)
+    avars = listVars(exparray, keys(pmap))
+    dmodel = backwardSweep(exparray, avars)
+
+
+
+    subst = Dict{Symbol, Symbol}()
+    used = {}
+    for ex2 in el # ex2 = exparray[1]
+        lhs = SimpleMCMC.getSymbols(ex2.args[1])[1]  # there should be only one
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+
+        print("$ex2  ($lhs/$rhs)")
+        if has(used, lhs) # var already set once
+            avars = union(avars, lhs)
+            println("found reused $lhs")
+        else # var set for the first time
+            push(used, lhs)
+            println("adding $lhs")
+        end
+        lhs = getSymbol(ex2.args[1])
+        if has()
+    end
+
+

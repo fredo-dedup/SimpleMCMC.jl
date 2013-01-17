@@ -3,12 +3,12 @@ module SimpleMCMC
 using Base
 
 # windows 
-# load("../../Distributions.jl/src/Distributions.jl")
-# push!(args...) = push(args...) # windows julia version not up to date
-# delete!(args...) = del(args...) # windows julia version not up to date
+load("../../Distributions.jl/src/Distributions.jl")
+push!(args...) = push(args...) # windows julia version not up to date
+delete!(args...) = del(args...) # windows julia version not up to date
 
 # linux
-using Distributions
+# using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -230,23 +230,23 @@ function unfold(ex::Expr)
 
 	# before returning, rename variable set several times as this would make
 	#  the automated derivation fail
-	subst = Dict{Symbol, Symbol}()
-	used = {}
-	for ex2 in el # ex2 = exparray[3]
-		lhs = getSymbols(ex2.args[1])[1]  # there should be only one
-		rhs = getSymbols(ex2.args[2])
+	# subst = Dict{Symbol, Symbol}()
+	# used = {}
+	# for ex2 in el # ex2 = exparray[3]
+	# 	lhs = getSymbols(ex2.args[1])[1]  # there should be only one
+	# 	rhs = getSymbols(ex2.args[2])
 
-		print("$ex2  ($lhs/$rhs)")
-		if has(used, lhs) # var already set once
-			avars = union(avars, lhs)
-			println("found reused $lhs")
-		else # var set for the first time
-			push(used, lhs)
-			println("adding $lhs")
-		end
-		lhs = getSymbol(ex2.args[1])
-		if has()
-	end
+	# 	print("$ex2  ($lhs/$rhs)")
+	# 	if has(used, lhs) # var already set once
+	# 		avars = union(avars, lhs)
+	# 		println("found reused $lhs")
+	# 	else # var set for the first time
+	# 		push(used, lhs)
+	# 		println("adding $lhs")
+	# 	end
+	# 	lhs = getSymbol(ex2.args[1])
+		
+	# end
 
 	el
 end
@@ -256,20 +256,6 @@ end
 # ERROR : add variable renaming when set several times (+ name tracking for accumulator)
 function listVars(ex::Vector, avars) 
 	# 'avars' : parameter names whose descendants are to be listed by this function
-
-	getSymbols(ex::Expr) = getSymbols(etype(ex))
-	getSymbols(ex::Symbol) = Set{Symbol}(ex)
-	getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
-	getSymbols(ex::Any) = Set{Symbol}()
-
-	function getSymbols(ex::Exprcall)
-		sl = Set{Symbol}()
-		for ex2 in ex.args[2:end]
-			sl = union(sl, getSymbols(ex2))
-		end
-		sl
-	end
-
 	avars = Set{Symbol}(avars...)
 	for ex2 in ex # ex2 = ex[1]
 		assert(isa(ex2, Expr), "[processVars] not an expression : $ex2")
