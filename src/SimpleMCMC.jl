@@ -3,12 +3,12 @@ module SimpleMCMC
 using Base
 
 # windows 
-load("../../Distributions.jl/src/Distributions.jl")
-push!(args...) = push(args...) # windows julia version not up to date
-delete!(args...) = del(args...) # windows julia version not up to date
+# load("../../Distributions.jl/src/Distributions.jl")
+# push!(args...) = push(args...) # windows julia version not up to date
+# delete!(args...) = del(args...) # windows julia version not up to date
 
 # linux
-# using Distributions
+using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -191,6 +191,8 @@ function unfold(ex::Expr)
 		elseif isa(rhs, Expr) # only refs and calls will work
 				ue = explore(etype(rhs)) # explore will return something in this case
 				push!(el, expr(:(=), lhs, ue))
+		elseif isa(rhs, Real)
+			push!(el, expr(:(=), lhs, rhs))
 		else  # unmanaged kind of lhs
 		 	error("[unfold] can't handle RHS of assignment $ex")
 		end
@@ -230,25 +232,56 @@ function unfold(ex::Expr)
 
 	# before returning, rename variable set several times as this would make
 	#  the automated derivation fail
-	# subst = Dict{Symbol, Symbol}()
-	# used = {}
-	# for ex2 in el # ex2 = exparray[3]
-	# 	lhs = getSymbols(ex2.args[1])[1]  # there should be only one
-	# 	rhs = getSymbols(ex2.args[2])
+    subst = Dict{Symbol, Symbol}()
+    used = [ACC_SYM]
+    for idx in 1:length(el) 
+    	ex2 = el[idx]
+        lhs = elements(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
 
-	# 	print("$ex2  ($lhs/$rhs)")
-	# 	if has(used, lhs) # var already set once
-	# 		avars = union(avars, lhs)
-	# 		println("found reused $lhs")
-	# 	else # var set for the first time
-	# 		push(used, lhs)
-	# 		println("adding $lhs")
-	# 	end
-	# 	lhs = getSymbol(ex2.args[1])
-		
-	# end
+        if isa(etype(el[idx]), Exprequal)
+        	if isa(el[idx].args[2], Symbol) # simple assign
+        		if has(subst, el[idx].args[2])
+        			el[idx].args[2] = subst[el[idx].args[2]]
+        		end
+        	elseif isa(el[idx].args[2], Real) # if number do nothing
+        	elseif isa(etype(el[idx].args[2]), Exprref) # simple assign of a ref
+        		if has(subst, el[idx].args[2].args[1])
+        			el[idx].args[2].args[1] = subst[el[idx].args[2].args[1]]
+        		end
+        	elseif isa(etype(el[idx].args[2]), Exprcall) # function call
+        		for i in 2:length(el[idx].args[2].args) # i=4
+	        		if has(subst, el[idx].args[2].args[i])
+	        			el[idx].args[2].args[i] = subst[el[idx].args[2].args[i]]
+	        		end
+	        	end
+	        else
+	        	error("[unfold] can't subsitute var name in $ex2")
+	        end
+	    else
+	    	error("[unfold] not an assignment ! : $ex2")
+	    end
 
-	el
+        if contains(used, lhs) # var already set once
+            subst[lhs] = gensym("$lhs")
+        	if isa(el[idx].args[1], Symbol) # simple assign
+        		if has(subst, el[idx].args[1])
+        			el[idx].args[1] = subst[el[idx].args[1]]
+        		end
+        	elseif isa(etype(el[idx].args[1]), Exprref) # simple assign of a ref
+        		if has(subst, el[idx].args[1].args[1])
+        			el[idx].args[1].args[1] = subst[el[idx].args[1].args[1]]
+        		end
+	        else
+	        	error("[unfold] can't subsitute var name in $lhs")
+	        end
+        else # var set for the first time
+            push!(used, lhs)
+        end
+
+    end
+
+	(el, has(subst, ACC_SYM) ? subst[ACC_SYM] : ACC_SYM )
 end
 
 ######### identifies derivation vars (descendants of model parameters)  #############
@@ -421,7 +454,7 @@ end
 function buildFunctionWithGradient(model::Expr)
 	
 	(model2, nparams, pmap) = parseModel(model, true)
-	exparray = unfold(model2)
+	exparray, finalacc = unfold(model2)
 	avars = listVars(exparray, keys(pmap))
 	dmodel = backwardSweep(exparray, avars)
 
@@ -432,8 +465,10 @@ function buildFunctionWithGradient(model::Expr)
 
 	body = vcat(body, exparray)
 
-	push!(body, :($(symbol("$DERIV_PREFIX$ACC_SYM")) = 1.0))
-	delete!(avars, ACC_SYM)
+	push!(body, :($(symbol("$DERIV_PREFIX$finalacc")) = 1.0))
+	if contains(avars, finalacc)
+		delete!(avars, finalacc)
+	end
 	for v in avars # remove accumulator, treated above
 		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
 	end
@@ -448,7 +483,7 @@ function buildFunctionWithGradient(model::Expr)
 		dexp = expr(:call, dexp)
 	end
 
-	push!(body, :(($ACC_SYM, $dexp)))
+	push!(body, :(($finalacc, $dexp)))
 
 	# build function
 	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	

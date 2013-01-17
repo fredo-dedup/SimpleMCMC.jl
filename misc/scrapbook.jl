@@ -34,12 +34,13 @@ Y = [1., 2, 3, 4]
 X = [0. 1; 0 1; 1 1; 1 2]
 
 model = quote
-	vars::vector(2)
+	vars::real(2)
 
 	resid = Y - X * vars
 	resid ~ Normal(0, 1.0)  
 end
 
+include("../src/SimpleMCMC.jl")
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 eval(myf)
 
@@ -124,6 +125,7 @@ model = quote
 	x ~ Weibull(a, 2.0)
 end
 
+SimpleMCMC.buildFunctionWithGradient(model)
 include("../src/SimpleMCMC.jl")
 
 myf, np, pmap = SimpleMCMC.parseModel(model, true)
@@ -159,7 +161,9 @@ model = quote
     
     b[2] ~ Normal(0,1)
     z = b * X
-    z ~ Weibull(a, 2.0)
+    z = 4
+    y = z
+    z ~  Uniform(4,z,y)
 end
 
 include("../src/SimpleMCMC.jl")
@@ -169,24 +173,55 @@ exparray = SimpleMCMC.unfold(model2)
     avars = listVars(exparray, keys(pmap))
     dmodel = backwardSweep(exparray, avars)
 
-
-
     subst = Dict{Symbol, Symbol}()
-    used = {}
-    for ex2 in el # ex2 = exparray[1]
-        lhs = SimpleMCMC.getSymbols(ex2.args[1])[1]  # there should be only one
+    used = Array(Symbol,0)
+    el = copy(exparray)
+    for idx in 1:length(el) # idx, el = 8, exparray
+    	ex2 = el[idx]
+        lhs = elements(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
         rhs = SimpleMCMC.getSymbols(ex2.args[2])
 
-        print("$ex2  ($lhs/$rhs)")
-        if has(used, lhs) # var already set once
-            avars = union(avars, lhs)
-            println("found reused $lhs")
+        if isa(etype(el[idx]), Exprequal)
+        	if isa(el[idx].args[2], Symbol) # simple assign
+        		if has(subst, el[idx].args[2])
+        			el[idx].args[2] = subst[el[idx].args[2]]
+        		end
+        	elseif isa(el[idx].args[2], Real) # if number do nothing
+        	elseif isa(etype(el[idx].args[2]), Exprref) # simple assign of a ref
+        		if has(subst, el[idx].args[2].args[1])
+        			el[idx].args[2].args[1] = subst[el[idx].args[2].args[1]]
+        		end
+        	elseif isa(etype(el[idx].args[2]), Exprcall) # function call
+        		for i in 2:length(el[idx].args[2].args) # i=4
+	        		if has(subst, el[idx].args[2].args[i])
+	        			el[idx].args[2].args[i] = subst[el[idx].args[2].args[i]]
+	        		end
+	        	end
+	        else
+	        	error("[unfold] can't subsitute var name in $ex2")
+	        end
+	    else
+	    	error("[unfold] not an assignment ! : $ex2")
+	    end
+
+        if contains(used, lhs) # var already set once
+            subst[lhs] = gensym("$lhs")
+        	if isa(el[idx].args[1], Symbol) # simple assign
+        		if has(subst, el[idx].args[1])
+        			el[idx].args[1] = subst[el[idx].args[1]]
+        		end
+        	elseif isa(etype(el[idx].args[1]), Exprref) # simple assign of a ref
+        		if has(subst, el[idx].args[1].args[1])
+        			el[idx].args[1].args[1] = subst[el[idx].args[1].args[1]]
+        		end
+	        else
+	        	error("[unfold] can't subsitute var name in $lhs")
+	        end
         else # var set for the first time
-            push(used, lhs)
-            println("adding $lhs")
+            push!(used, lhs)
         end
-        lhs = getSymbol(ex2.args[1])
-        if has()
+
     end
 
-
+exparray 
+el
