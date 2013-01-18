@@ -1,33 +1,11 @@
- load("pkg")
+load("pkg")
 
- Pkg.init()
+Pkg.init()
 
 Pkg.add("Distributions")
 Pkg.update("Distributions")
+Pkg.add("DataFrames")
 
-
-whos()
-
-
-model = quote
-	x::scalar
-
-	resid = (x-2)*(x-1)
-	resid ~ Normal(0, 0.01)  
-end
-
-myf, np = SimpleMCMC.buildFunctionWithGradient(model)
-np
-myf
-
-eval(myf)
-
-l0, grad = __loglik([1.])
-l0, grad = __loglik([1.01])
-l0, grad = __loglik([2.])
-l0, grad = __loglik([2.01])
-l0, grad = __loglik([1.99])
-l0, grad = __loglik([1.01])
 
 ################################
 Y = [1., 2, 3, 4]
@@ -47,27 +25,86 @@ eval(myf)
 res = SimpleMCMC.simpleHMC(model,100, 5, 1.5, 10, 0.1)
 
 l0, grad = __loglik(ones(2))
-
 [ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]
 
 
-vars = ones(2)
-resid=Y - X * vars
-dresid = zeros(4)
-dresid += /(sum(+(-(resid),0)),1.0)
-dvars = zeros(2) 
-dvars += transpose(X) * dresid
-
-
 ################################
+using Distributions
+
+begin
+    srand(1)
+    n = 1000
+    hor = rand(Gamma(2,100), n)
+    x0 = rand(Uniform(0,1), n)
+    target0 = 0.25
+    tau0 = 100
+    y = target0 + (x0 - target0) .* exp(- hor / tau0) + rand(Normal(0,0.5),n)
+end
+
+model = quote
+    target::real
+    tau::real
+    sigma::real
+
+    pred = target + (x0 - target) .* exp(- hor / tau)
+    resid = y - pred
+    resid ~ Normal(0, sigma)  
+end
+
+res = SimpleMCMC.simpleRWM(model, 1000, 50, [0.5, 50, 1.])
+
+mean(res[:,2])
+
+res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.1)
 
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 eval(myf)
 
+l0, grad = __loglik(ones(3))
+[ [ (beta=ones(np) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:np] grad]
+
 l0, grad = __loglik(ones(nbeta))
 [ [ (beta=ones(nbeta) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:nbeta ] grad]
 
-
+        target = 1.0
+        tau = 1.0
+        sigma = 1.0
+        __acc = 0.0
+        __tmp_210 = -(x0,target)
+        __tmp_211 = -(hor)
+        __tmp_212 = /(__tmp_211,tau)
+        __tmp_213 = exp(__tmp_212)
+        __tmp_214 = .*(__tmp_210,__tmp_213)
+        pred = +(target,__tmp_214)
+        resid = -(y,pred)
+        __tmp_215 = SimpleMCMC.logpdfNormal(0,sigma,resid)
+        __tmp_216 = sum(__tmp_215)
+        ____acc_217 = +(__acc,__tmp_216)
+        d____acc_217 = 1.0
+        d__tmp_210 = zero(__tmp_210)
+        dtarget = zero(target)
+        d__tmp_215 = zero(__tmp_215)
+        dresid = zero(resid)
+        d__tmp_216 = zero(__tmp_216)
+        dtau = zero(tau)
+        d__tmp_212 = zero(__tmp_212)
+        dsigma = zero(sigma)
+        d__tmp_213 = zero(__tmp_213)
+        d__tmp_214 = zero(__tmp_214)
+        dpred = zero(pred)
+        d__tmp_216 += d____acc_217
+        d__tmp_215 += d__tmp_216
+        dsigma += .*(/(sum(-(./(.^(-(resid,0),2),^(sigma,2)),1.0)),sigma),d__tmp_215)
+        dresid += .*(./(-(0,resid),sigma),d__tmp_215)
+        dpred += -(dresid)
+        dtarget += dpred
+        d__tmp_214 += dpred
+        d__tmp_210 += *(sum(__tmp_213),d__tmp_214)
+        d__tmp_213 += *(sum(__tmp_210),d__tmp_214)
+        d__tmp_212 += .*(exp(__tmp_212),d__tmp_213)
+        dtau += .*(./(-(__tmp_211),.*(tau,tau)),d__tmp_212)
+        dtarget += -(d__tmp_210)
+        (____acc_217,vcat(dtarget,dtau,dsigma))
 
 ################################
 
