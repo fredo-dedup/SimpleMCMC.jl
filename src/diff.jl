@@ -7,22 +7,6 @@
 # TODO : include target size info
 # TODO : include input size info
 
-abstract sumop
-abstract plusop
-abstract minusop
-
-const tmap = {
-	:- => Minusop,
-	:+ => Plusop,
-	:
-}
-diff(e::Sumop) = $ds
-diff(e::Prodop) = index == 1 ? :($ds * transpose($a2)) : :(transpose($a1) * $ds)
-diff(e::Dotop) = index == 1 ? :(sum($a2) * $ds) : :(sum($a1) * $ds)
-
-:($prepare(e)) +=*  => {:($ds * transpose($(args[2]))), 
-					:(transpose($(args[1])) * $ds)},
-
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	op = opex.args[1]  # operator
 	vs = opex.args[1+index]
@@ -30,84 +14,78 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	dvs = symbol("$(DERIV_PREFIX)$vs")
 	ds = symbol("$(DERIV_PREFIX)$dsym")
 
-	# TODO : all the dict expressions are evaluated, should be deferred
-	# TODO : cleanup, factorize this mess
-	if length(args) == 1 # unary operators
-		drules_unary = {
-			:- => :(-$ds),
-			:log => :($ds ./ $vs),
-			:sum => ds,
-			:sin => :(cos($vs) .* $ds),
-			:exp => :(exp($vs) .* $ds)
-		}
+	dexp =  
+		if op == :+
+			ds
 
-		assert(has(drules_unary, op), "[derive] Doesn't know how to derive unary operator $op")
-		return :($dvs += $(drules_unary[op]) )
+		if op == :sum # TODO : check this
+			????
 
-	elseif length(args) == 2 # binary operators
-		drules_binary = {
-			:-  => {ds, :(-$ds)},
-			:+  => {ds, ds},
-			:sum  => {ds, ds},
-			:*  => {:($ds * transpose($(args[2]))), 
-					:(transpose($(args[1])) * $ds)},
-			:(.*)  => {:(sum($(args[2])) * $ds), :(sum($(args[1])) * $ds)},
-			:dot => {:(sum($(args[2])) * $ds), 
-					 :(sum($(args[1])) * $ds)},
-			:^ => {:($(args[2]) * $vs ^ ($(args[2])-1) * $ds),
-				   :(log($(args[1])) * $(args[1]) ^ $vs * $ds)},
-			:/ => {:($vs ./ $(args[2]) .* $ds),
-				   :(- $(args[1]) ./ ($vs .* $vs) .* $ds)}
-		}
+		if op == :log
+			:($ds ./ $vs)
 
-		assert(has(drules_binary, op), "[derive] Doesn't know how to derive binary operator $op")
-		return :($dvs += $(drules_binary[op][index]) )
+		if op == :sin
+			:(cos($vs) .* $ds)
 
-	elseif length(args) == 3 # ternary operators
-		drules_ternary = {
-			:sum  => {ds, ds, ds} #,
-		}
+		if op == :cos
+			:(-sin($vs) .* $ds)
 
-		if isa(op, Symbol)
-			assert(has(drules_ternary, op), "[derive] Doesn't know how to derive ternary operator $op")
-			return :($dvs += $(drules_ternary[op][index]) )
+		if op == :exp
+			:(exp($vs) .* $ds)
 
-		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal))
-			rules = {	# mu
-						:(sum($(args[3]) - $(args[1]) ) / $(args[2])),
-					  	# sigma
-					  	:(sum( ($(args[3]) - $(args[1])).^2 ./ $(args[2])^2 - 1.0) / $(args[2])),
-					  	# x
-					  	:(($(args[1]) - $(args[3]) ) ./ $(args[2]))
-					}
-			return :($dvs += $(rules[index]) .* $ds)
+		elseif op == :- && length(args) == 1
+			:(-$ds)
 
-		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform))
-			rules = {	# a
-						:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ))), 
-						# b
-					 	:(sum( log( -($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ (($(args[2]) - $(args[1])).^2.0) ) )),
-					 	# x
-					 	:(sum( log( ($(args[1]) <= $(args[3]) <= $(args[2]) ? 1.0 : 0.0) ./ ($(args[2]) - $(args[1])) ) ))
-					}
-			return :($dvs += $(rules[index]) .* $ds)
+		elseif op == :- && length(args) == 2
+			index == 1 ? ds : :(-$ds)
 
-		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull))
-			rules = {	# shape
-						:(sum( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* log($(args[3])./$(args[2])) + 1./$(args[1]))), 
-						# scale
-					 	:(sum( (($(args[3])./$(args[2])).^$(args[1]) - 1.0) .* $(args[1]) ./ $(args[2]))),
-					 	# x
-					 	:(sum( ( (1.0 - ($(args[3])./$(args[2])).^$(args[1])) .* $(args[1]) -1.0) ./ $(args[3])))
-					}
-			return :($dvs += $(rules[index]) .* $ds)
+		elseif op == :*
+			index == 1 ? :($ds * transpose($a2)) : :(transpose($a1) * $ds)
 
+		elseif op == :^
+			index == 1 ? :($a2 * $vs ^ ($a2-1) * $ds) : :(log($a1) * $a1 ^ $vs * $ds)
+
+		elseif op == :/
+			index == 1 ? :($vs ./ $a2 .* $ds) : :(- $a1 ./ ($vs .* $vs) .* $ds)
+
+		elseif op == :dot
+			index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
+
+		elseif op == :.*  # TODO : check this
+			index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
+
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) #TODO : error
+			if index == 1 # mu
+				:(sum($a3 - $a1 ) / $a2),
+			elseif index == 2 # sigma
+				:(sum( ($a3 - $a1).^2 ./ $a2^2 - 1.0) / $a2)
+			else # x  
+				:(($a1 - $a3 ) ./ $a2)
+			end
+		
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform)) #TODO : error
+			if index == 1 # a   # TODO ( ? : ) vectorized ??
+				:(sum( log( ($a1 .<= $a3 .<= $a2 ? 1.0 : 0.0) ./ (($a2 - $a1).^2.0) ))), 
+			elseif index == 2 # b
+			 	:(sum( log( -($a1 .<= $a3 .<= $a2 ? 1.0 : 0.0) ./ (($a2 - $a1).^2.0) ) )),
+			else # x  
+			 	:(sum( log( ($a1 .<= $a3 .<= $a2 ? 1.0 : 0.0) ./ ($a2 - $a1) ) ))
+			end
+		
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull)) #TODO : error
+			if index == 1 # shape
+				:(sum( (1.0 - ($a3./$a2).^$a1) .* log($a3./$a2) + 1./$a1)), 
+			elseif index == 2 # scale
+			 	:(sum( (($a3./$a2).^$a1 - 1.0) .* $a1 ./ $a2)),
+			else # x  
+			 	:(sum( ( (1.0 - ($a3./$a2).^$a1) .* $a1 -1.0) ./ $a3))
+			end
+		
 		else
-			error("[derive] Doesn't know how to derive ternary operator $op")	
+			error("[derive] Doesn't know how to derive binary operator $op")
 		end
 
-	else
-		error("[derive] Doesn't know how to derive n-ary operator $op")
-	end
+
+	return :($dvs += $dexp )
 end
 

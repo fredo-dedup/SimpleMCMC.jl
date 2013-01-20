@@ -286,7 +286,6 @@ end
 
 ######### identifies derivation vars (descendants of model parameters)  #############
 # TODO : further filtering to keep only those influencing the accumulator
-# ERROR : add variable renaming when set several times (+ name tracking for accumulator)
 function listVars(ex::Vector, avars) 
 	# 'avars' : parameter names whose descendants are to be listed by this function
 	avars = Set{Symbol}(avars...)
