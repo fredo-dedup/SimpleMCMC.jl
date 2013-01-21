@@ -1,7 +1,6 @@
 ######### logistic regression on 1000 obs x 10 var  ###########
 
-include("../src/SimpleMCMC.jl")
-
+require("../src/SimpleMCMC.jl")
 using Distributions
 
 # simulate dataset

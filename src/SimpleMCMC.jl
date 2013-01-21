@@ -1,9 +1,8 @@
 module SimpleMCMC
 
-using Base
 
 @unix_only begin
-	using Distributions
+	require("Distributions")
 
 	#  include model processing functions		
 	include("parsing.jl")
@@ -13,7 +12,7 @@ using Base
 end
 
 @windows_only begin  # older version on my side requires a few tweaks
-	include("../../Distributions.jl/src/Distributions.jl")
+	require("../../Distributions.jl/src/Distributions.jl")
 	
 	push!(args...) = push(args...) # windows julia version not up to date
 	delete!(args...) = del(args...) # windows julia version not up to date
@@ -24,6 +23,12 @@ end
 	#  include derivatives definitions
 	include("../src/diff.jl")
 end
+
+
+import Distributions.logpdf
+import 	Distributions.Normal, 
+		Distributions.Uniform, 
+		Distributions.Weibull 
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -169,17 +174,6 @@ simpleHMC(model::Expr, steps::Integer, isteps::Integer, stepsize::Float64) =
 simpleHMC(model, steps, min(steps-1, div(steps,2)), isteps, stepsize)
 simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsize::Float64) = 
 	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
-
-##########  helper function to analyse expressions   #############
-
-function expexp(ex::Expr, ident...)
-	ident = (length(ident)==0 ? 0 : ident[1])::Integer
-	println(rpad("", ident, " "), ex.head, " -> ")
-	for e in ex.args
-		typeof(e)==Expr ? expexp(e, ident+3) : println(rpad("", ident+3, " "), "[", typeof(e), "] : ", e)
-	end
-end
-
 
 
 

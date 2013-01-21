@@ -86,6 +86,10 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 			 	:(sum( ( (1.0 - ($a3./$a2).^$a1) .* $a1 -1.0) ./ $a3))
 			end
 		
+		#  fake distribution to test gradient code
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfTestDiff)) 
+			ds
+		
 		else
 			error("[derive] Doesn't know how to derive operator $op")
 		end
