@@ -1,6 +1,6 @@
 ######### linear regression 1000 obs x 10 var  ###########
 
-load("../src/SimpleMCMC.jl")
+require("../src/SimpleMCMC.jl")
 
 # windows
 load("../../Distributions.jl/src/Distributions.jl")
@@ -28,7 +28,7 @@ model = quote
 end
 
 # run random walk metropolis (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleRWM(model, 1000)
+res = SimpleMCMC.simpleRWM(model, 10000)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
 

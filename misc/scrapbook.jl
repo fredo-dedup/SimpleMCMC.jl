@@ -15,7 +15,7 @@ model = quote
 	resid ~ Normal(0, 1.0)  
 end
 
-include("../../Distributions.jl/src/Distributions.jl")
+require("../src/SimpleMCMC.jl")
 include("../src/SimpleMCMC.jl")
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 eval(myf)
@@ -25,7 +25,24 @@ res = SimpleMCMC.simpleHMC(model,100, 5, 1.5, 10, 0.1)
 l0, grad = __loglik(ones(2))
 [ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]
 
-include(find_in_path("foo"))
+################################
+model = :(vars::real; x = 2*vars; x ~ TestDiff())
+
+myf, np = SimpleMCMC.buildFunctionWithGradient(model)
+eval(myf)
+
+l0, grad = __loglik(ones(1))
+l0, grad = __loglik([-1.])
+
+model = :(vars::real(3); x = 2*vars; x ~ TestDiff())
+
+myf, np = SimpleMCMC.buildFunctionWithGradient(model)
+eval(myf)
+
+l0, grad = __loglik(ones(3))
+l0, grad = __loglik([-1.,2,3])
+
+
 ################################
 using Distributions
 
