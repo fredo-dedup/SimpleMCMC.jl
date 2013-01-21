@@ -3,12 +3,12 @@ module SimpleMCMC
 using Base
 
 # windows 
-# load("../../Distributions.jl/src/Distributions.jl")
-# push!(args...) = push(args...) # windows julia version not up to date
-# delete!(args...) = del(args...) # windows julia version not up to date
+load("../../Distributions.jl/src/Distributions.jl")
+push!(args...) = push(args...) # windows julia version not up to date
+delete!(args...) = del(args...) # windows julia version not up to date
 
 # linux
-using Distributions
+# using Distributions
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -44,7 +44,7 @@ end
 
 function etype(ex::Expr)
 	#TODO : turn all this into a Dict lookup
-
+	println(ex)
 	nt = has(emap, ex.head) ? emap[ex.head] : symbol(strcat("Expr", ex.head))
 	if nt == :Exprequal
 		Exprequal(ex)
@@ -230,7 +230,7 @@ function unfold(ex::Expr)
 	el = {}
 	explore(etype(ex))
 
-	# before returning, rename variable set several times as this would make
+	# before returning, rename variables set several times as this would make
 	#  the automated derivation fail
     subst = Dict{Symbol, Symbol}()
     used = [ACC_SYM]
@@ -286,7 +286,6 @@ end
 
 ######### identifies derivation vars (descendants of model parameters)  #############
 # TODO : further filtering to keep only those influencing the accumulator
-# ERROR : add variable renaming when set several times (+ name tracking for accumulator)
 function listVars(ex::Vector, avars) 
 	# 'avars' : parameter names whose descendants are to be listed by this function
 	avars = Set{Symbol}(avars...)
