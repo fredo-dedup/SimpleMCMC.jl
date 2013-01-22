@@ -20,7 +20,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	# TODO : turn into a loop
 
 	dexp =  
-		if op == :+
+		if op == :+  # ERROR : false if length(vs) = 1 and length(ds) > 1
 			ds
 
 		elseif op == :sum 

@@ -12,7 +12,7 @@ module SimpleMCMC
 end
 
 @windows_only begin  # older version on my side requires a few tweaks
-	require("../../Distributions.jl/src/Distributions.jl")
+	require("../../.julia/Distributions.jl/src/Distributions.jl")
 	
 	push!(args...) = push(args...) # windows julia version not up to date
 	delete!(args...) = del(args...) # windows julia version not up to date

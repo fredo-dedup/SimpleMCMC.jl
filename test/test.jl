@@ -4,46 +4,79 @@
 
 require("../src/SimpleMCMC.jl")
 
-const DIFF_DELTA = 1e-10
-const ERROR_THRESHOLD = 1e-5
-
-l0, grad = __loglik(ones(2))
-[ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]
+DIFF_DELTA = 1e-8
+ERROR_THRESHOLD = 1e-3
 
 ############# derivative checking function  ######################
 
-function test1(e::Expr, x0::Float64)
-	model = :(x::real; y = $e; y ~ TestDiff())
+function test1(ex::Expr, x0::Float64) #  ex= :(2*x) ; x0 = 2.
+	model = :(x::real; y = $ex; y ~ TestDiff())
 
 	myf, np = SimpleMCMC.buildFunctionWithGradient(model)
-	eval(myf)
+	ex2 = myf.args[2].args
 
-	l0, grad0 = __loglik(ones(1)*x0)
-	l, grad = __loglik(ones(1)*x0 + DIFF_DELTA)
-	assert(abs((l-l0)/delta - grad0) < ERROR_THRESHOLD, "Diff error on expression $e")
+	cex = expr(:block, vcat({:(__beta = [$x0])}, ex2))
+	# println("<<<<\n$cex\n>>>>")
+	l0, grad0 = eval(cex)  #  __loglik([x0])
+	print("=====  $l0   ===== $grad0 =====")
+
+	cex = expr(:block, vcat({:(__beta = [$(x0+DIFF_DELTA)])}, ex2))
+	# println("<<<<\n$cex\n>>>>")
+	l, grad = eval(cex) # __loglik([x0] + DIFF_DELTA)
+	gradn = (l-l0)/DIFF_DELTA
+	println("  $gradn  ======")
+	assert(abs(gradn - grad0) < ERROR_THRESHOLD, "Diff error on expression $ex at x=$x0")
 end
 
-test1(e::Expr) = test1(e, 1.0)
+test1(e::Expr, v::Vector{Float64}) = (for x in v; test1(e, x);end)
 
 ################################
 
-test1(:(2*x))
-test1(:(2*x), 2.)
+__loglik = nothing
+test1(:(2+x), [-1., 0, 1, 10])
+test1(:(x+4), [-1., 0, 1, 10])
 
-test1(:(x^2))
-test1(:(x^2), 4.)
-test1(:(x^2), -1.)
+test1(:(2-x), [-1., 0, 1, 10])
+test1(:(x-2), [-1., 0, 1, 10])
+test1(:(-x), [-1., 0, 1, 10])
 
-test1(:(2^x))
-test1(:(2^x), )
-test1(:(2^x))
-test1(:(2^x))
-test1(:(2+x))
-test1(:(x+2))
-test1(:(log(x)))
-test1(:(exp(x)))
-test1(:(sin(x)))
-test1(:(cos(x)))
+test1(:(2*x), [-1., 0, 1, 10])
+test1(:(x*2), [-1., 0, 1, 10])
 
+test1(:(2/x), [-1., 0.1, 1, 10])
+test1(:(x/2), [-1., 0, 1, 10])
 
-[ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]
+test1(:(sum(x,2)), [-1., 0, 1, 10])
+test1(:(sum(2,x)), [-1., 0, 1, 10])
+
+test1(:(dot(x,2)), [-1., 0, 1, 10])
+test1(:(dot(2,x)), [-1., 0, 1, 10])
+
+test1(:(x.*2), [-1., 0, 1, 10])
+test1(:(2.*x), [-1., 0, 1, 10])
+
+test1(:(log(x)), [0.001, 1, 10])
+test1(:(exp(x)), [-1., 0, 1, 10])
+
+res = __loglik([-10.])
+dump(res)
+res[2]
+exp(2)
+
+test1(:(sin(x)), [-1., 0, 1])
+test1(:(cos(x)), [-1., 0, 1])
+
+test1(:(sin(x)), [-1., 0, 1])
+test1(:(cos(x)), [-1., 0, 1])
+
+test1(:(SimpleMCMC.logpdfNormal(0, 1, x)), [-1., 0, 1])
+test1(:(SimpleMCMC.logpdfNormal(0, x, 1)), [0.5, 1, 10])
+test1(:(SimpleMCMC.logpdfNormal(x, 1, 0)), [-1., 1, 10])
+
+test1(:(SimpleMCMC.logpdfWeibull(0, 1, x)), [-1., 0, 1])
+test1(:(SimpleMCMC.logpdfNormal(0, x, 1)), [0.5, 1, 10])
+test1(:(SimpleMCMC.logpdfNormal(x, 1, 0)), [-1., 1, 10])
+
+SimpleMCMC.logpdfWeibull(0, 1, -1.)
+
+# [ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]

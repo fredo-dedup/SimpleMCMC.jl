@@ -304,12 +304,16 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 		rhs = ex.args[2]
 		dsym2 = symbol("$(DERIV_PREFIX)$dsym")
 		if isa(rhs,Symbol) 
-			vsym2 = symbol("$(DERIV_PREFIX)$rhs")
-			push!(el, :( $vsym2 = $dsym2))
-			
+			if contains(avars, rhs)
+				vsym2 = symbol("$(DERIV_PREFIX)$rhs")
+				push!(el, :( $vsym2 = $dsym2))
+			end
+
 		elseif isa(etype(rhs), Exprref)
-			vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2])
-			push!(el, :( $vsym2 = $dsym2))
+			if contains(avars, rhs.args[1])
+				vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2])
+				push!(el, :( $vsym2 = $dsym2))
+			end
 
 		elseif isa(etype(rhs), Exprcall)  
 			for i in 2:length(rhs.args) #i=3
