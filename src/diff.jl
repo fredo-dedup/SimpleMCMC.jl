@@ -23,8 +23,8 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 		if op == :+  # ERROR : false if length(vs) = 1 and length(ds) > 1
 			ds
 
-		elseif op == :sum 
-			ds
+		elseif op == :sum # ERROR : false if length(vs) 
+			:($ds ./ length($vs))
 
 		elseif op == :log
 			:($ds ./ $vs)
@@ -51,7 +51,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 			index == 1 ? :($a2 * $vs ^ ($a2-1) * $ds) : :(log($a1) * $a1 ^ $vs * $ds)
 
 		elseif op == :/
-			index == 1 ? :($vs ./ $a2 .* $ds) : :(- $a1 ./ ($vs .* $vs) .* $ds)
+			index == 1 ? :($ds ./ $a2) : :(- $a1 ./ ($vs .* $vs) .* $ds)
 
 		elseif op == :dot
 			index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
@@ -61,20 +61,20 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) #TODO : error
 			if index == 1 # mu
-				:(sum($a3 - $a1 ) / $a2)
+				:( ($a3 - $a1 ) ./ $a2 )
 			elseif index == 2 # sigma
-				:(sum( ($a3 - $a1).^2 ./ $a2^2 - 1.0) / $a2)
+				:( (($a3 - $a1).^2 ./ $a2^2 - 1.0) / $a2)
 			else # x  
-				:(($a1 - $a3 ) ./ $a2)
+				:( ($a1 - $a3 ) ./ $a2 )
 			end
 		
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform)) #TODO : error
 			if index == 1 # a   # TODO ( ? : ) vectorized ??
-				:(sum( log( ($a1 .<= $a3 .<= $a2 ? 1.0 : 0.0) ./ (($a2 - $a1).^2.0) )))
+				:( log( ([$a1 .<= $a3 .<= $a2] .* 1.0) ./ (($a2 - $a1).^2.0) ) )
 			elseif index == 2 # b
-			 	:(sum( log( -($a1 .<= $a3 .<= $a2 ? 1.0 : 0.0) ./ (($a2 - $a1).^2.0) ) ))
+			 	:( log( -([$a1 .<= $a3 .<= $a2] .* 1.0) ./ (($a2 - $a1).^2.0) ) )
 			else # x  
-			 	:(sum( log( ($a1 .<= $a3 .<= $a2 ? 1.0 : 0.0) ./ ($a2 - $a1) ) ))
+			 	:(0.0)
 			end
 		
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull)) #TODO : error
