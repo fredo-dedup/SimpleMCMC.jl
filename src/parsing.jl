@@ -114,13 +114,13 @@ function parseModel(ex::Expr, gradient::Bool)
 			args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
 			args = vcat(args, ex.args[3].args[2:end])
 			push!(args, ex.args[2])
-			return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
+			return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 
 		else	
 			args = {expr(:., :Distributions, expr(:quote, symbol("logpdf"))),
 					expr(:call, expr(:., :Distributions, expr(:quote, ex.args[3].args[1])), ex.args[3].args[2:end]...),
 					ex.args[2]}
-			return :($ACC_SYM = $ACC_SYM + sum($(expr(:call, args))))
+			return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 		end
 
 	end
@@ -140,10 +140,10 @@ end
 # logpdfWeibull(shape, scale, x) = Distributions.logpdf(Distributions.Weibull(shape, scale), x)
 # logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
 
-logpdfNormal(mu, sigma, x) = logpdf(Normal(mu, sigma), x)
-logpdfWeibull(shape, scale, x) = logpdf(Weibull(shape, scale), x)
-logpdfUniform(a, b, x) = logpdf(Uniform(a, b), x)
-logpdfTestDiff(x) = x
+logpdfNormal(mu, sigma, x) = 		sum([ logpdf(Normal(mu, sigma), x) ])  # brackets to manage case where logpdf=-Inf
+logpdfWeibull(shape, scale, x) = 	sum([ logpdf(Weibull(shape, scale), x) ])
+logpdfUniform(a, b, x) = 			sum([ logpdf(Uniform(a, b), x) ])
+logpdfTestDiff(x) = x  # dummy distrib for testing
 
 
 ######## unfolds expressions to prepare derivation ###################
