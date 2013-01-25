@@ -70,9 +70,9 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 		
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform)) #TODO : error
 			if index == 1 # a   # TODO ( ? : ) vectorized ??
-				:( log( ([$a1 .<= $a3 .<= $a2] .* 1.0) ./ (($a2 - $a1).^2.0) ) )
+				:( dot(([$a1 .<= $a3 .<= $a2] .* 1.0), [1 ./ ($a2 - $a1)]) )
 			elseif index == 2 # b
-			 	:( log( -([$a1 .<= $a3 .<= $a2] .* 1.0) ./ (($a2 - $a1).^2.0) ) )
+			 	:( dot(([$a1 .<= $a3 .<= $a2] .* 1.0), [-1 ./ ($a2 - $a1)]) )
 			else # x  
 			 	:(0.0)
 			end
