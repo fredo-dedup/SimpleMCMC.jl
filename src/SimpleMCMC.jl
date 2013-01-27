@@ -1,6 +1,5 @@
 module SimpleMCMC
 
-println(" SM 1 ======"); whos(); println("========")
 @unix_only begin
 	require("Distributions")
 
@@ -24,14 +23,12 @@ end
 	include("../src/diff.jl")
 end
 
-println(" SM 2 ======"); whos(); println("========")
 
 import 	Distributions.logpdf
 import 	Distributions.Normal, 
 		Distributions.Uniform, 
 		Distributions.Weibull 
 
-println(" SM 3 ======"); whos(); println("========")
 
 export simpleRWM, simpleHMC
 export buildFunction, buildFunctionWithGradient
@@ -42,8 +39,6 @@ const PARAM_SYM = :__beta
 const LLFUNC_SYM = :__loglik
 const TEMP_NAME = "tmp"
 const DERIV_PREFIX = "d"
-
-println(" SM 4 ======"); whos(); println("========")
 
 
 ##########################################################################################

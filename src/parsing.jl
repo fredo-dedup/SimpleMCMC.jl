@@ -132,18 +132,6 @@ function parseModel(ex::Expr, gradient::Bool)
 	(ex, index, pmap)
 end
 
-###############  hooks into Distributions library  ###################
-
-#TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
-#TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
-# logpdfNormal(mu, sigma, x) = Distributions.logpdf(Distributions.Normal(mu, sigma), x)
-# logpdfWeibull(shape, scale, x) = Distributions.logpdf(Distributions.Weibull(shape, scale), x)
-# logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
-
-logpdfNormal(mu, sigma, x) = 		sum([ logpdf(Normal(mu, sigma), x) ])  # brackets to manage case where logpdf=-Inf
-logpdfWeibull(shape, scale, x) = 	sum([ logpdf(Weibull(shape, scale), x) ])
-logpdfUniform(a, b, x) = 			sum([ logpdf(Uniform(a, b), x) ])
-logpdfTestDiff(x) = x  # dummy distrib for testing
 
 
 ######## unfolds expressions to prepare derivation ###################
