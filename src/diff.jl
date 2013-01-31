@@ -22,11 +22,11 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	# TODO : turn into a loop
 
 	dexp =  
-		if op == :+  # ERROR : false if length(vs) = 1 and length(ds) > 1
-			ds
+		if op == :+  
+			:(isa($vs, Real) ? sum($ds) : $ds)
 
-		elseif op == :sum # ERROR : false if length(vs) 
-			:($ds ./ length($vs))
+		elseif op == :sum 
+			ds
 
 		elseif op == :log
 			:($ds ./ $vs)
@@ -44,50 +44,80 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 			:(-$ds)
 
 		elseif op == :- && length(args) == 2
-			index == 1 ? ds : :(-$ds)
+			if index == 1 
+				:(isa($a1, Real) ? sum($ds) : $ds)
+			else
+				:(isa($a2, Real) ? -sum($ds) : -$ds)
+			end
 
 		elseif op == :*
-			index == 1 ? :($ds * $a2') : :($a1' * $ds)
+			if index == 1 
+				:(isa($a1, Real) ? dot([$ds], [$a2]) : $ds * $a2')
+			else
+				:(isa($a2, Real) ? dot([$ds], [$a1]) : $a1' * $ds)
+			end
+			# index == 1 ? :($ds * $a2') : :($a1' * $ds)
 
-		elseif op == :^
-			index == 1 ? :($a2 * $vs ^ ($a2-1) * $ds) : :(log($a1) * $a1 ^ $vs * $ds)
+		elseif op == :.*  
+			if index == 1 
+				:(isa($a1, Real) ? dot([$ds], [$a2]) : $ds .* $a2)
+			else
+				:(isa($a2, Real) ? dot([$ds], [$a1]) : $ds .* $a1)
+			end
+			# index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
 
-		elseif op == :/
-			index == 1 ? :($ds ./ $a2) : :(- $a1 ./ ($vs .* $vs) .* $ds)
+		elseif op == :^ # Both args reals
+			index == 1 ? :($a2 * $a1 ^ ($a2-1) * $ds) : :(log($a1) * $a1 ^ $a2 * $ds)
+
+		elseif op == :.^
+			if index == 1 
+				:(isa($a1, Real) ? sum([$a2 .* $a1 .^ ($a2-1) .* $ds]) : $a2 .* $a1 .^ ($a2-1) .* $ds)
+			else
+				:(isa($a2, Real) ? sum([log($a1) .* $a1 .^ $a2 .* $ds]) : log($a1) .* $a1 .^ $a2 .* $ds)
+			end
+
+		elseif op == :/ # Note that this will not work if both args are arrays but without warning
+			if index == 1 
+				:(isa($a1, Real) ? sum([$ds ./ $a2]) : $ds ./ $a2 )
+			else
+				:(isa($a2, Real) ? sum([- $a1 ./ ($a2 .* $a2) .* $ds]) : - $a1 ./ ($a2 .* $a2) .* $ds )
+			end
+
+		elseif op == :./
+			if index == 1 
+				:(isa($a1, Real) ? sum([$ds ./ $a2]) : $ds ./ $a2 )
+			else
+				:(isa($a2, Real) ? sum([- $a1 ./ ($a2 .* $a2) .* $ds]) : - $a1 ./ ($a2 .* $a2) .* $ds )
+			end
 
 		elseif op == :dot
 			index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
 
-		elseif op == :.*  # TODO : check this
-			index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
-
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) 
 			if index == 1 # mu
-				:( (tmp = [($a3 - $a1 ) ./ ($a2 .^ 2)] * $ds ; length($a1)==1 ? sum(tmp) : tmp) )
+				:( (tmp = [($a3 - $a1 ) ./ ($a2 .^ 2)] * $ds ; isa($a1, Real) ? sum(tmp) : tmp) .* $ds)
 			elseif index == 2 # sigma
-				:( (tmp = (($a3 - $a1).^2 ./ $a2^2 - 1.0) / $a2 * $ds ; length($a2)==1 ? sum(tmp) : tmp) )
+				:( (tmp = (($a3 - $a1).^2 ./ $a2^2 - 1.0) / $a2 * $ds ; isa($a2, Real) ? sum(tmp) : tmp) .* $ds)
 			else # x  
-				:( (tmp = [($a1 - $a3 ) ./ ($a2 .^ 2)] * $ds ; length($a3)==1 ? sum(tmp) : tmp) )
+				:( (tmp = [($a1 - $a3 ) ./ ($a2 .^ 2)] * $ds ; isa($a3, Real) ? sum(tmp) : tmp) .* $ds)
 			end
 		
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform)) 
 			if index == 1 # a   
-				# :( (tmp = [$a1 .<= $a3 .<= $a2] .* [$ds ./ ($a2 - $a1) .* ones(length($a3))] ; length($a1)==1 ? sum([tmp]) : tmp) )
-				:( (tmp = [$a1 .<= $a3 .<= $a2] .* ($ds ./ ($a2 - $a1)) ; length($a1)==1 ? sum([tmp]) : tmp) )
+				:( (tmp = [$a1 .<= $a3 .<= $a2] .* ($ds ./ ($a2 - $a1)) ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
 			elseif index == 2 # b
-			 	# :( (tmp = [$a1 .<= $a3 .<= $a2] .* [-$ds ./ ($a2 - $a1) .* ones(length($a3))] ; length($a2)==1 ? sum([tmp]) : tmp) )
-			 	:( (tmp = [$a1 .<= $a3 .<= $a2] .* (-$ds ./ ($a2 - $a1)) ; length($a2)==1 ? sum([tmp]) : tmp) )
+			 	:( (tmp = [$a1 .<= $a3 .<= $a2] .* (-$ds ./ ($a2 - $a1)) ; isa($a2, Real) ? sum([tmp]) : tmp) .* $ds)
 			else # x  
 			 	:( 0.0 )
 			end
 		
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull)) 
 			if index == 1 # shape
-				:( (tmp = (1.0 - ($a3./$a2).^$a1) .* log($a3./$a2) + 1./$a1 * $ds ; length($a1)==1 ? sum([tmp]) : tmp) )
+				:( (tmp = (1.0 - ($a3./$a2).^$a1) .* log($a3./$a2) + 1./$a1 * $ds ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
 			elseif index == 2 # scale
-			 	:( (tmp = (($a3./$a2).^$a1 - 1.0) .* $a1 ./ $a2 * $ds ; length($a2)==1 ? sum([tmp]) : tmp) )
+			 	:( (tmp = (($a3./$a2).^$a1 - 1.0) .* $a1 ./ $a2 * $ds ; isa($a2, Real) ? sum([tmp]) : tmp) .* $ds)
 			else # x  
-			 	:( (tmp = ( (1.0 - ($a3./$a2).^$a1) .* $a1 -1.0) ./ $a3 * $ds ; length($a3)==1 ? sum([tmp]) : tmp) )
+			 	:( (tmp = ( (1.0 - ($a3./$a2).^$a1) .* $a1 -1.0) ./ $a3 * $ds ; isa($a3, Real) ? sum([tmp]) : tmp) .* $ds)
 			end
 		
 		#  fake distribution to test gradient code
@@ -105,63 +135,30 @@ end
 
 
 ###############  hooks into Distributions library  ###################
+#  (allows to vectorize on distributions parameters)
 
-#TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
-#TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
-# logpdfNormal(mu, sigma, x) = Distributions.logpdf(Distributions.Normal(mu, sigma), x)
-# logpdfWeibull(shape, scale, x) = Distributions.logpdf(Distributions.Weibull(shape, scale), x)
-# logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
-
-logpdfNormal(mu::Real, sigma::Real, x::Real) = 			logpdf(Normal(mu, sigma), x)
-logpdfNormal(mu::Real, sigma::Real, x::Vector) = 	sum([ logpdf(Normal(mu, sigma), x) ]) 
-
-function logpdfNormal(	mu::Union(Real, Vector), 
-						sigma::Union(Real, Vector), 
-						x::Union(Real, Vector)) 
-
-	res = 0.0
-	for i in 1:max(length(mu), length(sigma), length(x))
-		res += logpdfNormal(next(mu,i)[1], next(sigma,i)[1], next(x,i)[1])
-	end
-	res
-end
+#TODO : implement simplifications here ?  (eg. logpdf(Normal)) as this is not always done in Distributions
 
 
-logpdfUniform(a::Real, b::Real, x::Real) = 	logpdf(Uniform(a, b), x)
-logpdfUniform(a::Real, b::Real, x::Vector) = 	sum([ logpdf(Uniform(a, b), x) ]) 
+for d in [:Normal, :Weibull, :Uniform]
+	fsym = symbol("logpdf$d")
 
-function logpdfUniform(	a::Union(Real, Vector), 
-						b::Union(Real, Vector), 
-						x::Union(Real, Vector)) 
+	@eval ($fsym)(a::Real, b::Real, x::Real) = sum([logpdf(($d)(a, b), x)])
 
-	res = 0.0
-	for i in 1:max(length(a), length(b), length(x))
-		res += logpdf(Uniform(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
-	end
-	res
-end
+	@eval ($fsym)(a::Real, b::Real, x::Vector) = sum([logpdf(($d)(a, b), x)])
 
-logpdfWeibull(shape::Real, scale::Real, x::Real) = 		logpdf(Weibull(shape, scale), x)
-logpdfWeibull(shape::Real, scale::Real, x::Vector) = 	sum([ logpdf(Weibull(shape, scale), x) ]) 
-
-function logpdfWeibull(	shape::Union(Real, Vector), 
-						scale::Union(Real, Vector), 
-						x::Union(Real, Vector)) 
-
-	res = 0.0
-	for i in 1:max(length(shape), length(scale), length(x))
-		res += logpdf(Weibull(next(shape,i)[1], next(scale,i)[1]), next(x,i)[1])
-	end
-	res
+	eval(quote
+		function ($fsym)(a::Union(Real, Vector), b::Union(Real, Vector), x::Union(Real, Vector))
+			res = 0.0
+			for i in 1:max(length(a), length(b), length(x))
+				res += logpdf(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
+			end
+			res
+		end
+	end) 
 end
 
 
 
-
-# logpdfUniform(a, b, x) = 			sum([ logpdf(Uniform(a, b), x) ])
-# logpdfNormal(mu, sigma, x) = 		sum([ logpdf(Normal(mu, sigma), x) ])  # brackets to manage case where logpdf=-Inf
-# logpdfWeibull(shape, scale, x) = 	sum([ logpdf(Weibull(shape, scale), x) ])
-
-
-logpdfTestDiff(x) = x  # dummy distrib for testing
+logpdfTestDiff(x) = sum([x])  # dummy distrib for testing
 
