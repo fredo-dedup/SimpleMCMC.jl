@@ -91,15 +91,15 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 			end
 
 		elseif op == :dot
-			index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
+			index == 1 ? :($a2 * $ds) : :($a1 * $ds)
 
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) 
 			if index == 1 # mu
-				:( (tmp = [($a3 - $a1 ) ./ ($a2 .^ 2)] * $ds ; isa($a1, Real) ? sum(tmp) : tmp) .* $ds)
+				:( (tmp = [($a3 - $a1 ) ./ ($a2 .^ 2)] * $ds ; isa($a1, Real) ? sum(tmp) : tmp) * $ds)
 			elseif index == 2 # sigma
-				:( (tmp = (($a3 - $a1).^2 ./ $a2^2 - 1.0) / $a2 * $ds ; isa($a2, Real) ? sum(tmp) : tmp) .* $ds)
+				:( (tmp = (($a3 - $a1).^2 ./ $a2.^2 - 1.0) ./ $a2 * $ds ; isa($a2, Real) ? sum(tmp) : tmp) * $ds)
 			else # x  
-				:( (tmp = [($a1 - $a3 ) ./ ($a2 .^ 2)] * $ds ; isa($a3, Real) ? sum(tmp) : tmp) .* $ds)
+				:( (tmp = [($a1 - $a3 ) ./ ($a2 .^ 2)] * $ds ; isa($a3, Real) ? sum(tmp) : tmp) * $ds)
 			end
 		
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform)) 
