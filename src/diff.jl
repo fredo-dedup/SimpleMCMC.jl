@@ -106,11 +106,7 @@ end
 
 ###############  hooks into Distributions library  ###################
 
-#TODO : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
-#TODO : Distributions is not vectorized on distributions parameters (mu, sigma), another reason for rewriting here
-# logpdfNormal(mu, sigma, x) = Distributions.logpdf(Distributions.Normal(mu, sigma), x)
-# logpdfWeibull(shape, scale, x) = Distributions.logpdf(Distributions.Weibull(shape, scale), x)
-# logpdfUniform(a, b, x) = Distributions.logpdf(Distributions.Uniform(a, b), x)
+#TODO ? : implement here functions that can be simplified (eg. logpdf(Normal)) as this is not always done in Distributions
 
 logpdfNormal(mu::Real, sigma::Real, x::Real) = 			logpdf(Normal(mu, sigma), x)
 logpdfNormal(mu::Real, sigma::Real, x::Vector) = 	sum([ logpdf(Normal(mu, sigma), x) ]) 

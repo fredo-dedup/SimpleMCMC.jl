@@ -277,3 +277,22 @@ exparray = SimpleMCMC.unfold(model2)
 
 exparray 
 el
+
+
+
+
+
+
+function test{T::Distributions.Normal}()
+
+
+
+
+
+
+
+
+
+
+
+
