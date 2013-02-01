@@ -2,49 +2,27 @@
 #    Parsing functions
 ###############################################################################
 
-##########  creates new types to ease AST exploration  ############
-const emap = [:(=) => :Exprequal,
-			  :(::) => :Exprdcolon,
-			  :(+=) => :Exprpequal]
-
-for ex in [:equal, :dcolon, :pequal, :call, :block, :ref, :line]
-	nt = symbol(strcat("Expr", ex))
-	# println("defining ", nt)
-	eval(quote
-		type $nt
-			head::Symbol
-			args::Vector
-			typ::Any
-		end
-		($nt)(ex::Expr) = ($nt)(ex.head, ex.args, ex.typ)
-		toExpr(ex::$nt) = expr(ex.head, ex.args)
-	end)
+##########  creates a parameterized type to ease AST exploration  ############
+type ExprH{H}
+	head::Symbol
+	args::Vector
+	typ::Any
 end
+toExprH(ex::Expr) = ExprH{ex.head}(ex.head, ex.args, ex.typ)
+toExpr(ex::ExprH) = expr(ex.head, ex.args)
 
-function etype(ex::Expr)
-	#TODO : turn all this into a Dict lookup
-	nt = has(emap, ex.head) ? emap[ex.head] : symbol(strcat("Expr", ex.head))
-	if nt == :Exprequal
-		Exprequal(ex)
-	elseif nt == :Exprpequal
-		Exprpequal(ex)
-	elseif nt == :Exprdcolon
-		Exprdcolon(ex)
-	elseif nt == :Exprblock
-		Exprblock(ex)
-	elseif nt == :Exprref
-		Exprref(ex)
-	elseif nt == :Exprline
-		Exprline(ex)
-	elseif nt == :Exprcall
-		Exprcall(ex)
-	else
-		error("[etype] unmapped expr type $(ex.head)")
-	end
-end
+typealias Exprequal    ExprH{:(=)}
+typealias Exprdcolon   ExprH{:(::)}
+typealias Exprpequal   ExprH{:(+=)}
+typealias Exprcall     ExprH{:call}
+typealias Exprblock	   ExprH{:block}
+typealias Exprline     ExprH{:line}
+typealias Exprref      ExprH{:ref}
+
+
 
 ##########  helper function to get symbols appearing in AST ############
-getSymbols(ex::Expr) = getSymbols(etype(ex))
+getSymbols(ex::Expr) = getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) = Set{Symbol}(ex)
 getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
 getSymbols(ex::Any) = Set{Symbol}()
@@ -61,6 +39,8 @@ end
 function parseModel(ex::Expr, gradient::Bool)
 	# 'gradient' specifies if gradient is to be calculated later because it affects ~ translation
 
+	explore(ex::Expr) = explore(toExprH(ex))
+	explore(ex::ExprH) = error("[parseModel] unmanaged expr type $(ex.head)")
 	explore(ex::Exprline) = nothing  # remove #line statements
 	explore(ex::Exprref) = toExpr(ex) # no processing
 	explore(ex::Exprequal) = toExpr(ex) # no processing
@@ -69,7 +49,7 @@ function parseModel(ex::Expr, gradient::Bool)
 		al = {}
 		for ex2 in ex.args
 			if isa(ex2, Expr)
-				ex3 = explore(etype(ex2))
+				ex3 = explore(ex2)
 				ex3==nothing ? nothing : push!(al, ex3)
 			else
 				push!(al, ex2)
@@ -128,7 +108,7 @@ function parseModel(ex::Expr, gradient::Bool)
 	pmap = Dict{Symbol, Expr}()
 	index = 0
 
-	ex = explore(etype(ex))
+	ex = explore(ex)
 	(ex, index, pmap)
 end
 
@@ -136,15 +116,17 @@ end
 
 ######## unfolds expressions to prepare derivation ###################
 function unfold(ex::Expr)
-	# TODO : assumes there is only refs or calls within equal expressions, improve (add blocks ?)
+	# TODO : assumes there is only refs or calls on rhs of equal expressions, improve (add blocks ?)
 
+	explore(ex::Expr) = explore(toExprH(ex))
+	explore(ex::ExprH) = error("[unfold] unmanaged expr type $(ex.head)")
 	explore(ex::Exprline) = nothing
 	explore(ex::Exprref) = toExpr(ex)
 
 	function explore(ex::Exprblock)
 		for ex2 in ex.args # ex2 = ex.args[1]
 			if isa(ex2, Expr)
-				explore(etype(ex2))
+				explore(ex2)
 			else  # is that possible ??
 				push!(el, ex2)
 			end
@@ -160,7 +142,7 @@ function unfold(ex::Expr)
 		if isa(rhs, Symbol)
 			push!(el, expr(:(=), lhs, rhs))
 		elseif isa(rhs, Expr) # only refs and calls will work
-				ue = explore(etype(rhs)) # explore will return something in this case
+				ue = explore(toExprH(rhs)) # explore will return something in this case
 				push!(el, expr(:(=), lhs, ue))
 		elseif isa(rhs, Real)
 			push!(el, expr(:(=), lhs, rhs))
@@ -186,7 +168,7 @@ function unfold(ex::Expr)
 
 		for e2 in args  
 			if isa(e2, Expr) # only refs and calls will work
-				ue = explore(etype(e2))
+				ue = explore(e2)
 				nv = gensym(TEMP_NAME)
 				push!(el, :($nv = $(ue)))
 				push!(na, nv)
@@ -199,10 +181,12 @@ function unfold(ex::Expr)
 	end
 
 	el = {}
-	explore(etype(ex))
+	explore(ex)
 
 	# before returning, rename variables set several times as this would make
 	#  the automated derivation fail
+	# ERROR : algo doesn't work when a variable sets individual elements, x = .. then x[3] = ...; 
+
     subst = Dict{Symbol, Symbol}()
     used = [ACC_SYM]
     for idx in 1:length(el) 
@@ -210,17 +194,17 @@ function unfold(ex::Expr)
         lhs = elements(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
         rhs = SimpleMCMC.getSymbols(ex2.args[2])
 
-        if isa(etype(el[idx]), Exprequal)
+        if isa(toExprH(el[idx]), Exprequal)
         	if isa(el[idx].args[2], Symbol) # simple assign
         		if has(subst, el[idx].args[2])
         			el[idx].args[2] = subst[el[idx].args[2]]
         		end
         	elseif isa(el[idx].args[2], Real) # if number do nothing
-        	elseif isa(etype(el[idx].args[2]), Exprref) # simple assign of a ref
+        	elseif isa(toExprH(el[idx].args[2]), Exprref) # simple assign of a ref
         		if has(subst, el[idx].args[2].args[1])
         			el[idx].args[2].args[1] = subst[el[idx].args[2].args[1]]
         		end
-        	elseif isa(etype(el[idx].args[2]), Exprcall) # function call
+        	elseif isa(toExprH(el[idx].args[2]), Exprcall) # function call
         		for i in 2:length(el[idx].args[2].args) # i=4
 	        		if !isa(el[idx].args[2].args[i], Real) && has(subst, el[idx].args[2].args[i])
 	        			el[idx].args[2].args[i] = subst[el[idx].args[2].args[i]]
@@ -239,7 +223,7 @@ function unfold(ex::Expr)
         		if has(subst, el[idx].args[1])
         			el[idx].args[1] = subst[el[idx].args[1]]
         		end
-        	elseif isa(etype(el[idx].args[1]), Exprref) # simple assign of a ref
+        	elseif isa(toExprH(el[idx].args[1]), Exprref) # simple assign of a ref
         		if has(subst, el[idx].args[1].args[1])
         			el[idx].args[1].args[1] = subst[el[idx].args[1].args[1]]
         		end
@@ -277,33 +261,37 @@ end
 ######### builds the gradient expression from unfolded expression ##############
 function backwardSweep(ex::Vector, avars::Set{Symbol})
 
+	explore(ex::Expr) = explore(toExprH(ex))
+	explore(ex::ExprH) = error("[backwardSweep] unmanaged expr type $(ex.head)")
 	explore(ex::Exprline) = nothing
 
 	function explore(ex::Exprequal)
 		lhs = ex.args[1]
 		if isa(lhs,Symbol) # simple var case
 			dsym = lhs
+			dsym2 = symbol("$(DERIV_PREFIX)$lhs")
 		elseif isa(lhs,Expr) && lhs.head == :ref  # vars with []
 			dsym = lhs
+			dsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(lhs.args[1])"), lhs.args[2])
 		else
 			error("[backwardSweep] not a symbol on LHS of assigment $(e)") 
 		end
 		
 		rhs = ex.args[2]
-		dsym2 = symbol("$(DERIV_PREFIX)$dsym")
+		# dsym2 = :($(DERIV_PREFIX)$dsym)
 		if isa(rhs,Symbol) 
 			if contains(avars, rhs)
 				vsym2 = symbol("$(DERIV_PREFIX)$rhs")
 				push!(el, :( $vsym2 = $dsym2))
 			end
 
-		elseif isa(etype(rhs), Exprref)
+		elseif isa(toExprH(rhs), Exprref)
 			if contains(avars, rhs.args[1])
 				vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2])
 				push!(el, :( $vsym2 = $dsym2))
 			end
 
-		elseif isa(etype(rhs), Exprcall)  
+		elseif isa(toExprH(rhs), Exprcall)  
 			for i in 2:length(rhs.args) #i=3
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
@@ -318,7 +306,7 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 	el = {}
 	for ex2 in reverse(ex)
 		assert(isa(ex2, Expr), "[backwardSweep] not an expression : $ex2")
-		explore(etype(ex2))
+		explore(ex2)
 	end
 
 	el
@@ -377,16 +365,4 @@ function buildFunctionWithGradient(model::Expr)
 
 	(func, nparams)
 end
-
-
-##########  helper function to analyse expressions   #############
-
-function expexp(ex::Expr, ident...)
-	ident = (length(ident)==0 ? 0 : ident[1])::Integer
-	println(rpad("", ident, " "), ex.head, " -> ")
-	for e in ex.args
-		typeof(e)==Expr ? expexp(e, ident+3) : println(rpad("", ident+3, " "), "[", typeof(e), "] : ", e)
-	end
-end
-
 

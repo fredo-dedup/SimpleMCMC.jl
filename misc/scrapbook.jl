@@ -28,7 +28,11 @@ l0, grad = __loglik(ones(2))
 
 ################################################
 
-model = :(x::real(3); y = log(x[2]^x[1]) ; y ~ TestDiff())
+Y = [1,2,3]
+model = :(x::real(3); y=Y; y[2] = x[1] ; y ~ TestDiff())
+
+## ERROR : marche pas, notamment parce que la subst des noms de variable ne fonctionne pas
+
 
     myf, np = SimpleMCMC.buildFunctionWithGradient(model)
     ex2 = expr(:block, myf.args[2].args)
@@ -82,31 +86,4 @@ test(d)
 ################################
 
 
-Hexpr(:block, {}, ANY)
-
-dump(:(4+5))
-        ($nt)(ex::Expr) = ($nt)(ex.head, ex.args, ex.typ)
-        toExpr(ex::$nt) = expr(ex.head, ex.args)
-
-end
-
-
-abstract HExpr{H}
-
-test(t::HExpr{:block}, ex::Expr) =   println("block : $ex")
-test(t::HExpr{:line}, ex::Expr) =    println("line : $ex")
-test(t::HExpr{:call}, ex::Expr) =    println("call : $ex")
-test(t::HExpr{:(=)}, ex::Expr) =     println("= : $ex")
-test(t::HExpr, ex::Expr) =           println("whatever ($ex.head) : $ex")
-
-test(ex::Expr) = test(Type{HExpr{ex.head}}, ex)
-
-a = :(a=b+5)
-b = :(sin(f))
-c = :((a=f;f+6))
-d = :(f==3 ? x : y)
-
-typeof(Type{HExpr}{ex.head})
-
-test(a)
 
