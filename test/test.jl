@@ -4,141 +4,262 @@
 
 include("../src/SimpleMCMC.jl")
 
-module Test
+DIFF_DELTA = 1e-10
+ERROR_THRESHOLD = 1e-2
 
-	include("../src/SimpleMCMC.jl")
+############# gradient checking function  ######################
 
-	DIFF_DELTA = 1e-10
-	ERROR_THRESHOLD = 1e-2
+function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(sum(2+x)) ; x0 = [2., 3]
+	global __beta
 
-	############# derivative checking function  ######################
+	println("testing derivation of $ex at x = $x0")
 
-	function test1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(2*x) ; x0 = 2.
-		println("testing derivation of $ex")
+	nx = length(x0)  # nx=3
+	model = expr(:block, nx==1 ? :(x::real) : :(x::real($nx)), :(y = $ex), :(y ~ TestDiff()))
 
-		model = :(x::real; y = $ex; y ~ TestDiff())
+	myf, np = SimpleMCMC.buildFunctionWithGradient(model)
+	ex2 = myf.args[2] # use body of function only
 
-		myf, np = Test.SimpleMCMC.buildFunctionWithGradient(model)
-		ex2 = myf.args[2].args
+	__beta = [x0]
+	l0, grad0 = eval(ex2)  
 
-		cex = expr(:block, vcat({:(__beta = [$x0])}, ex2))
-		l0, grad0 = Main.eval(cex)  #  __loglik([x0])
-		# print("$ex  at $l0   ===== $(round(grad0,5)) =====")
-
-		cex = expr(:block, vcat({:(__beta = [$(x0+DIFF_DELTA)])}, ex2))
-		# println("<<<<\n$cex\n>>>>")
-		l, grad = Main.eval(cex) # __loglik([x0] + DIFF_DELTA)
+	if nx==1
+		__beta += DIFF_DELTA
+		l, grad = eval(ex2) 
 		gradn = (l-l0)/DIFF_DELTA
-		# println("  $(round(gradn,5))  ======")
-
-        delta = abs(gradn - grad0) ./ max([abs(grad0)], 0.01)
-		assert(max([delta]) < ERROR_THRESHOLD, 
-			"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
+	else
+		gradn = grad0 * NaN
+		for i in 1:nx # i = 2
+			__beta = [x0]
+			__beta[i] += DIFF_DELTA
+			l, grad = eval(ex2) 
+			gradn[i] = (l-l0)/DIFF_DELTA
+		end
 	end
 
-	test1(e::Expr, v::Vector{Any}) = (map(x->test1(e, x), v); nothing)
+	good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(0.01, abs(x))) < ERROR_THRESHOLD : isequal(x,y) 
+	good_enough(t::Tuple) = good_enough(t[1], t[2])
 
+	# println("------- expected $(round(gradn,5)), got $(round(grad0,5))")
+	assert(all(good_enough, zip([grad0], [gradn])),
+		"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
 end
 
-######### real var derivation with other real arguments #######################
-Test.test1( :(2+x), {-1., 0., 1., 10.})
-Test.test1( :(x+4), {-1., 0., 1., 10.})
 
-Test.test1( :(2-x), {-1., 0., 1., 10.})
-Test.test1( :(x-2), {-1., 0., 1., 10.})
-Test.test1( :(-x),  {-1., 0., 1., 10.})
+macro mult(func, myex, values)
+	quote
+		for xt in $values
+			($func)($(expr(:quote, myex)), xt) 
+		end
+	end
+end
 
-Test.test1( :(2*x), {-1., 0., 1., 10.})
-Test.test1( :(x*2), {-1., 0., 1., 10.})
 
-Test.test1( :(2/x), {-1., 0.1, 1., 10.})
-Test.test1( :(x/2), {-1., 0., 1., 10.})
-
-Test.test1(:(sum(x)),{-1., 0., 1., 10.})
-
-Test.test1(:(x.*2), {-1., 0., 1., 10.})
-Test.test1(:(2.*x), {-1., 0., 1., 10.})
-
-Test.test1(:(log(x)), {.01, 1., 10.})
-Test.test1(:(exp(x)), {-1., 0., 1., 3.})
-
-Test.test1(:(sin(x)), {-1., 0., 1., 10.})
-Test.test1(:(cos(x)), {-1., 0., 1., 10.})
-
-Test.test1(:(SimpleMCMC.logpdfNormal(1, 2, x)), {-1., 0., 1.})
-Test.test1(:(SimpleMCMC.logpdfNormal(-1, x, 1)), {0.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfNormal(x, 2, 0)), {-1., 0., 1.})
-
-Test.test1(:(SimpleMCMC.logpdfWeibull(2, 1, x)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(2, x, 1)), {0.5, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(x, 1, 0.5)), {0.5, 1., 10.})
-
-Test.test1(:(SimpleMCMC.logpdfUniform(-1, 1, x)), {-.1, 0., 0.9})
-Test.test1(:(SimpleMCMC.logpdfUniform(0, x, 0)), {0.5, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfUniform(x, 0.5, 0.2)), {0., -1., -5.})
-
-######### real var derivation with other vector arguments #######################
+######### real parameter with other real or vector arguments #######################
+# note that we are testing gradient calculations and not full partial derivatives
+# => all the expression tested have to evaluate to a scalar (but can depend on vectors)
 z = [2., 3, 0.1]
 
-Test.test1( :(z+x), {-1., 0., 1., 10.})
-Test.test1( :(x+z), {-1., 0., 1., 10.})
+@mult deriv1    2+x       {-3., 0., 1., 10.}
+@mult deriv1    x+4       {-3., 0., 1., 10.}
+@mult deriv1    sum(z+x)  {-1., 0., 1., 10.}
+@mult deriv1    sum(x+z)  {-1., 0., 1., 10.}
 
-Test.test1( :(z-x), {-1., 0., 1., 10.})
-Test.test1( :(x-z), {-1., 0., 1., 10.})
+@mult deriv1    2-x       {-1., 0., 1., 10.}
+@mult deriv1    -x        {-1., 0., 1., 10.}
+@mult deriv1    sum(z-x)  {-1., 0., 1., 10.}
+@mult deriv1    sum(x-z)  {-1., 0., 1., 10.}
 
-# Test.test1( :(z*x), {-1., 0., 1., 10.})
-# Test.test1( :(x*z), {-1., 0., 1., 10.})
+@mult deriv1    2*x      {-1., 0., 1., 10.}
+@mult deriv1    x*2      {-1., 0., 1., 10.}
+@mult deriv1    sum(x*z) {-1., 0., 1., 10.}
+@mult deriv1    sum(z*x) {-1., 0., 1., 10.}
 
-Test.test1( :(z/x), {-1., 0.1, 1., 10.})
-Test.test1( :(x/z), {-1., 0., 1., 10.})
+@mult deriv1    x.*2      {-1., 0., 1., 10.}
+@mult deriv1    2.*x      {-1., 0., 1., 10.}
+@mult deriv1    sum(x.*z) {-1., 0., 1., 10.}
+@mult deriv1    sum(z.*x) {-1., 0., 1., 10.}
 
-# Test.test1( :(x.*z), {-1., 0., 1., 10.}) # ERROR
-# Test.test1( :(z.*x), {-1., 0., 1., 10.}) # ERROR
+@mult deriv1    2/x       {-1., 0., 1., 10.}
+@mult deriv1    x/2       {-1., 0., 1., 10.}
+@mult deriv1    sum(z/x)  {-1., 0., 1., 10.}
+@mult deriv1    sum(x/z)  {-1., 0., 1., 10.}
 
-Test.test1(:(SimpleMCMC.logpdfNormal(z, 1, x)), {-1., 0., 1.})
-Test.test1(:(SimpleMCMC.logpdfNormal(0., z, x)), {-1., 0., 1.})
-Test.test1(:(SimpleMCMC.logpdfNormal(z, z, x)), {-1., 0., 1.})
+@mult deriv1    2./x      {-1., 0., 1., 10.}
+@mult deriv1    x./2      {-1., 0., 1., 10.}
+@mult deriv1    sum(x./z) {-1., 0., 1., 10.}
+@mult deriv1    sum(z./x) {-1., 0., 1., 10.}
 
-Test.test1(:(SimpleMCMC.logpdfNormal(0, x, z)), {0.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfNormal(z, x, 0)), {0.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfNormal(z, x, z)), {0.1, 1., 10.})
+@mult deriv1    2^x      {-1., 0., 1., 10.}
+@mult deriv1    x^2      {-1., 0., 1., 10.}
 
-Test.test1(:(SimpleMCMC.logpdfNormal(x, 1, z)), {-1., 0., 1.})
-Test.test1(:(SimpleMCMC.logpdfNormal(x, z, 1)), {-1., 0., 1.})
-Test.test1(:(SimpleMCMC.logpdfNormal(x, z, 1)), {-1., 0., 1.})
+@mult deriv1    2.^x      {-1., 0., 1., 10.}
+@mult deriv1    x.^2      {-1., 0., 1., 10.}
+@mult deriv1    sum(z.^x) {-1., 0., 1., 10.}
+@mult deriv1    sum(x.^z) {-1., 0.1, 1., 10.}
+
+@mult deriv1    sum(x)   {-1., 0., 1., 10.}
+
+# TODO : make deriv = NaN when x < 0 ?
+@mult deriv1    log(x)         {0., 1., 10.} 
+@mult deriv1    sum(log(x*z))  {0., 1., 10.} 
+
+@mult deriv1    exp(x)          {-1., 0., 1., 10.}
+@mult deriv1    sum(exp(x+z))   {-1., 0., 1., 10.}
+
+@mult deriv1    sin(x)          {-1., 0., 1., 10.}
+@mult deriv1    sum(sin(z/x))   {-1., 0.1, 1., 10.}
+
+@mult deriv1    cos(x)           {-1., 0., 1., 10.}
+@mult deriv1    sum(cos(x.^z))   {-1., 0.1, 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(1, 2, x)    {-1., 0., 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfNormal(-1, x, 0)   {0.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfNormal(x, 4, 10)   {-1., 0., 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(z, 1, x) {-1., 0., 1.}
+@mult deriv1    SimpleMCMC.logpdfNormal(0, z, x) {-1., 0., 1.}
+@mult deriv1    SimpleMCMC.logpdfNormal(z, z, x) {-1., 0., 1.}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(0, x, z)    {0.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfNormal(z, x, 0)    {0.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfNormal(z, x, z)    {0.1, 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(x, 1, z)    {-1., 0., 1.}
+@mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {-1., 0., 1.}
+@mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {-1., 0., 1.}
+
+# TODO : make deriv = NaN when x < 0
+@mult deriv1    SimpleMCMC.logpdfWeibull(1, 2, x)    {0.0001, 1., 10.} # ERROR at 0.0 !!
+@mult deriv1    SimpleMCMC.logpdfWeibull(0.5, x, 3)  {0.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, 4, 10)   {0.1, 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, 1, x)    {.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(2, z, x)    {.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, z, x)    {.1, 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, x, 1)    {.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(2, x, z)    {.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, x, z)    {.1, 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, z, 1)    {.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, 1, z)    {.1, 1., 10.}
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, z, z)    {.1, 1., 10.}
+
+# TODO : make deriv = NaN when x < a or > b
+@mult deriv1    SimpleMCMC.logpdfUniform(-1, 1, x)     {-.1, 0., 0.9} 
+@mult deriv1    SimpleMCMC.logpdfUniform(0, x, 1.0)    {1.5, 1., 2.99}
+@mult deriv1    SimpleMCMC.logpdfUniform(x, 0.5, 0.2)  {0., -1., -60.}
+
+@mult deriv1    SimpleMCMC.logpdfUniform(z, 20, x)     {4., 9., 10.}
+@mult deriv1    SimpleMCMC.logpdfUniform(-10, z, x)    {-.1, -1., 0.}
+@mult deriv1    SimpleMCMC.logpdfUniform(z, z+5, x)    {3.1, 5., 4.}
+
+@mult deriv1    SimpleMCMC.logpdfUniform(z, x, 4)       {5.1, 9., 10.}
+@mult deriv1    SimpleMCMC.logpdfUniform(-5, x, z)      {4.1, 5., 10.}
+@mult deriv1    SimpleMCMC.logpdfUniform(z, x, z+1.)    {6.1, 7., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfUniform(x, z, 0)       {-.1, -1., -10.}
+@mult deriv1    SimpleMCMC.logpdfUniform(x, 5, z)       {0., -1., -10.}
+@mult deriv1    SimpleMCMC.logpdfUniform(x, z, z-1.)    {-2.1, -3., -10.}
 
 
-Test.test1(:(SimpleMCMC.logpdfWeibull(z, 1, x)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(2, z, x)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(z, z, x)), {.1, 1., 10.})
+######### vector parameter with other real or vector arguments #######################
+tz = transpose(z)
 
-Test.test1(:(SimpleMCMC.logpdfWeibull(z, x, 1)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(2, x, z)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(z, x, z)), {.1, 1., 10.})
+@mult deriv1    sum(2+x)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(x+4)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(z+x)  {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    sum(x+z)  {[-3., 2, 0], [1., 10, 8]}
 
-Test.test1(:(SimpleMCMC.logpdfWeibull(x, z, 1)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(x, 1, z)), {.1, 1., 10.})
-Test.test1(:(SimpleMCMC.logpdfWeibull(x, z, z)), {.1, 1., 10.})
+@mult deriv1    sum(2-x)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(-x)   {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(z-x)  {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    sum(x-z)  {[-3., 2, 0], [1., 10, 8]}
+
+@mult deriv1    sum(2*x)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(x*2)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(x*tz) {[-3., 2, 0], [1., 10, 8]} 
+@mult deriv1    tz*x      {[-3., 2, 0], [1., 10, 8]}  
+
+@mult deriv1    sum(x.*2) {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(2.*x) {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(x.*z) {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    sum(z.*x) {[-3., 2, 0], [1., 10, 8]}
+
+@mult deriv1    dot(x,z)  {[-3., 2, 0], [1., 10, 8]} 
+@mult deriv1    dot(z,x)  {[-3., 2, 0], [1., 10, 8]} 
+
+@mult deriv1    sum(2/x)  {[-3., 2, 0.01], [1., 1.]}  
+@mult deriv1    sum(x/2)  {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    sum(2./x) {[-3., 2, 0.1], [1., 1.]} 
+@mult deriv1    sum(x./2) {[-3., 2, 0.1], [1., 1.]}
+@mult deriv1    sum(x./z) {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    sum(z./x) {[-3., 2, 0.1], [1., 10, 8]}  
+
+@mult deriv1    sum(2.^x)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(x.^2)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    sum(z.^x)  {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    sum(x.^z)  {[-3., 2, 0.1], [1., 10, 1]} 
+
+@mult deriv1    sum(x)     {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    sum(log(x))     {[3., 2, 0.1], [1., 1.]} 
+
+@mult deriv1    sum(exp(x))     {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    sum(sin(x))     {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    sum(cos(x))     {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(1, 2, x)    {[-3., 2, 0], [1., 1.]}
+@mult deriv1    SimpleMCMC.logpdfNormal(-1, x, 0)   {[3., 2, 0.1], [1., 1.]} 
+@mult deriv1    SimpleMCMC.logpdfNormal(x, 4, 10)   {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(z, 1, x)    {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfNormal(0, z, x)    {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfNormal(z, z, x)    {[-3., 2, 0], [1., 10, 8]}
+
+@mult deriv1    SimpleMCMC.logpdfNormal(0, x, z)    {[3., 2, 0.1], [1., 10, 8]} 
+@mult deriv1    SimpleMCMC.logpdfNormal(z, x, 0)    {[3., 2, 0.1], [1., 10, 8]} 
+@mult deriv1    SimpleMCMC.logpdfNormal(z, x, z)    {[3., 2, 0.1], [1., 10, 8]} 
+
+@mult deriv1    SimpleMCMC.logpdfNormal(x, 1, z)    {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {[-3., 2, 0], [1., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {[-3., 2, 0], [1., 10, 8]}
 
 
-Test.test1(:(SimpleMCMC.logpdfUniform(z, 20, x)), {4., 9., 10.})
-Test.test1(:(SimpleMCMC.logpdfUniform(-10, z, x)), {-.1, -1., 0.})
-Test.test1(:(SimpleMCMC.logpdfUniform(z, z+5, x)), {3.1, 5., 4.})
+@mult deriv1    SimpleMCMC.logpdfWeibull(1, 2, x)    {[3., 2, 0.1], [1., 1.]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(0.5, x, 3)  {[3., 2, 0.1], [1., 1.]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, 4, 10)   {[3., 2, 0.1], [1., 1.]}
 
-Test.test1(:(SimpleMCMC.logpdfUniform(z, x, 4)), {5.1, 9., 10.})
-Test.test1(:(SimpleMCMC.logpdfUniform(-5, x, z)), {4.1, 5., 10.})
-Test.test1(:(SimpleMCMC.logpdfUniform(z, x, z+1.)), {6.1, 7., 10.})
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, 1, x)    {[3., 2, 0.1], [1., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(2, z, x)    {[3., 2, 0.1], [1., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, z, x)    {[3., 2, 0.1], [1., 10, 8]}
 
-Test.test1(:(SimpleMCMC.logpdfUniform(x, z, 0)), {-.1, -1., -10.})
-Test.test1(:(SimpleMCMC.logpdfUniform(x, 5, z)), {0., -1., -10.})
-Test.test1(:(SimpleMCMC.logpdfUniform(x, z, z-1.)), {-2.1, -3., -10.})
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, x, 1)    {[3., 2, 0.1], [1., 5, 8]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(2, x, z)    {[3., 2, 0.1], [1., 5, 8]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(z, x, z)    {[3., 2, 0.1], [1., 5, 8]}
 
-# [ [ (beta=ones(2) ; beta[i] += 0.01 ; ((__loglik(beta)[1]-l0)*100)::Float64) for i in 1:2 ] grad]
-
-
-
-######### vector var derivation with other real arguments #######################
-z = [2., 3, 0.1]
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, z, 1)    {[3., 2, 0.1], [1., 2, 3]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, 1, z)    {[3., 2, 0.1], [1., 2, 3]}
+@mult deriv1    SimpleMCMC.logpdfWeibull(x, z, z)    {[3., 2, 0.1], [1., 2, 3]}
 
 
+@mult deriv1    SimpleMCMC.logpdfUniform(-5, 2.2, x)   {[-3., 2, 0], [1., 1.]}
+@mult deriv1    SimpleMCMC.logpdfUniform(-5, x, -4.0)  {[-3., 2, 0], [1., 1.]}
+@mult deriv1    SimpleMCMC.logpdfUniform(x, 4.5, 2.2)  {[-3., 2, 0], [1., 1.]}
+
+@mult deriv1    SimpleMCMC.logpdfUniform(z, 20, x)     {[3.1, 4.2, 5], [5., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfUniform(-10, z, x)    {[-3., -2, 0], [-1., -10, -8]}
+@mult deriv1    SimpleMCMC.logpdfUniform(z, z+5, x)    {[3.1, 4.2, 5]}
+
+@mult deriv1    SimpleMCMC.logpdfUniform(z, x, 6)      {[6.1, 10.2, 7], [9., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfUniform(-5, x, z)     {[3.5, 4.2, 8], [7., 10, 8]}
+@mult deriv1    SimpleMCMC.logpdfUniform(z, x, z+1.)   {[6.1, 10.2, 7], [9., 10, 8]}
+
+@mult deriv1    SimpleMCMC.logpdfUniform(x, z, 0)      {[-3., -2, -6], [-1., -10, -8]}
+@mult deriv1    SimpleMCMC.logpdfUniform(x, 5, z)      {[-3., -2, -6], [-1., -10, -8]}
+@mult deriv1    SimpleMCMC.logpdfUniform(x, z, z-1.)   {[-3., -2, -6], [-1., -10, -8]}
 
