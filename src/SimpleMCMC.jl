@@ -175,5 +175,133 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
 
 
+##########################################################################################
+#   NUTS sampler function
+##########################################################################################
 
+function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
+
+	# check burnin steps consistency
+	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
+	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
+	assert(steps > 0, "Steps ($steps) should be > 0")
+
+	# build function, count the number of parameters
+	(ll_func, nparams) = buildFunctionWithGradient(model)
+	Main.eval(ll_func) # create function (in Main !)
+	llcall = expr(:call, expr(:., :Main, expr(:quote, LLFUNC_SYM)), :__beta)
+
+	# build the initial values
+	if typeof(init) == Array{Float64,1}
+		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
+		__beta = init
+	elseif typeof(init) <: Real
+		__beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
+	else
+		error("cannot assign initial values (should be a Real or vector of Reals)")
+	end
+
+	#  first calc
+	(__lp, grad) = Main.__loglik(__beta) # eval(llcall)
+	assert(__lp != -Inf, "Initial values out of model support, try other values")
+
+	#  main loop
+	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
+
+	epsilon = findEpsilon()
+	mu = log(10*epsilon)
+	e0bar, hbar = 1., 0.
+	lebar = 0.0
+	gam = 0.05
+	t0 = 10
+	kappa = 0.75
+ 	for i in 1:steps
+ 
+ 		r0 = randn(nparams)
+ 		u  = rand() * exp(__lpbefore - dot(r0,r0)/2.0)
+ 		beta = betap = betam = betabefore
+ 		rp = rm = r0
+ 		j, n, s = 0, 1, 1
+
+ 		# inner loop
+ 		while s == 1
+ 			v = (randn() > 0.5) * 2. - 1.
+ 			if v == -1
+ 				betam, rm, nothing, nothing, beta1, n1, s1, alpha, nalpha = 
+ 					buildTree(betam, rm, u, v, j, epsilon, betabefore, r0)
+ 			else
+ 				nothing, nothing, betap, rp, beta1, n1, s1, alpha, nalpha = 
+ 					buildTree(betap, rp, u, v, j, epsilon, betabefore, r0)
+ 			end
+ 			if s1 == 1 && rand() < min(1.0, n1/n)
+ 				beta = beta1
+ 			end
+ 			n += n1
+ 			j += 1
+ 			s = s1 * (dot((betap-betam), rm) >= 0.0) * (dot((betap-betam), rp) >= 0.0)
+ 		end
+ 		# e adjustment
+ 		if i <= nadapt  # adjustment period
+ 			hbar = hbar * (1-1/(i+t0)) + (delta-alpha/nalpha)/(i+t0))
+			le = mu-sqrt(i)/gam*hbar
+			lebar = i^(-kappa) * le + (1-i^-kappa) * lebar
+			epsilon = exp(le)
+		else # post adjustment period
+			epsilon = exp(lebar)
+		end
+
+		betabefore = beta
+		draws[i, :] = vcat(__lp, (__lp0 != __lp), beta)
+	end
+
+	# buidtree function
+	function buildTree(beta, r, u, v, j, epsilon, betabefore, r0)
+		if j == 0
+			beta1, r1 = leapFrog(beta, r, v*epsilon)
+			n1 = (u <= exp(__lp - dot(r1,r1)/2.0))
+			s1 = (u < exp(deltamax + __lp - dot(r1,r1)/2.0))  # d'ou ça vient deltamax ??
+
+			return beta1, r1, beta1, r1, beta1, n1, s1, 
+				min(1., exp(__lp - dot(r1,r1)/2. - lp(betabefore) + dot(r0,r0)/2.)), 1
+		else
+			betam, rm, betap, rp, beta1, n1, s1, alpha1, nalpha1 = 
+				buildTree(beta, r, u, v, j-1, epsilon, betabefore, r0)
+			if s1 == 1 
+				if v == -1
+					betam, rm, nothing, nothing, beta2, n2, s2, alpha2, nalpha2 = 
+	 					buildTree(betam, rm, u, v, j-1, epsilon, betabefore, r0)
+	 			else
+	 				nothing, nothing, betap, rp, beta2, n2, s2, alpha2, nalpha2 = 
+	 					buildTree(betap, rp, u, v, j-1, epsilon, betabefore, r0)
+	 			end
+	 			if rand() <= n2/(n2+n1)
+	 				beta1 = beta2
+	 			end
+	 			alpha1 += alpha2
+	 			nalpha1 += nalpha2
+	 			s1 = s2 * (dot((betap-betam), rm) >= 0.0) * (dot((betap-betam), rp) >= 0.0)
+	 			n += n1
+	 		end
+
+	 		return betam, rm, betap, rp, beta1, n1, s1, alpha1, nalpha1
+		end
+	end
+
+	# leapfrog function
+	function leapFrog()
+
+	end
+
+
+	draws[(burnin+1):steps, :]
 end
+
+simpleNUTS(model::Expr, steps::Integer) = simpleNUTS(model, steps, min(steps-1, div(steps,2)))
+simpleNUTS(model::Expr, steps::Integer, burnin::Integer) = simpleNUTS(model, steps, burnin, 1.0)
+
+
+
+# module end
+end
+
+
