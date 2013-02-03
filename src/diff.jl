@@ -5,8 +5,6 @@
 #
 ##########################################################################################
 
-# TODO : include target size info
-# TODO : include input size info
 # TODO : add operators :' , :vcat, max and min ?
 
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))

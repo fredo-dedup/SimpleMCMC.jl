@@ -263,3 +263,15 @@ tz = transpose(z)
 @mult deriv1    SimpleMCMC.logpdfUniform(x, 5, z)      {[-3., -2, -6], [-1., -10, -8]}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, z, z-1.)   {[-3., -2, -6], [-1., -10, -8]}
 
+
+
+############## test refs  ###############################
+
+@mult deriv1    x[2]                   {[-3., -2, -6], [-1., -10, -8]}
+@mult deriv1    x[2:3]                 {[-3., -2, -6], [-1., -10, -8]}
+@mult deriv1    x[2:end]                 {[-3., -2, -6], [-1., -10, -8]}
+
+@mult deriv1    x[2]+x[1]              {[-3., -2, -6], [-1., -10, -8]}
+@mult deriv1    log(x[2]^2+x[1]^2)     {[-3., -2, -6], [-1., -10, -8]}
+
+
