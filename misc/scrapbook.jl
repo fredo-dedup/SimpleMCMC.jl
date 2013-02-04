@@ -9,14 +9,31 @@ Y = [1., 2, 3, 4]
 X = [0. 1; 0 1; 1 1; 1 2]
 
 model = quote
-	vars::real(2)
-
-	resid = Y - X * vars
-	resid ~ Normal(0, 1.0)  
+	x::real
+	x ~ Normal(0, 1.0)  
 end
 
 require("../src/SimpleMCMC.jl")
 include("../src/SimpleMCMC.jl")
+require("../../.julia/Distributions.jl/src/Distributions.jl")
+
+res = SimpleMCMC.simpleRWM(model, 100000)
+mean(res[:,2])
+[mean(res[:,3]) std(res[:,3])]
+
+res = SimpleMCMC.simpleHMC(model, 100000, 2, 1.0)
+mean(res[:,2])
+[mean(res[:,3]) std(res[:,3])]
+
+dlmwrite("c:/temp/dump.txt", res)
+
+
+res = SimpleMCMC.simpleNUTS(model, 100)
+mean(res[:,2])
+[mean(res[:,3]) std(res[:,3])]
+
+
+
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 eval(myf)
 

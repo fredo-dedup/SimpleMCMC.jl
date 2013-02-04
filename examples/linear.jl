@@ -2,8 +2,7 @@
 
 include("../src/SimpleMCMC.jl")
 
-@windows_only load("../../Distributions.jl/src/Distributions.jl")
-@unix_only using Distributions
+using Distributions
 
 # simulate dataset
 begin
@@ -24,18 +23,18 @@ model = quote
 	resid ~ Normal(0, 1.0)  
 end
 
-# run random walk metropolis (1000 steps, 500 for burnin)
+# run random walk metropolis (10000 steps, 5000 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
 
 
-# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 1000, 3, 0.01)
+# run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 8 inner steps, 0.01 inner step size)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 8, 0.01)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
 
-
+# run NUTS flavoured HMC (1000 steps, 500 for burnin)
 res = SimpleMCMC.simpleNUTS(model, 1000)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
