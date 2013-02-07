@@ -47,6 +47,7 @@ const DERIV_PREFIX = "d"
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	const local target_accept = 0.234
+	# steps=100; burnin=10; init=1
 
 	# start timer
 	tic()
@@ -355,15 +356,17 @@ function runStats(res::Matrix{Float64}, delay::Float64)
 
 	print("$(round(delay,1)) sec., ")
 
-	essfac(serie::Vector) = cov_pearson(serie[2:end], serie[1:(end-1)]) / var(serie)
+	essfac(serie::Vector) = abs(cov_pearson(serie[2:end], serie[1:(end-1)])) / var(serie)
+	# note the absolute value around the covar to penalize anti-correlation the same as
+	# correlation. This will also ensure that ess is <= number of samples
 
-	ess = [ essfac(res[:,i])::Float64 for i in 3:size(res,2) ]
-	ess = integer(nsamp .* (1.-ess) ./ (1.+ess))
+	ess = [ essfac(res[:,i])::Float64 for i in 3:nvar ]
+	ess = nsamp .* (1.-ess) ./ (1.+ess)
 	if nvar==3
 		print("effective samples $(ess[1]), ")
 		println("effective samples by sec $(round(ess[1]/delay))")
 	else
-		print("effective samples $(min(ess)) to $(max(ess)), ")
+		print("effective samples $(round(min(ess))) to $(round(max(ess))), ")
 		println("effective samples by sec $(round(min(ess)/delay)) to $(round(max(ess)/delay))")
 	end
 end	

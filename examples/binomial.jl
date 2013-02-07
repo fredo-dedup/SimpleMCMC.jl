@@ -10,7 +10,7 @@ begin
 	nbeta = 10 # number of predictors, including intercept
 	X = [ones(n) randn((n, nbeta-1))]
 	beta0 = randn((nbeta,))
-	Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0 + randn((n,)) ) ))
+	Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0)))
 end
 
 # define model
@@ -30,7 +30,7 @@ mean(res[:,2]) # accept rate
 
 
 # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 4 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 4, 1e-1)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 4, 1e-3)
 
 mean(res[:,2]) # accept rate
 [ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ] # calculated and original values side by side

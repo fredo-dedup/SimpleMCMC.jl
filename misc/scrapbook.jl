@@ -16,6 +16,7 @@ end
 require("../src/SimpleMCMC.jl")
 include("../src/SimpleMCMC.jl")
 require("../../.julia/Distributions.jl/src/Distributions.jl")
+using Distributions
 
 res = SimpleMCMC.simpleRWM(model, 100000)
 mean(res[:,2])
@@ -101,3 +102,34 @@ test(d)
 
 ################################
 
+
+dat = dlmread("c:/temp/ts.txt")
+size(dat)
+
+tx = dat[:,2]
+dt = dat[2:end,1] - dat[1:end-1,1]
+
+model = quote
+    mu::real
+    tau::real
+    sigma::real
+
+    tau ~ Weibull(2,1)
+    sigma ~ Weibull(2, 0.01)
+    mu ~ Uniform(0,1)
+
+    f2 = exp(-dt / tau / 100)
+    resid = tx[2:end] - tx[1:end-1] .* f2 - mu * (1.-f2)
+    resid ~ Normal(0, sigma^2)
+end
+
+res = SimpleMCMC.simpleRWM(model, 10000, 1000, [0.5, 30, 0.01])
+res = SimpleMCMC.simpleRWM(model, 101000, 1000)
+mean(res[:,2])
+
+res = SimpleMCMC.simpleHMC(model, 1000, 10, 0.001)
+res = SimpleMCMC.simpleHMC(model, 1000, 1, 0.1)
+mean(res[:,2])
+
+dlmwrite("c:/temp/dump.txt", res)
+mean(Weibull(2,100))

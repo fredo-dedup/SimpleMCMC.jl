@@ -315,7 +315,8 @@ end
 ######### builds the full functions ##############
 
 function buildFunction(model::Expr)
-	(model2, nparams, pmap) = parseModel(model, false)
+	# (model2, nparams, pmap) = parseModel(model, false)
+	(model2, nparams, pmap) = parseModel(model, true)
 
 	assigns = {expr(:(=), k, v) for (k,v) in pairs(pmap)}
 
