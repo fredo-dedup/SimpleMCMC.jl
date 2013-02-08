@@ -49,30 +49,17 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	const local target_accept = 0.234
 	# steps=100; burnin=10; init=1
 
-	# start timer
-	tic()
+	tic() # start timer
+	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	# check burnin steps consistency
-	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
-	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
-	assert(steps > 0, "Steps ($steps) should be > 0")
+	(ll_func, nparams) = buildFunction(model) # build function, count the number of parameters
+	Main.eval(ll_func) # create function (in Main !)
 
-	# build function, count the number of parameters
-	ll_func, nparams = buildFunction(model)
-	Main.eval(ll_func) # create function in Main !
+	beta = setInit(init, nparams) # build the initial values
 
-	# build the initial values
-	if typeof(init) == Array{Float64,1}
-		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
-		__beta = init
-	elseif typeof(init) <: Real
-		__beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
-	else
-		error("cannot assign initial values (should be a Real or vector of Reals)")
-	end
 
 	#  first calc
-	__lp = Main.__loglik(__beta)
+	__lp = Main.__loglik(beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
@@ -81,15 +68,15 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	S = eye(nparams) # initial value for jump scaling matrix
  	for i in 1:steps	
 		jump = 0.1 * randn(nparams)
-		old__beta, __beta = __beta, __beta + S * jump
+		oldbeta, beta = beta, beta + S * jump
 
- 		old__lp, __lp = __lp, Main.__loglik(__beta) 
+ 		old__lp, __lp = __lp, Main.__loglik(beta) 
 
  		alpha = min(1, exp(__lp - old__lp))
 		if rand() > exp(__lp - old__lp)
-			__lp, __beta = old__lp, old__beta
+			__lp, beta = old__lp, oldbeta
 		end
-		draws[i, :] = vcat(__lp, (old__lp != __lp), __beta) 
+		draws[i, :] = vcat(__lp, (old__lp != __lp), beta) 
 
 		#  Adaptive scaling using R.A.M. method
 		eta = min(1, nparams*i^(-2/3))
@@ -114,30 +101,15 @@ simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps
 ##########################################################################################
 
 function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
-	# TODO : manage cases when loglik = -Inf in inner loop
 	# steps=10000; burnin=5000; init=0.0; isteps=1; stepsize=0.6
 
-	# start timer
-	tic()
+	tic() # start timer
+	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	# check burnin steps consistency
-	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
-	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
-	assert(steps > 0, "Steps ($steps) should be > 0")
-
-	# build function, count the number of parameters
-	(ll_func, nparams) = buildFunctionWithGradient(model)
+	(ll_func, nparams) = buildFunctionWithGradient(model) # build function, count the number of parameters
 	Main.eval(ll_func) # create function (in Main !)
 
-	# build the initial values
-	if typeof(init) == Array{Float64,1}
-		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
-		beta = init
-	elseif typeof(init) <: Real
-		beta = [ convert(Float64, init)::Float64 for i in 1:nparams]
-	else
-		error("cannot assign initial values (should be a Real or vector of Reals)")
-	end
+	beta = setInit(init, nparams) # build the initial values
 
 	#  first calc
 	llik, grad = Main.__loglik(beta) # eval(llcall)
@@ -172,7 +144,6 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 		# jump -= stepsize * grad / 2.0
 		# jump = -jump 
 
-		# TODO : + or -  dot(jump,jump)  ??
 		# revert to initial values if new is not good enough
 		if rand() > exp((llik - dot(jump,jump)/2.0) - (llik0 - dot(jump0,jump0)/2.0))
 			llik, beta = llik0, beta0
@@ -199,29 +170,14 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 
 function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
     # steps = 10 ; burnin = 3; init = 1.0
+	
+	tic() # start timer
+	checkSteps(steps, burnin) # check burnin steps consistency
+	
+	ll_func, nparams = buildFunctionWithGradient(model) # build function, count the number of parameters
+	Main.eval(ll_func) # create function (in Main !)
 
-	# start timer
-	tic()
-
-	# check burnin steps consistency
-	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
-	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
-	assert(steps > 0, "Steps ($steps) should be > 0")
-
-	# build function, count the number of parameters
-	(ll_func, nparams) = buildFunctionWithGradient(model)
-	# create function (in Main !)
-	Main.eval(ll_func) 
-
-	# build the initial values
-	if typeof(init) == Array{Float64,1}
-		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
-		beta0 = init
-	elseif typeof(init) <: Real
-		beta0 = [ convert(Float64, init)::Float64 for i in 1:nparams]
-	else
-		error("cannot assign initial values (should be a Real or vector of Reals)")
-	end
+	beta0 = setInit(init, nparams) # build the initial values
 
 	# prepare storage matrix for samples
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
@@ -249,20 +205,18 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	assert(isfinite(llik0), "Initial values out of model support, try other values")
 
 	# buidtree function
-	# beta = betam ; r = rm
-	# deltamax = 1.0
 	function buildTree(beta, r, u, v, j, epsilon, betabefore, r0)
 		if j == 0
 			beta1, r1 = leapFrog(beta, r, v*epsilon)
-			n1 = (u <= exp(llik - dot(r1,r1)/2.0))
-			s1 = (u <= exp(deltamax + llik - dot(r1,r1)/2.0))  
+			n1 = u <= ( llik - dot(r1,r1)/2.0 )
+			s1 = u <= ( deltamax + llik - dot(r1,r1)/2.0 )
 
 			return beta1, r1, beta1, r1, beta1, n1, s1, 
 				min(1., exp(llik - dot(r1,r1)/2. - llik0 + dot(r0,r0)/2.)), 1
 		else
 			betam, rm, betap, rp, beta1, n1, s1, alpha1, nalpha1 = 
 				buildTree(beta, r, u, v, j-1, epsilon, betabefore, r0)
-			if s1 == 1 
+			if s1 
 				if v == -1
 					betam, rm, dummy, dummy, beta2, n2, s2, alpha2, nalpha2 = 
 	 					buildTree(betam, rm, u, v, j-1, epsilon, betabefore, r0)
@@ -275,7 +229,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	 			end
 	 			alpha1 += alpha2
 	 			nalpha1 += nalpha2
-	 			s1 = s2 * (dot((betap-betam), rm) >= 0.0) * (dot((betap-betam), rp) >= 0.0)
+	 			s1 = s2 && (dot((betap-betam), rm) >= 0.0) && (dot((betap-betam), rp) >= 0.0)
 	 			n1 += n2
 	 		end
 
@@ -299,13 +253,15 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  		local dummy, alpha, nalpha
 
  		r0 = randn(nparams)
- 		u  = rand() * exp(llik0 - dot(r0,r0)/2.0)
+ 		u  = log(rand()) + llik0 - dot(r0,r0)/2.0  # rand() * exp(llik0 - dot(r0,r0)/2.0)
+ 		# use log ( != paper) to avoid underflow
  		beta = betap = betam = beta0
  		rp = rm = r0
- 		j, n, s = 0, 1, 1
+ 		j, n = 0, 1
+ 		s = true
 
  		# inner loop
- 		while s == 1
+ 		while s
  			v = (randn() > 0.5) * 2. - 1.
  			if v == -1
  				betam, rm, dummy, dummy, beta1, n1, s1, alpha, nalpha = 
@@ -314,13 +270,13 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  				dummy, dummy, betap, rp, beta1, n1, s1, alpha, nalpha = 
  					buildTree(betap, rp, u, v, j, epsilon, beta0, r0)
  			end
- 			println("=== loop $i, iloop $j, $s1, $n1, $n")
- 			if s1==1 && rand() < min(1.0, n1/n)  # accept and set new beta
+ 			# println("=== loop $i, iloop $j, $s1, $n1, $n")
+ 			if s1 && rand() < min(1.0, n1/n)  # accept and set new beta
  				beta = beta1
  			end
  			n += n1
  			j += 1
- 			s = s1 * (dot((betap-betam), rm) >= 0.0) * (dot((betap-betam), rp) >= 0.0)
+ 			s = s1 && (dot((betap-betam), rm) >= 0.0) && (dot((betap-betam), rp) >= 0.0)
  		end
  		
  		# epsilon adjustment
@@ -348,8 +304,32 @@ simpleNUTS(model::Expr, steps::Integer) = simpleNUTS(model, steps, min(steps-1, 
 simpleNUTS(model::Expr, steps::Integer, burnin::Integer) = simpleNUTS(model, steps, burnin, 1.0)
 
 
-##### stats function calculated after each run
 
+##########################################################################################
+#   Common functionnality
+##########################################################################################
+
+### checks consistency of steps and burnin steps
+function checkSteps(steps, burnin)
+	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
+	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
+	assert(steps > 0, "Steps ($steps) should be > 0")
+end
+
+### sets inital values from 'init' given as parameter
+function setInit(init, nparams)
+	# build the initial values
+	if typeof(init) == Array{Float64,1}
+		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
+		return init
+	elseif typeof(init) <: Real
+		return ones(nparams) * init
+	else
+		error("cannot assign initial values (should be a Real or vector of Reals)")
+	end
+end
+
+##### stats calculated after a full run
 function runStats(res::Matrix{Float64}, delay::Float64)
 	nsamp = size(res,1)
 	nvar = size(res,2)
@@ -363,7 +343,7 @@ function runStats(res::Matrix{Float64}, delay::Float64)
 	ess = [ essfac(res[:,i])::Float64 for i in 3:nvar ]
 	ess = nsamp .* (1.-ess) ./ (1.+ess)
 	if nvar==3
-		print("effective samples $(ess[1]), ")
+		print("effective samples $(round(ess[1])), ")
 		println("effective samples by sec $(round(ess[1]/delay))")
 	else
 		print("effective samples $(round(min(ess))) to $(round(max(ess))), ")
