@@ -7,6 +7,9 @@ include("../src/SimpleMCMC.jl")
 DIFF_DELTA = 1e-10
 ERROR_THRESHOLD = 1e-2
 
+good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(0.01, abs(x))) < ERROR_THRESHOLD : isequal(x,y) 
+good_enough(t::Tuple) = good_enough(t[1], t[2])
+
 ############# gradient checking function  ######################
 
 function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(sum(2+x)) ; x0 = [2., 3]
@@ -37,14 +40,10 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 		end
 	end
 
-	good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(0.01, abs(x))) < ERROR_THRESHOLD : isequal(x,y) 
-	good_enough(t::Tuple) = good_enough(t[1], t[2])
-
 	# println("------- expected $(round(gradn,5)), got $(round(grad0,5))")
 	assert(all(good_enough, zip([grad0], [gradn])),
 		"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
 end
-
 
 macro mult(func, myex, values)
 	quote
@@ -100,7 +99,6 @@ z = [2., 3, 0.1]
 
 @mult deriv1    sum(x)   {-1., 0., 1., 10.}
 
-# TODO : make deriv = NaN when x < 0 ?
 @mult deriv1    log(x)         {0., 1., 10.} 
 @mult deriv1    sum(log(x*z))  {0., 1., 10.} 
 
@@ -274,4 +272,6 @@ tz = transpose(z)
 @mult deriv1    x[2]+x[1]              {[-3., -2, -6], [-1., -10, -8]}
 @mult deriv1    log(x[2]^2+x[1]^2)     {[-3., -2, -6], [-1., -10, -8]}
 
-
+# FAIL case when a vector is assigned a value and a single element of the vector is set afterward
+# Y = [1,2,3]
+# model = :(x::real(3); y=Y; y[2] = x[1] ; y ~ TestDiff())
