@@ -50,18 +50,8 @@ model = :(x::real(3); y=Y; y[2] = x[1] ; y ~ TestDiff())
 
 ## ERROR : marche pas, notamment parce que la subst des noms de variable ne fonctionne pas
 
+################################
 
-    myf, np = SimpleMCMC.buildFunctionWithGradient(model)
-    ex2 = expr(:block, myf.args[2].args)
-    __beta = [3., 10, 0]
-    a, b =eval(ex2)
-    __beta = [3., 11, 0]
-    c, d = eval(ex2)
-
-    cex = expr(:block, vcat({:(__beta = [1.0])}, ex2))
-
-
-#####################################################
 
 model = quote
     x::real
@@ -76,6 +66,11 @@ dump(res2)
 
 res = SimpleMCMC.simpleHMC(model, 10000, 5000, 3, 0.5)
 [ (mean(res[:,i]), std(res[:,i])) for i in 3:size(res,2)]
+=======
+dump(:(b = x==0 ? x : y))
+dump(:(x==0 ))
+dump(:(x!=0 ))
+dump(:(x!=0 ))
 
 
 ################################

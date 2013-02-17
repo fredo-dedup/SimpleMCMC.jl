@@ -1,7 +1,7 @@
 ##########################################################################################
 #
-#    'derive' function containing derivation rules + extension of distributions to allow
-#        vector parameters
+#    function 'derive' returning the expr for the gradient calculation
+#    +  definition of functions logpdf... 
 #
 ##########################################################################################
 

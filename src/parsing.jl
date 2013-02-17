@@ -19,8 +19,6 @@ typealias Exprblock	   ExprH{:block}
 typealias Exprline     ExprH{:line}
 typealias Exprref      ExprH{:ref}
 
-
-
 ##########  helper function to get symbols appearing in AST ############
 getSymbols(ex::Expr) = getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) = Set{Symbol}(ex)

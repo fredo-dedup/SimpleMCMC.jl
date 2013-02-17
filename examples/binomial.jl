@@ -30,10 +30,11 @@ mean(res[:,2]) # accept rate
 
 
 # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 4 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 4, 1e-3)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 4, 1e-1)
 
 mean(res[:,2]) # accept rate
 [ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ] # calculated and original values side by side
 
+res = SimpleMCMC.simpleNUTS(model, 100)
 
 
