@@ -132,17 +132,6 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 			jump += stepsize/2. * grad
 			j +=1
 		end
-		# jump = jump0 - stepsize * grad / 2.0
-		# for j in 1:(isteps-1)
-		# 	println(j)
-		# 	__beta += stepsize * jump
-		# 	(__lp, grad) = Main.__loglik(__beta)
-		# 	jump += stepsize * grad
-		# end
-		# __beta += stepsize * jump
-		# (__lp, grad) = Main.__loglik(__beta) 
-		# jump -= stepsize * grad / 2.0
-		# jump = -jump 
 
 		# revert to initial values if new is not good enough
 		if rand() > exp((llik - dot(jump,jump)/2.0) - (llik0 - dot(jump0,jump0)/2.0))
@@ -182,11 +171,38 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	# prepare storage matrix for samples
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
 
+	# first calc
+	llik0, grad0 = Main.__loglik(beta0)
+	llik = -Inf
+	assert(isfinite(llik0), "Initial values out of model support, try other values")
+
 	### run parameters
 	const local delta = 0.7  # target acceptance
 	const local deltamax = 1000
-	### run initial values 
-	epsilon = 0.2 # findEpsilon()
+	# find initial value for epsilon
+	epsilon = 1.
+	jump = randn(nparams)
+	function leapFrog2(beta::Vector{Float64}, r::Vector{Float64}, ve::Float64)
+		llik, grad = Main.__loglik(beta)
+		r += grad * ve / 2.
+		beta += ve * r
+		llik, grad = Main.__loglik(beta)  # TODO : one call unnecessary
+		r += grad * ve / 2.
+
+		return llik, beta, r
+	end
+	llik, beta1, jump1 = leapFrog2(beta0, jump, epsilon)
+
+	ratio = exp(llik-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
+	a = 2*(ratio>0.5)-1.
+	while ratio^a > 2^-a
+		epsilon = 2^a * epsilon
+		llik, beta1, jump1 = leapFrog2(beta0, jump, epsilon)
+		ratio = exp(llik-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
+	end
+	println("starting epsilon = $epsilon")
+
+
 
 	### adaptation parameters
 	const local nadapt = 1000
@@ -197,12 +213,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	hbar = 0.
 	mu = log(10*epsilon)
 	lebar = 0.0
-
-	# first calc
-	llik0, grad0 = Main.__loglik(beta0)
-	llik = -Inf
-
-	assert(isfinite(llik0), "Initial values out of model support, try other values")
 
 	# buidtree function
 	function buildTree(beta, r, u, v, j, epsilon, betabefore, r0)
@@ -285,8 +295,10 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			le = mu-sqrt(i)/gam*hbar
 			lebar = i^(-kappa) * le + (1-i^-kappa) * lebar
 			epsilon = exp(le)
+			println("epsilon (adapt) = $epsilon")
 		else # post warm up, keep same epsilon
 			epsilon = exp(lebar)
+			println("epsilon (post) = $epsilon")
 		end
 
 		draws[i, :] = vcat(llik, (beta != beta0), beta)

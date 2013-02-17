@@ -35,6 +35,6 @@ res = SimpleMCMC.simpleHMC(model, 10000, 1000, 4, 1e-1)
 mean(res[:,2]) # accept rate
 [ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ] # calculated and original values side by side
 
-res = SimpleMCMC.simpleNUTS(model, 100)
+res = SimpleMCMC.simpleNUTS(model, 10)
 
 
