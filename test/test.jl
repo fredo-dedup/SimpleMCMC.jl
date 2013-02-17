@@ -7,12 +7,16 @@ include("../src/SimpleMCMC.jl")
 DIFF_DELTA = 1e-10
 ERROR_THRESHOLD = 1e-2
 
+good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(ERROR_THRESHOLD, abs(x))) < ERROR_THRESHOLD : isequal(x,y) 
+good_enough(t::Tuple) = good_enough(t[1], t[2])
+
 ############# gradient checking function  ######################
+# compares numerical gradient to automated gradient
 
 function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(sum(2+x)) ; x0 = [2., 3]
 	global __beta
 
-	println("testing derivation of $ex at x = $x0")
+	println("testing gradient of $ex at x = $x0")
 
 	nx = length(x0)  # nx=3
 	model = expr(:block, nx==1 ? :(x::real) : :(x::real($nx)), :(y = $ex), :(y ~ TestDiff()))
@@ -36,9 +40,6 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 			gradn[i] = (l-l0)/DIFF_DELTA
 		end
 	end
-
-	good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(0.01, abs(x))) < ERROR_THRESHOLD : isequal(x,y) 
-	good_enough(t::Tuple) = good_enough(t[1], t[2])
 
 	# println("------- expected $(round(gradn,5)), got $(round(grad0,5))")
 	assert(all(good_enough, zip([grad0], [gradn])),
@@ -264,7 +265,6 @@ tz = transpose(z)
 @mult deriv1    SimpleMCMC.logpdfUniform(x, z, z-1.)   {[-3., -2, -6], [-1., -10, -8]}
 
 
-
 ############## test refs  ###############################
 
 @mult deriv1    x[2]                   {[-3., -2, -6], [-1., -10, -8]}
@@ -273,5 +273,32 @@ tz = transpose(z)
 
 @mult deriv1    x[2]+x[1]              {[-3., -2, -6], [-1., -10, -8]}
 @mult deriv1    log(x[2]^2+x[1]^2)     {[-3., -2, -6], [-1., -10, -8]}
+
+# fail case when individual elements of an array are set several times
+# TODO : correct var renaming step in unfold...
+# model = :(x::real(3); y=x; y[2] = x[1] ; y ~ TestDiff())
+
+
+###### test distributions x samplers  ############################
+
+ERROR_THRESHOLD = 1e-1
+
+model = quote
+	x::real
+	x ~ Normal(0,1)
+end
+
+res = SimpleMCMC.simpleRWM(model, 10000)
+
+assert(good_enough(mean(res[:,3]), 0.0), "Normal mean fail")
+assert(good_enough(std(res[:,3]), 1.0), "Normal std fail")
+
+x = mean(res[:,3])
+(abs(x) / max(ERROR_THRESHOLD, abs(x))) < ERROR_THRESHOLD : isequal(x,y) 
+
+
+
+
+
 
 

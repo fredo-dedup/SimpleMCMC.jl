@@ -63,40 +63,19 @@ model = :(x::real(3); y=Y; y[2] = x[1] ; y ~ TestDiff())
 
 #####################################################
 
-type Hexpr{T}
-    head::Symbol
-    args::Vector
-    typ::Any
+model = quote
+    x::real
+    x ~ Normal(0,1)
 end
 
-toHexpr(ex::Expr) = Hexpr{ex.head}(ex.head, ex.args, ex.typ)
-toExpr(ex::Hexpr) = expr(ex.head, ex.args)
+res = SimpleMCMC.simpleRWM(model, 10000)
+res2 = {:llik=>[1,2,3,3,4], :accept=>[0,1,0,1,0,1,1,1,0,0,0],
+:x=>[4,4,4,5,5,5,6,6,3,22,3]}
+mean(res2[:accept])
+dump(res2)
 
-test(ex::Hexpr{:block}) =   println("block : $ex")
-test(ex::ExprBlock) =   println("block : $ex")
-test(ex::Hexpr{:line}) =    println("line : $ex")
-test(ex::ExprRef) =    println("ref : $ex")
-test(ex::Hexpr{:call}) =    println("call : $ex")
-test(ex::Hexpr{:(=)}) =     println("= : $ex")
-test(ex::Hexpr) =           println("whatever ($(ex.head)) : $ex")
-
-test(ex::Hexpr{:(=)}) =     println("= : $ex")
-
-typealias ExprBlock Hexpr{:block}
-typealias ExprRef Hexpr{:ref}
-
-test(ex::Expr) = test(toHexpr(ex))
-
-a = :(a=b+5)
-b = :(sin(f))
-c = :((a=f;f+6))
-d = :(f==3 ? x : y)
-test(:(f[3]))
-
-test(a)
-test(b)
-test(c)
-test(d)
+res = SimpleMCMC.simpleHMC(model, 10000, 5000, 3, 0.5)
+[ (mean(res[:,i]), std(res[:,i])) for i in 3:size(res,2)]
 
 
 ################################

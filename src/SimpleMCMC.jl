@@ -306,7 +306,7 @@ simpleNUTS(model::Expr, steps::Integer, burnin::Integer) = simpleNUTS(model, ste
 
 
 ##########################################################################################
-#   Common functionnality
+#   Common functionality
 ##########################################################################################
 
 ### checks consistency of steps and burnin steps
