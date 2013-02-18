@@ -2,12 +2,8 @@ module SimpleMCMC
 
 @unix_only begin
 	require("Distributions")
-
-	#  include model processing functions		
-	include("parsing.jl")
-
-	#  include derivatives definitions
-	include("diff.jl")
+	include("parsing.jl") #  include model processing functions		
+	include("diff.jl") #  include derivatives definitions
 end
 
 @windows_only begin  # older version on my side requires a few tweaks
@@ -16,11 +12,8 @@ end
 	push!(args...) = push(args...) # windows julia version not up to date
 	delete!(args...) = del(args...) # windows julia version not up to date
 
-	#  include model processing functions		
-	include("../src/parsing.jl")	
-
-	#  include derivatives definitions
-	include("../src/diff.jl")
+	include("../src/parsing.jl") #  include model processing functions		
+	include("../src/diff.jl") #  include derivatives definitions
 end
 
 
@@ -30,7 +23,7 @@ import 	Distributions.Normal,
 		Distributions.Weibull 
 
 
-export simpleRWM, simpleHMC
+export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
 
 # naming conventions
@@ -158,6 +151,9 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 ##########################################################################################
 
 function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
+    local epsilon
+    local beta0, r0, llik0  # starting state of each loop
+    local u_slice 
     # steps = 10 ; burnin = 3; init = 1.0
 	
 	tic() # start timer
@@ -173,69 +169,66 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 
 	# first calc
 	llik0, grad0 = Main.__loglik(beta0)
-	llik = -Inf
 	assert(isfinite(llik0), "Initial values out of model support, try other values")
 
-	### run parameters
-	const local delta = 0.7  # target acceptance
-	const local deltamax = 1000
-	# find initial value for epsilon
-	epsilon = 1.
-	jump = randn(nparams)
-	function leapFrog2(beta::Vector{Float64}, r::Vector{Float64}, ve::Float64)
+	# leapfrog function
+	function leapFrog(beta::Vector{Float64}, r::Vector{Float64}, ve::Float64)
 		llik, grad = Main.__loglik(beta)
 		r += grad * ve / 2.
 		beta += ve * r
-		llik, grad = Main.__loglik(beta)  # TODO : one call unnecessary
+		llik, grad = Main.__loglik(beta)  # TODO : one loglik call unnecessary, should be cached
 		r += grad * ve / 2.
 
-		return llik, beta, r
+		return beta, r, llik
 	end
-	llik, beta1, jump1 = leapFrog2(beta0, jump, epsilon)
 
-	ratio = exp(llik-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
+	# find initial value for epsilon
+	epsilon = 1.
+	jump = randn(nparams)
+	beta1, jump1, llik1 = leapFrog(beta0, jump, epsilon)
+
+	ratio = exp(llik1-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
 	a = 2*(ratio>0.5)-1.
 	while ratio^a > 2^-a
 		epsilon = 2^a * epsilon
-		llik, beta1, jump1 = leapFrog2(beta0, jump, epsilon)
-		ratio = exp(llik-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
+		beta1, jump1, llik1 = leapFrog(beta0, jump, epsilon)
+		ratio = exp(llik1-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
 	end
 	println("starting epsilon = $epsilon")
 
-
-
 	### adaptation parameters
-	const local nadapt = 1000
-	const local gam = 0.05
-	const local kappa = 0.75
-	const local t0 = 10
+	const delta = 0.7  # target acceptance
+	const nadapt = 1000  # nb of steps to adapt epsilon
+	const gam = 0.05
+	const kappa = 0.75
+	const t0 = 10
 	### adaptation inital values
 	hbar = 0.
 	mu = log(10*epsilon)
 	lebar = 0.0
 
 	# buidtree function
-	function buildTree(beta, r, u, v, j, epsilon, betabefore, r0)
-		if j == 0
-			beta1, r1 = leapFrog(beta, r, v*epsilon)
-			n1 = u <= ( llik - dot(r1,r1)/2.0 )
-			s1 = u <= ( deltamax + llik - dot(r1,r1)/2.0 )
+	function buildTree(beta, r, dir, j)
+		const deltamax = 1000
 
-			return beta1, r1, beta1, r1, beta1, n1, s1, 
-				min(1., exp(llik - dot(r1,r1)/2. - llik0 + dot(r0,r0)/2.)), 1
+		if j == 0
+			beta1, r1, llik1 = leapFrog(beta, r, dir*epsilon)
+			n1 = (u_slice <= ( llik1 - dot(r1,r1)/2.0 )) + 0  # +0 to force as integer
+			s1 = u_slice <= ( deltamax + llik1 - dot(r1,r1)/2.0 )
+
+			return beta1, r1, beta1, r1, beta1, llik1, n1, s1, 
+				min(1., exp(llik1 - dot(r1,r1)/2. - llik0 + dot(r0,r0)/2.)), 1
 		else
-			betam, rm, betap, rp, beta1, n1, s1, alpha1, nalpha1 = 
-				buildTree(beta, r, u, v, j-1, epsilon, betabefore, r0)
+			betam, rm, betap, rp, beta1, llik1, n1, s1, alpha1, nalpha1 = buildTree(beta, r, dir, j-1)
 			if s1 
-				if v == -1
-					betam, rm, dummy, dummy, beta2, n2, s2, alpha2, nalpha2 = 
-	 					buildTree(betam, rm, u, v, j-1, epsilon, betabefore, r0)
+				if dir == -1
+					betam, rm, dummy, dummy, beta2, llik2, n2, s2, alpha2, nalpha2 = buildTree(betam, rm, dir, j-1)
 	 			else
-	 				dummy, dummy, betap, rp, beta2, n2, s2, alpha2, nalpha2 = 
-	 					buildTree(betap, rp, u, v, j-1, epsilon, betabefore, r0)
+	 				dummy, dummy, betap, rp, beta2, llik2, n2, s2, alpha2, nalpha2 = buildTree(betap, rp, dir, j-1)
 	 			end
 	 			if rand() <= n2/(n2+n1)
 	 				beta1 = beta2
+	 				llik1 = llik2
 	 			end
 	 			alpha1 += alpha2
 	 			nalpha1 += nalpha2
@@ -243,19 +236,8 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	 			n1 += n2
 	 		end
 
-	 		return betam, rm, betap, rp, beta1, n1, s1, alpha1, nalpha1
+	 		return betam, rm, betap, rp, beta1, llik1, n1, s1, alpha1, nalpha1
 		end
-	end
-
-	# leapfrog function
-	function leapFrog(beta::Vector{Float64}, r::Vector{Float64}, ve::Float64)
-		llik, grad = Main.__loglik(beta)
-		r += grad * ve / 2.
-		beta += ve * r
-		llik, grad = Main.__loglik(beta)  # TODO : one call unnecessary
-		r += grad * ve / 2.
-
-		return beta, r
 	end
 
 	### main loop
@@ -263,26 +245,25 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  		local dummy, alpha, nalpha
 
  		r0 = randn(nparams)
- 		u  = log(rand()) + llik0 - dot(r0,r0)/2.0  # rand() * exp(llik0 - dot(r0,r0)/2.0)
- 		# use log ( != paper) to avoid underflow
+ 		u_slice  = log(rand()) + llik0 - dot(r0,r0)/2.0 # use log ( != paper) to avoid underflow
  		beta = betap = betam = beta0
+ 		llik = llik0
  		rp = rm = r0
  		j, n = 0, 1
  		s = true
 
  		# inner loop
  		while s
- 			v = (randn() > 0.5) * 2. - 1.
- 			if v == -1
- 				betam, rm, dummy, dummy, beta1, n1, s1, alpha, nalpha = 
- 					buildTree(betam, rm, u, v, j, epsilon, beta0, r0)
+ 			dir = (randn() > 0.5) * 2. - 1.
+ 			if dir == -1
+ 				betam, rm, dummy, dummy, beta1, llik1, n1, s1, alpha, nalpha = buildTree(betam, rm, dir, j)
  			else
- 				dummy, dummy, betap, rp, beta1, n1, s1, alpha, nalpha = 
- 					buildTree(betap, rp, u, v, j, epsilon, beta0, r0)
+ 				dummy, dummy, betap, rp, beta1, llik1, n1, s1, alpha, nalpha = buildTree(betap, rp, dir, j)
  			end
- 			# println("=== loop $i, iloop $j, $s1, $n1, $n")
- 			if s1 && rand() < min(1.0, n1/n)  # accept and set new beta
+ 			# println("=== loop ($i/$j), dir $dir, s1 : $s1, n1/n : $n1 / $n")
+ 			if s1 && rand() < n1/n  # accept and set new beta
  				beta = beta1
+ 				llik = llik1
  			end
  			n += n1
  			j += 1
@@ -295,10 +276,10 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			le = mu-sqrt(i)/gam*hbar
 			lebar = i^(-kappa) * le + (1-i^-kappa) * lebar
 			epsilon = exp(le)
-			println("epsilon (adapt) = $epsilon")
+			# println("epsilon (adapt) = $epsilon")
 		else # post warm up, keep same epsilon
 			epsilon = exp(lebar)
-			println("epsilon (post) = $epsilon")
+			# println("epsilon (post) = $epsilon")
 		end
 
 		draws[i, :] = vcat(llik, (beta != beta0), beta)

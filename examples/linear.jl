@@ -19,7 +19,7 @@ end
 model = quote
 	vars::real(nbeta)
 
-	vars ~ Normal(0, 1.0)  # Normal prior, variance 1.0 for predictors
+	vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
 	resid = Y - X * vars
 	resid ~ Normal(0, 1.0)  
 end
@@ -31,12 +31,12 @@ res = SimpleMCMC.simpleRWM(model, 10000)
 
 
 # run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 3, 0.01)
+res = SimpleMCMC.simpleHMC(model, 1000, 3, 0.01)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
 
 
-res = SimpleMCMC.simpleNUTS(model, 10000)
+res = SimpleMCMC.simpleNUTS(model, 100)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
 

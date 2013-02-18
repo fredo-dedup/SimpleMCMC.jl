@@ -16,7 +16,8 @@
                     "type": "subprocess",
                     "external_id": "julia",
                     "encoding": {
-                        "windows": "$win_cmd_encoding",
+//                        "windows": "$win_cmd_encoding",
+                        "windows": "utf8",
                         "linux": "utf8",
                         "osx": "utf8"
                         },
