@@ -10,26 +10,23 @@ model = quote
     x::real
     x ~ Normal(0, 1.0)  
 end
+model = :(x::real ; x ~ Normal(0, 1))
+model = :(x::real ; x ~ Uniform(0, 1))
+model = :(x::real ; x ~ Weibull(1, 1))
 
 include("../src/SimpleMCMC.jl")
-using Distributions
 
-res = SimpleMCMC.simpleRWM(model, 100000)
-mean(res[:,2])
-[mean(res[:,3]) std(res[:,3])]
+function summary(res)
+    println("accept $(mean(res[:,2])), mean : $(mean(res[:,3])), std : $(std(res[:,3]))")
+end
 
-res = SimpleMCMC.simpleHMC(model, 10000, 5000, [0.0], 1, 0.1)
-mean(res[:,2])
-[mean(res[:,3]) std(res[:,3])]
+summary(SimpleMCMC.simpleRWM(model, 10000, 0, [0.5]))
+summary(SimpleMCMC.simpleHMC(model, 100000, 0, [0.9], 2, 0.9))
+summary(SimpleMCMC.simpleNUTS(model, 10000, 0, [0.5]))
 
 dlmwrite("c:/temp/dump.txt", res)
 
-res = SimpleMCMC.simpleNUTS(model, 100000)
-mean(res[:,2])
-[mean(res[:,3]) std(res[:,3])]
-
-
-
+########################################################################
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 eval(myf)
 
