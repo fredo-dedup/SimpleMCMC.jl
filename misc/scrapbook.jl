@@ -5,26 +5,75 @@ Pkg.update("Distributions")
 Pkg.add("DataFrames")
 
 require("../../.julia/Distributions.jl/src/Distributions.jl")
+using Distributions
 ################################
-model = quote
-    x::real
-    x ~ Normal(0, 1.0)  
-end
-model = :(x::real ; x ~ Normal(0, 1))
-model = :(x::real ; x ~ Uniform(0, 1))
-model = :(x::real ; x ~ Weibull(1, 1))
 
 include("../src/SimpleMCMC.jl")
 
-function summary(res)
-    println("accept $(mean(res[:,2])), mean : $(mean(res[:,3])), std : $(std(res[:,3]))")
+function recap(res)
+    print("accept : $(round(100*mean(res[:,2]),1))%, ")
+    print("mean : $(round(mean(res[:,3]),3)), ")
+    println("std : $(round(std(res[:,3]),3))")
 end
 
-summary(SimpleMCMC.simpleRWM(model, 10000, 0, [0.5]))
-summary(SimpleMCMC.simpleHMC(model, 100000, 0, [0.9], 2, 0.9))
-summary(SimpleMCMC.simpleNUTS(model, 10000, 0, [0.5]))
+model = :(x::real ; x ~ Weibull(1, 1))  # mean 1.0, std 1.0
+recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 3.400 ess/s
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 1, 0.001)) # 9.500 ess/s
+recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.]))  # 400-500 ess/s, mean is off by -0.05
 
-dlmwrite("c:/temp/dump.txt", res)
+model = :(x::real ; x ~ Weibull(3, 1)) # mean 0.89, std 0.325
+recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 5.900 ess/s
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.6], 1, 0.01)) # 30.000 ess/s
+recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.]))  # 15.000 ess/s, correct
+
+model = :(x::real ; x ~ Uniform(0, 2)) # mean 1.0, std 0.577
+recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 5.000 ess/s
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 2, 0.7)) # 14.000 ess/s
+recap(SimpleMCMC.simpleNUTS(model, 10000, 1000, [1.]))  # 130 ess/s, very slow due to gradient == 0 ?
+
+model = :(x::real ; x ~ Normal(0, 1)) # mean 0.0, std 1.0
+recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 6.000 ess/s
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.], 2, 0.8)) # 45.000 ess/s
+recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.2]))  # 20.000 ess/s, correct
+
+model = :(x::real ; x ~ Normal(3, 12)) # mean 0.0, std 1.0
+recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 6.200 ess/s
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.], 2, 0.8)) # 45.000 ess/s
+recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.]))  # 17.000 ess/s, correct
+
+
+
+
+
+
+model = :(x::real ; x ~ Weibull(1, 1)) 
+recap(SimpleMCMC.simpleNUTS(model, 10000, 0, [0.2]))  
+model = :(x::real ; x ~ Normal(0, 1)) # mean 0.0, std 1.0
+recap(SimpleMCMC.simpleNUTS(model, 10000, 0, [0.2]))  
+
+res = SimpleMCMC.simpleNUTS(model, 10000, 0, [0.2])
+mean(res[:,3])
+
+0ÓK], -0.9389385332046728, -0.2 
+ 4.0 
+ 0.7, 1000, 0.05, 0.75, 10 
+ 0.0, 3.6888794541139363, 0.0
+
+p!ç], -0.9389385332046728, -0.2 
+ 4.0 
+ 0.7, 1000, 0.05, 0.75, 10 
+ 0.0, 3.6888794541139363, 0.0
+
+__loglik([0.2])[1]
+__loglik([1.])[1]
+__loglik([-1.])[1]
+__loglik([0.636822])[1]
+__loglik([0.636822])[2]
+__loglik([-0.636822])[1]
+__loglik([-0.636822])[2]
+
+res = SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.])
+dlmwrite("c:/temp/dump.txt", res[:,3])
 
 ########################################################################
 myf, np = SimpleMCMC.buildFunctionWithGradient(model)
@@ -122,3 +171,18 @@ res = SimpleMCMC.simpleHMC(model, 1000, 1, 0.1)
 mean(res[:,2])
 
 dlmwrite("c:/temp/dump.txt", res)
+
+
+
+
+###########################################################
+
+f() = 2.0
+g(f) = f()
+g(f)
+# 2.0
+
+f() = 3.0
+g(f)
+# 2.0
+

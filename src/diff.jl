@@ -142,12 +142,12 @@ end
 for d in [:Normal, :Weibull, :Uniform]
 	fsym = symbol("logpdf$d")
 
-	@eval ($fsym)(a::Real, b::Real, x::Real) = sum([logpdf(($d)(a, b), x)])
+	@eval ($fsym)(a::Real, b::Real, x::Real) = logpdf(($d)(a, b), x)
 
-	@eval ($fsym)(a::Real, b::Real, x::Vector) = sum([logpdf(($d)(a, b), x)])
+	@eval ($fsym)(a::Real, b::Real, x::Array) = sum([logpdf(($d)(a, b), x)])
 
 	eval(quote
-		function ($fsym)(a::Union(Real, Vector), b::Union(Real, Vector), x::Union(Real, Vector))
+		function ($fsym)(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
 			res = 0.0
 			for i in 1:max(length(a), length(b), length(x))
 				res += logpdf(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
