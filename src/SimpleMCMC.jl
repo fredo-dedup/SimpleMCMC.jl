@@ -17,10 +17,11 @@ end
 end
 
 
-import 	Distributions.logpdf
+import 	Distributions.logpdf, Distributions.logpmf
 import 	Distributions.Normal, 
 		Distributions.Uniform, 
-		Distributions.Weibull 
+		Distributions.Weibull,
+		Distributions.Bernoulli
 
 
 export simpleRWM, simpleHMC, simpleNUTS

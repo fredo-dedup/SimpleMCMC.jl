@@ -118,6 +118,13 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 			 	:( (tmp = ( (1.0 - ($a3./$a2).^$a1) .* $a1 -1.0) ./ $a3 * $ds ; isa($a3, Real) ? sum([tmp]) : tmp) .* $ds)
 			end
 		
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfBernoulli)) 
+			if index == 1 # probability
+				:( (tmp = 1. ./ ($a1 - (1. - $a2)) ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
+			else # x, x is discrete for Bernoulli therefore no derivative should be calculated
+			 	error("The gradient cannot depend on a discrete variable in $opex")
+			end
+		
 		#  fake distribution to test gradient code
 		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfTestDiff)) 
 			ds
@@ -138,7 +145,26 @@ end
 #TODO ? : implement here functions that can be simplified (eg. logpdf(Normal)) 
 # as this is not always done in Distributions
 
+#  1 parameter distributions
+for d in [:Bernoulli]
+	fsym = symbol("logpdf$d")
 
+	@eval ($fsym)(a::Real, x::Real) = logpmf(($d)(a), x)
+
+	@eval ($fsym)(a::Real, x::Array) = sum([logpmf(($d)(a), x)])
+
+	eval(quote
+		function ($fsym)(a::Union(Real, Array), x::Union(Real, Array))
+			res = 0.0
+			for i in 1:max(length(a), length(x))
+				res += logpmf(($d)(next(a,i)[1]), next(x,i)[1])
+			end
+			res
+		end
+	end) 
+end
+
+#  2 parameters distributions
 for d in [:Normal, :Weibull, :Uniform]
 	fsym = symbol("logpdf$d")
 

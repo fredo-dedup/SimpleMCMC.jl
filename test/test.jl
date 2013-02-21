@@ -32,7 +32,8 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 		l, grad = eval(ex2) 
 		gradn = (l-l0)/DIFF_DELTA
 	else
-		gradn = grad0 * NaN
+		# gradn = grad0 * NaN
+		gradn = zeros(nx)
 		for i in 1:nx # i = 2
 			__beta = [x0]
 			__beta[i] += DIFF_DELTA
@@ -112,6 +113,7 @@ z = [2., 3, 0.1]
 @mult deriv1    cos(x)           {-1., 0., 1., 10.}
 @mult deriv1    sum(cos(x.^z))   {-1., 0.1, 1., 10.}
 
+## Normal distrib
 @mult deriv1    SimpleMCMC.logpdfNormal(1, 2, x)    {-1., 0., 1., 10.}
 @mult deriv1    SimpleMCMC.logpdfNormal(-1, x, 0)   {0.1, 1., 10.}
 @mult deriv1    SimpleMCMC.logpdfNormal(x, 4, 10)   {-1., 0., 1., 10.}
@@ -128,7 +130,7 @@ z = [2., 3, 0.1]
 @mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {-1., 0., 1.}
 @mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {-1., 0., 1.}
 
-# TODO : make deriv = NaN when x < 0
+# Weibull distrib
 @mult deriv1    SimpleMCMC.logpdfWeibull(1, 2, x)    {0.0001, 1., 10.} # ERROR at 0.0 !!
 @mult deriv1    SimpleMCMC.logpdfWeibull(0.5, x, 3)  {0.1, 1., 10.}
 @mult deriv1    SimpleMCMC.logpdfWeibull(x, 4, 10)   {0.1, 1., 10.}
@@ -145,7 +147,7 @@ z = [2., 3, 0.1]
 @mult deriv1    SimpleMCMC.logpdfWeibull(x, 1, z)    {.1, 1., 10.}
 @mult deriv1    SimpleMCMC.logpdfWeibull(x, z, z)    {.1, 1., 10.}
 
-# TODO : make deriv = NaN when x < a or > b
+# Uniform distrib
 @mult deriv1    SimpleMCMC.logpdfUniform(-1, 1, x)     {-.1, 0., 0.9} 
 @mult deriv1    SimpleMCMC.logpdfUniform(0, x, 1.0)    {1.5, 1., 2.99}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, 0.5, 0.2)  {0., -1., -60.}
@@ -161,6 +163,17 @@ z = [2., 3, 0.1]
 @mult deriv1    SimpleMCMC.logpdfUniform(x, z, 0)       {-.1, -1., -10.}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, 5, z)       {0., -1., -10.}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, z, z-1.)    {-2.1, -3., -10.}
+
+# Bernoulli distrib
+# note : having p=1 is ok but will make the numeric differentiator of deriv1 fail => not tested
+
+# should throw an error from the gradient calc function
+# @mult deriv1    SimpleMCMC.logpdfBernoulli(1, x)    {-1., 0., 1., 10.}
+
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, 1)   {0.999, 0., 0.8} 
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, 0)   {0.999, 0., 0.8} 
+z2 = [0, 1, 1, 0] # binary outcomes
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, z2)   {0.999, 0., 0.8} 
 
 
 ######### vector parameter with other real or vector arguments #######################
@@ -212,6 +225,7 @@ tz = transpose(z)
 
 @mult deriv1    sum(cos(x))     {[-3., 2, 0], [1., 1.]}
 
+## Normal distrib
 @mult deriv1    SimpleMCMC.logpdfNormal(1, 2, x)    {[-3., 2, 0], [1., 1.]}
 @mult deriv1    SimpleMCMC.logpdfNormal(-1, x, 0)   {[3., 2, 0.1], [1., 1.]} 
 @mult deriv1    SimpleMCMC.logpdfNormal(x, 4, 10)   {[-3., 2, 0], [1., 1.]}
@@ -228,7 +242,7 @@ tz = transpose(z)
 @mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {[-3., 2, 0], [1., 10, 8]}
 @mult deriv1    SimpleMCMC.logpdfNormal(x, z, 1)    {[-3., 2, 0], [1., 10, 8]}
 
-
+# Weibull distrib
 @mult deriv1    SimpleMCMC.logpdfWeibull(1, 2, x)    {[3., 2, 0.1], [1., 1.]}
 @mult deriv1    SimpleMCMC.logpdfWeibull(0.5, x, 3)  {[3., 2, 0.1], [1., 1.]}
 @mult deriv1    SimpleMCMC.logpdfWeibull(x, 4, 10)   {[3., 2, 0.1], [1., 1.]}
@@ -245,7 +259,7 @@ tz = transpose(z)
 @mult deriv1    SimpleMCMC.logpdfWeibull(x, 1, z)    {[3., 2, 0.1], [1., 2, 3]}
 @mult deriv1    SimpleMCMC.logpdfWeibull(x, z, z)    {[3., 2, 0.1], [1., 2, 3]}
 
-
+# Uniform distrib
 @mult deriv1    SimpleMCMC.logpdfUniform(-5, 2.2, x)   {[-3., 2, 0], [1., 1.]}
 @mult deriv1    SimpleMCMC.logpdfUniform(-5, x, -4.0)  {[-3., 2, 0], [1., 1.]}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, 4.5, 2.2)  {[-3., 2, 0], [1., 1.]}
@@ -261,6 +275,12 @@ tz = transpose(z)
 @mult deriv1    SimpleMCMC.logpdfUniform(x, z, 0)      {[-3., -2, -6], [-1., -10, -8]}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, 5, z)      {[-3., -2, -6], [-1., -10, -8]}
 @mult deriv1    SimpleMCMC.logpdfUniform(x, z, z-1.)   {[-3., -2, -6], [-1., -10, -8]}
+
+# Bernoulli distrib
+# note : having p=0 and one of the x = 1 is ok but will make the numeric differentiator of deriv1 fail => not tested
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, 0)   {[0., 0.2, 0.5, 0.99], [0., 0.5, 0.99]} 
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, 1)   {[0.2, 0.5, 0.99], [0.5, 0.99]} 
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, z2)   {[0., 0.2, 0.5, 0.99], [0., 0.001, 0.7, 0.8]} 
 
 
 ############## test refs  ###############################
