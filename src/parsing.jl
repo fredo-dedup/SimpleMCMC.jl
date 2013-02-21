@@ -57,8 +57,7 @@ function parseModel(ex::Expr, gradient::Bool)
 	end
 
 	function explore(ex::Exprdcolon)
-		assert(typeof(ex.args[1]) == Symbol, 
-			"not a symbol on LHS of :: $(ex.args[1])")
+		assert(typeof(ex.args[1]) == Symbol, "not a symbol on LHS of :: $(ex.args[1])")
 		par = ex.args[1]  # param symbol defined here
 		def = ex.args[2]
 
@@ -68,13 +67,24 @@ function parseModel(ex::Expr, gradient::Bool)
 
 		elseif isa(def, Expr) && def.head == :call
 			e2 = def.args
-			if e2[1] == :real #  vector param declaration
-				nb = Main.eval(e2[2])
-				assert(isa(nb, Integer) && nb > 0, 
-					"invalid vector size $(e2[2]) = $(nb)")
+			if e2[1] == :real 
+				if length(e2) == 2 #  vector param declaration
+					nb = Main.eval(e2[2])
+					assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
 
-				pmap[par] = :($PARAM_SYM[$(index+1):$(nb+index)])
-				index += nb
+					pmap[par] = :($PARAM_SYM[$(index+1):$(nb+index)])
+					index += nb
+				elseif length(e2) == 3 #  matrix param declaration
+					nb1 = Main.eval(e2[2])
+					assert(isa(nb1, Integer) && nb1 > 0, "invalid vector size $(e2[2]) = $nb1")
+					nb2 = Main.eval(e2[3])
+					assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
+
+					pmap[par] = :(reshape($PARAM_SYM[$(index+1):$(nb1*nb2+index)], $nb1, $nb2))
+					index += nb1*nb2
+				else
+					error("up to 2 dim for parameters in $ex")
+				end
 			else
 				error("unknown parameter type $(e2[1])")
 			end

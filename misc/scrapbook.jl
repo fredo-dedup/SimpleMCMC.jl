@@ -173,7 +173,17 @@ mean(res[:,2])
 dlmwrite("c:/temp/dump.txt", res)
 
 
+#####################################################
+include("../src/SimpleMCMC.jl")
 
+model = quote
+    mu::real(4)
+    scale::real(3,5)
+
+    resid ~ Normal(0, 0.01)
+end
+
+f, nb = SimpleMCMC.buildFunctionWithGradient(model)
 
 ###########################################################
 
@@ -185,4 +195,29 @@ g(f)
 f() = 3.0
 g(f)
 # 2.0
+
+   x = 0.0
+    __acc = 1.0
+    y = SimpleMCMC.logpdfBernoulli(x, 0)
+    __tmp_494 = SimpleMCMC.logpdfTestDiff(y)
+    ____acc_495 = +(__acc, __tmp_494)
+    d____acc_495 = 1.0
+    dy = zero(y)
+    d__tmp_494 = zero(__tmp_494)
+    dx = zero(x)
+    d__tmp_494 += if isa(__tmp_494, Real)
+            sum(d____acc_495)
+        else 
+            d____acc_495
+        end
+    dy += d__tmp_494
+    dx += .*(begin 
+                tmp = ./(1.0, +(-(1, 0), .*(-(.*(2, 0), 1.0), x)))
+                if isa(x, Real)
+                    sum([tmp])
+                else 
+                    tmp
+                end
+            end, dy)
+
 

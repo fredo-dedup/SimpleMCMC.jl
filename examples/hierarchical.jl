@@ -1,55 +1,41 @@
 ######### hierarchical logistic regression  ###########
 # using example of STAN 1.0.2 manual, chapter 10.7 p. 49
 
-data {
-int<lower=1> D;
-int<lower=0> N;
-int<lower=1> L;
-int<lower=0,upper=1> y[N];
-int<lower=1,upper=L> ll[N];
-row_vector[D] x[N];
-}
-parameters {
-real mu[D];
-real<lower=0> sigma[D];
-vector[D] beta[L];
-}
-
-model {
-for (d in 1:D) {
-	mu[d] ~ normal(0,100);
-	sigma[d] ~ uniform(0,1000);
-
-	for (l in 1:L) 	beta[l,d] ~ normal(mu[d],sigma[d]);
-}
-
 	for (n in 1:N) y[n] ~ bernoulli(inv_logit(x[n] * beta[ll[n]]));
-}
 
 
 N = 50 # number of observations
 D = 4  # number of groups
 L = 5  # number of predictors
 
-ll = int(rand(N)*D) + 1  # mapping obs -> group
-x = randn((N, L))  # predictors
+ll = int(ceil(rand(N)*D))  # mapping obs -> group
+X = randn(N, L)  # predictors
+beta0 = randn(D, L)  # model matrix nb group rows x nb predictors columns
+Y = rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * onecol)))
 
-extender = ones((1,L))
+onecol = ones(L, 1)
+onerow = ones(1, L)
+
 model = quote
 	mu::real(D)
 	sigma::real(D)
-	beta::real(L*D)
+	beta::real(D,L)
 
 	mu ~ Normal(0, 100)
 	sigma ~ Uniform(0, 1000)
 
-	beta ~ Normal(mu * extender, sigma * extender)
+	beta ~ Normal(mu * onerow, (sigma.^2) * onerow)
 
-	prob = 1. / ( 1. + exp(- x * reshape(beta[ll], L, N) ) )
-	y ~ Normal(prob, 1)   #Bernoulli(prob)
+	effect = (beta[ll,:] .* X) * onecol
+	prob = 1. / ( 1. + exp(- effect) )
+	Y ~ Bernoulli(prob)
 end
 
-SimpleMCMC.simpleRWM(model, 10)
+res = SimpleMCMC.simpleRWM(model, 1000)
+
+[ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] 
+
 SimpleMCMC.simpleNUTS(model, 10)
 
 
+reshape(x, (5,50))
