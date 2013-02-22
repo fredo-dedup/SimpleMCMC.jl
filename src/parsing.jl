@@ -280,7 +280,7 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 			dsym2 = symbol("$(DERIV_PREFIX)$lhs")
 		elseif isa(lhs,Expr) && lhs.head == :ref  # vars with []
 			dsym = lhs
-			dsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(lhs.args[1])"), lhs.args[2])
+			dsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(lhs.args[1])"), lhs.args[2:end]...)
 		else
 			error("[backwardSweep] not a symbol on LHS of assigment $(e)") 
 		end
@@ -295,7 +295,7 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 
 		elseif isa(toExprH(rhs), Exprref)
 			if contains(avars, rhs.args[1])
-				vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2])
+				vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2:end]...)
 				push!(el, :( $vsym2 = $dsym2))
 			end
 
@@ -359,10 +359,11 @@ function buildFunctionWithGradient(model::Expr)
 	body = vcat(body, dmodel)
 
 	if length(pmap) == 1
-		dexp = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
+		dn = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
+		dexp = :(reshape([$dn], length($dn)))  # reshape to transform potential matrices into vectors
 	else
 		dexp = {:vcat}
-		dexp = vcat(dexp, { symbol("$DERIV_PREFIX$v") for v in keys(pmap)})
+		dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$v"); :(reshape([$dn], length($dn))) ) for v in keys(pmap)})
 		dexp = expr(:call, dexp)
 	end
 

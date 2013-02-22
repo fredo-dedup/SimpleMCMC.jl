@@ -50,17 +50,17 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 
 		elseif op == :*
 			if index == 1 
-				:(isa($a1, Real) ? dot([$ds], [$a2]) : $ds * $a2')
+				:(isa($a1, Real) ? sum([$ds .* $a2]) : $ds * $a2')
 			else
-				:(isa($a2, Real) ? dot([$ds], [$a1]) : $a1' * $ds)
+				:(isa($a2, Real) ? sum([$ds .* $a1]) : $a1' * $ds)
 			end
 			# index == 1 ? :($ds * $a2') : :($a1' * $ds)
 
 		elseif op == :.*  
 			if index == 1 
-				:(isa($a1, Real) ? dot([$ds], [$a2]) : $ds .* $a2)
+				:(isa($a1, Real) ? sum([$ds .* $a2]) : $ds .* $a2)
 			else
-				:(isa($a2, Real) ? dot([$ds], [$a1]) : $ds .* $a1)
+				:(isa($a2, Real) ? sum([$ds .* $a1]) : $ds .* $a1)
 			end
 			# index == 1 ? :(sum($a2) .* $ds) : :(sum($a1) .* $ds)
 
@@ -122,7 +122,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 			if index == 1 # probability
 				:( (tmp = 1. ./ ($a1 - (1. - $a2)) ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
 			else # x, x is discrete for Bernoulli therefore no derivative should be calculated
-			 	error("The gradient cannot depend on a discrete variable in $opex")
+			 	error("[derive] in $opex : the gradient cannot depend on a discrete variable")
 			end
 		
 		#  fake distribution to test gradient code
@@ -147,17 +147,18 @@ end
 
 #  1 parameter distributions
 for d in [:Bernoulli]
-	fsym = symbol("logpdf$d")
+	fsym = symbol("logpdf$d")  # function to be created
+    dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
 
-	@eval ($fsym)(a::Real, x::Real) = logpmf(($d)(a), x)
+	@eval ($fsym)(a::Real, x::Real) = ($dlf)(($d)(a), x)
 
-	@eval ($fsym)(a::Real, x::Array) = sum([logpmf(($d)(a), x)])
+	@eval ($fsym)(a::Real, x::Array) = sum([($dlf)(($d)(a), x)])
 
 	eval(quote
 		function ($fsym)(a::Union(Real, Array), x::Union(Real, Array))
 			res = 0.0
 			for i in 1:max(length(a), length(x))
-				res += logpmf(($d)(next(a,i)[1]), next(x,i)[1])
+				res += ($dlf)(($d)(next(a,i)[1]), next(x,i)[1])
 			end
 			res
 		end
@@ -166,17 +167,19 @@ end
 
 #  2 parameters distributions
 for d in [:Normal, :Weibull, :Uniform]
+# for d in [:Weibull, :Uniform]
 	fsym = symbol("logpdf$d")
+    dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
 
-	@eval ($fsym)(a::Real, b::Real, x::Real) = logpdf(($d)(a, b), x)
+	@eval ($fsym)(a::Real, b::Real, x::Real) = ($dlf)(($d)(a, b), x)
 
-	@eval ($fsym)(a::Real, b::Real, x::Array) = sum([logpdf(($d)(a, b), x)])
+	@eval ($fsym)(a::Real, b::Real, x::Array) = sum([($dlf)(($d)(a, b), x)])
 
 	eval(quote
 		function ($fsym)(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
 			res = 0.0
 			for i in 1:max(length(a), length(b), length(x))
-				res += logpdf(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
+				res += ($dlf)(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
 			end
 			res
 		end
@@ -186,4 +189,22 @@ end
 
 
 logpdfTestDiff(x) = sum([x])  # dummy distrib for testing
+
+# with direct call to libRmath
+
+# _jl_libRmath = dlopen("libRmath")
+
+# logpdfNormal(a::Real, b::Real, x::Real) = ccall(dlsym(_jl_libRmath, :dnorm4),
+#                   Float64, (Float64, Float64, Float64, Int32),
+#                   x, a, b, 1)
+
+# function logpdfNormal(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
+# 	res = 0.0
+# 	for i in 1:max(length(a), length(b), length(x))
+# 		res += ccall(dlsym(_jl_libRmath, :dnorm4),
+#                   Float64, (Float64, Float64, Float64, Int32),
+#                   next(x,i)[1], next(a,i)[1], next(b,i)[1], 1)
+# 	end
+# 	res
+# end
 

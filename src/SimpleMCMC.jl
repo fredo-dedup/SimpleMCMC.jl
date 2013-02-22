@@ -1,28 +1,27 @@
 module SimpleMCMC
 
+@unix_only require("Distributions")
+@windows_only include("../../.julia/Distributions.jl/src/Distributions.jl")
+
+import 	Distributions.logpdf, Distributions.logpmf
+import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
+import 	Distributions.Normal, 
+		Distributions.Uniform, 
+		Distributions.Weibull,
+		Distributions.Bernoulli
+
 @unix_only begin
-	require("Distributions")
 	include("parsing.jl") #  include model processing functions		
 	include("diff.jl") #  include derivatives definitions
 end
 
 @windows_only begin  # older version on my side requires a few tweaks
-	include("../../.julia/Distributions.jl/src/Distributions.jl")
-	
 	push!(args...) = push(args...) # windows julia version not up to date
 	delete!(args...) = del(args...) # windows julia version not up to date
 
 	include("../src/parsing.jl") #  include model processing functions		
 	include("../src/diff.jl") #  include derivatives definitions
 end
-
-
-import 	Distributions.logpdf, Distributions.logpmf
-import 	Distributions.Normal, 
-		Distributions.Uniform, 
-		Distributions.Weibull,
-		Distributions.Bernoulli
-
 
 export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
@@ -100,7 +99,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	(ll_func, nparams) = buildFunctionWithGradient(model) # build function, count the number of parameters
+	(ll_func, nparams) = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
