@@ -1,27 +1,27 @@
 module SimpleMCMC
 
-@unix_only require("Distributions")
-@windows_only include("../../.julia/Distributions.jl/src/Distributions.jl")
-
-import 	Distributions.logpdf, Distributions.logpmf
-import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
-import 	Distributions.Normal, 
-		Distributions.Uniform, 
-		Distributions.Weibull,
-		Distributions.Bernoulli
-
 @unix_only begin
+	require("Distributions")
 	include("parsing.jl") #  include model processing functions		
 	include("diff.jl") #  include derivatives definitions
 end
 
 @windows_only begin  # older version on my side requires a few tweaks
+	include("../../.julia/Distributions.jl/src/Distributions.jl")
+	
 	push!(args...) = push(args...) # windows julia version not up to date
 	delete!(args...) = del(args...) # windows julia version not up to date
 
 	include("../src/parsing.jl") #  include model processing functions		
 	include("../src/diff.jl") #  include derivatives definitions
 end
+
+
+import 	Distributions.logpdf
+import 	Distributions.Normal, 
+		Distributions.Uniform, 
+		Distributions.Weibull 
+
 
 export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
@@ -99,7 +99,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	(ll_func, nparams) = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+	(ll_func, nparams) = buildFunctionWithGradient(model) # build function, count the number of parameters
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
@@ -178,7 +178,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		beta += ve * r
 		llik, grad = ll(beta) 
 		r += grad * ve / 2.
-	# println("        ++++  $llik  $beta   $grad   +++++")
 
 		return beta, r, llik, grad
 	end
@@ -195,7 +194,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		beta1, jump1, llik1, grad1 = leapFrog(beta0, jump, grad0, epsilon, Main.__loglik)
 		ratio = exp(llik1-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
 	end
-	println("starting epsilon = $epsilon")
+	# println("starting epsilon = $epsilon")
 
 	### adaptation parameters
 	const delta = 0.7  # target acceptance
@@ -289,7 +288,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			le = mu-sqrt(i)/gam*hbar
 			lebar = i^(-kappa) * le + (1-i^-kappa) * lebar
 			epsilon = exp(le)
-			# println("epsilon (adapt) = $epsilon")
 		else # post warm up, keep same epsilon
 			epsilon = exp(lebar)
 		end

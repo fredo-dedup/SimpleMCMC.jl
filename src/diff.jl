@@ -188,9 +188,9 @@ end
 
 
 
-logpdfTestDiff(x) = sum([x])  # dummy distrib for testing
+# logpdfTestDiff(x) = sum([x])  # dummy distrib for testing
 
-# with direct call to libRmath
+# # with direct call to libRmath
 
 # _jl_libRmath = dlopen("libRmath")
 
@@ -198,13 +198,27 @@ logpdfTestDiff(x) = sum([x])  # dummy distrib for testing
 #                   Float64, (Float64, Float64, Float64, Int32),
 #                   x, a, b, 1)
 
-# function logpdfNormal(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
-# 	res = 0.0
-# 	for i in 1:max(length(a), length(b), length(x))
-# 		res += ccall(dlsym(_jl_libRmath, :dnorm4),
-#                   Float64, (Float64, Float64, Float64, Int32),
-#                   next(x,i)[1], next(a,i)[1], next(b,i)[1], 1)
-# 	end
-# 	res
-# end
+# logpdfNormal(0,-10,10)
 
+# logpdfWeibull(a::Real, b::Real, x::Real) = ccall(dlsym(_jl_libRmath, :dweibull),
+#                   Float64, (Float64, Float64, Float64, Int32),
+#                   x, a, b, 1)
+
+# logpdfWeibull(1,1,1)
+
+# logpdfWeibull(0,-10,10)
+# logpdfWeibull(0,-10,10)
+# logpdfWeibull(0,-10,10)
+
+# # function logpdfNormal(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
+# # 	res = 0.0
+# # 	for i in 1:max(length(a), length(b), length(x))
+# # 		res += ccall(dlsym(_jl_libRmath, :dnorm4),
+# #                   Float64, (Float64, Float64, Float64, Int32),
+# #                   next(x,i)[1], next(a,i)[1], next(b,i)[1], 1)
+# # 	end
+# # 	res
+# # end
+
+# l  =  zip(1.0, [1,2,2,5])
+# {e for e in l}
