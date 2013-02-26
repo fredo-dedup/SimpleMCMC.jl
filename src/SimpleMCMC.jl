@@ -1,7 +1,6 @@
 module SimpleMCMC
 
-@unix_only require("Distributions")
-@windows_only include("../../.julia/Distributions.jl/src/Distributions.jl")
+require("Distributions")
 
 import 	Distributions.logpdf, Distributions.logpmf
 import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
@@ -10,18 +9,8 @@ import 	Distributions.Normal,
 		Distributions.Weibull,
 		Distributions.Bernoulli
 
-@unix_only begin
-	include("parsing.jl") #  include model processing functions		
-	include("diff.jl") #  include derivatives definitions
-end
-
-@windows_only begin  # older version on my side requires a few tweaks
-	push!(args...) = push(args...) # windows julia version not up to date
-	delete!(args...) = del(args...) # windows julia version not up to date
-
-	include("../src/parsing.jl") #  include model processing functions		
-	include("../src/diff.jl") #  include derivatives definitions
-end
+include("parsing.jl") #  include model processing functions		
+include("diff.jl") #  include derivatives definitions
 
 export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
@@ -94,7 +83,9 @@ simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps
 ##########################################################################################
 
 function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
-	# steps=10000; burnin=5000; init=0.0; isteps=1; stepsize=0.6
+	local ll_func, nparams
+	local beta, llik, grad
+	local draws
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
@@ -112,6 +103,9 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
 
  	for i in 1:steps  #i=1
+ 		local jump, beta0, llik0, jump0
+ 		local j
+ 		
  		jump = randn(nparams)
 		beta0 = beta
 		llik0 = llik
@@ -343,7 +337,7 @@ function runStats(res::Matrix{Float64}, delay::Float64)
 
 	print("$(round(delay,1)) sec., ")
 
-	essfac(serie::Vector) = abs(cov_pearson(serie[2:end], serie[1:(end-1)])) / var(serie)
+	essfac(serie::Vector) = abs(cov(serie[2:end], serie[1:(end-1)])) / var(serie)
 	# note the absolute value around the covar to penalize anti-correlation the same as
 	# correlation. This will also ensure that ess is <= number of samples
 
