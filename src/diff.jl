@@ -74,7 +74,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 				:(isa($a2, Real) ? sum([log($a1) .* $a1 .^ $a2 .* $ds]) : log($a1) .* $a1 .^ $a2 .* $ds)
 			end
 
-		elseif op == :/ # Note that this will not work if both args are arrays but without warning
+		elseif op == :/ # FIXME : this will not work if both args are arrays but without warning
 			if index == 1 
 				:(isa($a1, Real) ? sum([$ds ./ $a2]) : $ds ./ $a2 )
 			else
@@ -146,79 +146,105 @@ end
 # as this is not always done in Distributions
 
 #  1 parameter distributions
+# for d in [:Bernoulli]
+# 	fsym = symbol("logpdf$d")  # function to be created
+#     dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
+
+# 	@eval ($fsym)(a::Real, x::Real) = ($dlf)(($d)(a), x)
+
+# 	@eval ($fsym)(a::Real, x::Array) = sum([($dlf)(($d)(a), x)])
+
+# 	eval(quote
+# 		function ($fsym)(a::Union(Real, Array), x::Union(Real, Array))
+# 			res = 0.0
+# 			for i in 1:max(length(a), length(x))
+# 				res += ($dlf)(($d)(next(a,i)[1]), next(x,i)[1])
+# 			end
+# 			res
+# 		end
+# 	end) 
+# end
+
+# #  2 parameters distributions
+# for d in [:Normal, :Weibull, :Uniform]
+# # for d in [:Weibull, :Uniform]
+# 	fsym = symbol("logpdf$d")
+#     dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
+
+# 	@eval ($fsym)(a::Real, b::Real, x::Real) = ($dlf)(($d)(a, b), x)
+
+# 	@eval ($fsym)(a::Real, b::Real, x::Array) = sum([($dlf)(($d)(a, b), x)])
+
+# 	eval(quote
+# 		function ($fsym)(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
+# 			res = 0.0
+# 			for i in 1:max(length(a), length(b), length(x))
+# 				res += ($dlf)(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
+# 			end
+# 			res
+# 		end
+# 	end) 
+# end
+
+
+
+# ########## distributions using libRmath ######### 
+_jl_libRmath = dlopen("libRmath")
+
+for d in {(:Normal,  	"dnorm4",	2),
+		  (:Weibull, 	"dweibull", 2),
+		  (:Uniform, 	"dunif", 	2)}
+
+	sig = tuple([Float64 for i in 1:(d[3]+1)]..., Int32)
+	fsym = symbol("logpdf$(d[1])")
+
+	eval(quote
+
+		function ($fsym)(a::Real, b::Real, x::Real)
+			local res
+			res = ccall(dlsym(_jl_libRmath, $(d[2])), Float64, 
+				(Float64, Float64, Float64, Int32), 
+					x, a, b, 1)
+			isfinite(res) ? res : throw("break loglik")
+		end
+
+		function ($fsym)(a::Union(Real, AbstractArray), 
+			             b::Union(Real, AbstractArray), 
+			             x::Union(Real, AbstractArray))
+			local res, acc
+
+			acc = 0.0
+			for i in 1:max(length(a), length(b), length(x))
+				res = ccall(dlsym(_jl_libRmath, $(d[2]) ), Float64, (Float64, Float64, Float64, Int32), 
+					next(x,i)[1], next(a,i)[1], next(b,i)[1], 1)
+				acc += isfinite(res) ? res : throw("break loglik")
+			end
+			acc
+		end
+
+	end) 
+
+end
+
+########## locally defined distributions #############
+
+logpdfBernoulli(prob::Real, x::Real) = x == 0 ? log(1. - prob) : (x == 1 ? log(prob) : throw("break loglik"))
+
 for d in [:Bernoulli]
-	fsym = symbol("logpdf$d")  # function to be created
-    dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
-
-	@eval ($fsym)(a::Real, x::Real) = ($dlf)(($d)(a), x)
-
-	@eval ($fsym)(a::Real, x::Array) = sum([($dlf)(($d)(a), x)])
+	fsym = symbol("logpdf$d")
 
 	eval(quote
 		function ($fsym)(a::Union(Real, Array), x::Union(Real, Array))
 			res = 0.0
 			for i in 1:max(length(a), length(x))
-				res += ($dlf)(($d)(next(a,i)[1]), next(x,i)[1])
+				res += ($fsym)(next(a,i)[1], next(x,i)[1])
 			end
 			res
 		end
 	end) 
 end
 
-#  2 parameters distributions
-for d in [:Normal, :Weibull, :Uniform]
-# for d in [:Weibull, :Uniform]
-	fsym = symbol("logpdf$d")
-    dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
+############# dummy distrib for testing ############
 
-	@eval ($fsym)(a::Real, b::Real, x::Real) = ($dlf)(($d)(a, b), x)
+logpdfTestDiff(x) = sum([x]) 
 
-	@eval ($fsym)(a::Real, b::Real, x::Array) = sum([($dlf)(($d)(a, b), x)])
-
-	eval(quote
-		function ($fsym)(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
-			res = 0.0
-			for i in 1:max(length(a), length(b), length(x))
-				res += ($dlf)(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
-			end
-			res
-		end
-	end) 
-end
-
-
-
-# logpdfTestDiff(x) = sum([x])  # dummy distrib for testing
-
-# # with direct call to libRmath
-
-# _jl_libRmath = dlopen("libRmath")
-
-# logpdfNormal(a::Real, b::Real, x::Real) = ccall(dlsym(_jl_libRmath, :dnorm4),
-#                   Float64, (Float64, Float64, Float64, Int32),
-#                   x, a, b, 1)
-
-# logpdfNormal(0,-10,10)
-
-# logpdfWeibull(a::Real, b::Real, x::Real) = ccall(dlsym(_jl_libRmath, :dweibull),
-#                   Float64, (Float64, Float64, Float64, Int32),
-#                   x, a, b, 1)
-
-# logpdfWeibull(1,1,1)
-
-# logpdfWeibull(0,-10,10)
-# logpdfWeibull(0,-10,10)
-# logpdfWeibull(0,-10,10)
-
-# # function logpdfNormal(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
-# # 	res = 0.0
-# # 	for i in 1:max(length(a), length(b), length(x))
-# # 		res += ccall(dlsym(_jl_libRmath, :dnorm4),
-# #                   Float64, (Float64, Float64, Float64, Int32),
-# #                   next(x,i)[1], next(a,i)[1], next(b,i)[1], 1)
-# # 	end
-# # 	res
-# # end
-
-# l  =  zip(1.0, [1,2,2,5])
-# {e for e in l}

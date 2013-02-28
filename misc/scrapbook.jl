@@ -32,9 +32,9 @@ recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 2, 0.7)) # 14.000 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 10000, 1000, [1.]))  # 130 ess/s, very slow due to gradient == 0 ?
 
 model = :(x::real ; x ~ Normal(0, 1)) # mean 0.0, std 1.0
-recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 6.000 ess/s
-recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.], 2, 0.8)) # 45.000 ess/s
-recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.2]))  # 20.000 ess/s, correct
+recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 6.000 ess/s  7500
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.], 2, 0.8)) # 45.000 ess/s, 49-50.000
+recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.2]))  # 20.000 ess/s, correct, 22-24.0000
 
 model = :(x::real ; x ~ Normal(3, 12)) # mean 0.0, std 1.0
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 6.200 ess/s
@@ -47,7 +47,7 @@ recap(SimpleMCMC.simpleHMC(model, 100000, 1000, 0., 2, 0.8)) # 45.000 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, 0.))  # 4.800 ess/s, correct, (4.600 without direct call to libRmath)
 
 
-z = randn(10) .< 0.5
+z = Float64[ randn(10) .< 0.5 ]
 model = :(x::real ; z ~ Bernoulli(x)) # mean 0.5, std ...
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.5]))  # 6.200 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.5], 2, 0.04)) # 140 ess/s
@@ -396,3 +396,11 @@ __beta = ones(28)
                     end
                 end, d__tmp_3224)
         (____acc_3239, vcat(dmu, dbeta, dsigma))
+
+
+
+dy = 1.
+x=-1
+expre = :((tmp = [(z - x) ./ (1 .^ 2)] * dy ; sum(tmp)) * dy)
+
+eval(expre)

@@ -2,12 +2,14 @@ module SimpleMCMC
 
 @unix_only begin
 	require("Distributions")
+	# using Distributions
+	
 	include("parsing.jl") #  include model processing functions		
 	include("diff.jl") #  include derivatives definitions
 end
 
 @windows_only begin  # older version on my side requires a few tweaks
-	include("../../.julia/Distributions.jl/src/Distributions.jl")
+	# include("../../.julia/Distributions.jl/src/Distributions.jl")
 	
 	push!(args...) = push(args...) # windows julia version not up to date
 	delete!(args...) = del(args...) # windows julia version not up to date
@@ -20,6 +22,7 @@ end
 import 	Distributions.logpdf
 import 	Distributions.Normal, 
 		Distributions.Uniform, 
+		Distributions.Bernoulli, 
 		Distributions.Weibull 
 
 
