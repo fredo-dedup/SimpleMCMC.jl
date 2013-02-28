@@ -18,20 +18,19 @@ typealias Exprcall     ExprH{:call}
 typealias Exprblock	   ExprH{:block}
 typealias Exprline     ExprH{:line}
 typealias Exprref      ExprH{:ref}
+typealias Exprif       ExprH{:if}
 
 ##########  helper function to get symbols appearing in AST ############
-getSymbols(ex::Expr) = getSymbols(toExprH(ex))
-getSymbols(ex::Symbol) = Set{Symbol}(ex)
-getSymbols(ex::Exprref) = Set{Symbol}(ex.args[1])
-getSymbols(ex::Any) = Set{Symbol}()
+getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
+getSymbols(ex::Symbol) =     Set{Symbol}(ex)
+getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
+getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
+getSymbols(ex::Any) =        Set{Symbol}()
+getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])
+getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
+getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 
-function getSymbols(ex::Exprcall)
-	sl = Set{Symbol}()
-	for ex2 in ex.args[2:end]
-		sl = union(sl, getSymbols(ex2))
-	end
-	sl
-end
+
 
 ######### parses model to extracts parameters and rewrite ~ operators #############
 function parseModel(ex::Expr, gradient::Bool)

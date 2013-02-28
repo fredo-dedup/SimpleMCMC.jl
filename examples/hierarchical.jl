@@ -11,10 +11,10 @@ onecol = ones(L, 1)
 onerow = ones(1, L)
 
 srand(1)
-ll = int(ceil(rand(N)*D))  # mapping obs -> group
+ll = rand(1:D, N)  # mapping obs -> group
 X = randn(N, L)  # predictors
 beta0 = randn(D, L)  # model matrix nb group rows x nb predictors columns
-Y = rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * onecol)))
+Y = [rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * onecol)))]
 
 model = quote
 	mu::real(D)
@@ -31,10 +31,10 @@ model = quote
 	Y ~ Bernoulli(prob)
 end
 
-res = SimpleMCMC.simpleRWM(model, 10000)
-[Float64[mean(res[:,i+2]) for i in 1:(D+D+L*D)][5:24] reshape(beta0, 20)]
+res = SimpleMCMC.simpleRWM(model, 100000)
+[Float64[mean(res[:,i+2]) for i in 1:(D+D+L*D)][9:28] reshape(beta0, 20)]
 
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1.0, 4, 0.01)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.01)
 
 res = SimpleMCMC.simpleNUTS(model, 10)
 

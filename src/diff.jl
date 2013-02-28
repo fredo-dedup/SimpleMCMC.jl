@@ -186,9 +186,7 @@ end
 # 	end) 
 # end
 
-
-
-# ########## distributions using libRmath ######### 
+########### distributions using libRmath ######### 
 _jl_libRmath = dlopen("libRmath")
 
 for d in {(:Normal,  	"dnorm4",	2),
@@ -234,7 +232,7 @@ for d in [:Bernoulli]
 	fsym = symbol("logpdf$d")
 
 	eval(quote
-		function ($fsym)(a::Union(Real, Array), x::Union(Real, Array))
+		function ($fsym)(a::Union(Real, AbstractArray), x::Union(Real, AbstractArray))
 			res = 0.0
 			for i in 1:max(length(a), length(x))
 				res += ($fsym)(next(a,i)[1], next(x,i)[1])

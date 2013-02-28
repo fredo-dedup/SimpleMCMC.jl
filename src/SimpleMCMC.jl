@@ -1,29 +1,16 @@
 module SimpleMCMC
 
-@unix_only begin
-	require("Distributions")
-	# using Distributions
-	
-	include("parsing.jl") #  include model processing functions		
-	include("diff.jl") #  include derivatives definitions
-end
+require("Distributions")
 
-@windows_only begin  # older version on my side requires a few tweaks
-	# include("../../.julia/Distributions.jl/src/Distributions.jl")
-	
-	push!(args...) = push(args...) # windows julia version not up to date
-	delete!(args...) = del(args...) # windows julia version not up to date
-
-	include("../src/parsing.jl") #  include model processing functions		
-	include("../src/diff.jl") #  include derivatives definitions
-end
-
-
-import 	Distributions.logpdf
+import 	Distributions.logpdf, Distributions.logpmf
+import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
 import 	Distributions.Normal, 
 		Distributions.Uniform, 
-		Distributions.Bernoulli, 
-		Distributions.Weibull 
+		Distributions.Weibull,
+		Distributions.Bernoulli
+
+include("parsing.jl") #  include model processing functions		
+include("diff.jl") #  include derivatives definitions
 
 
 export simpleRWM, simpleHMC, simpleNUTS
@@ -49,6 +36,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunction(model) # build function, count the number of parameters
+	println(ll_func)
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
@@ -97,12 +85,17 @@ simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps
 ##########################################################################################
 
 function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
-	# steps=10000; burnin=5000; init=0.0; isteps=1; stepsize=0.6
+	local ll_func, nparams
+	local beta, llik, grad
+	local draws
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunctionWithGradient(model) # build function, count the number of parameters
+	(ll_func, nparams) = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+	println(ll_func)
+
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
@@ -115,6 +108,9 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
 
  	for i in 1:steps  #i=1
+ 		local jump, beta0, llik0, jump0
+ 		local j
+
  		jump = randn(nparams)
 		beta0 = beta
 		llik0 = llik
@@ -344,7 +340,7 @@ function runStats(res::Matrix{Float64}, delay::Float64)
 
 	print("$(round(delay,1)) sec., ")
 
-	essfac(serie::Vector) = abs(cov_pearson(serie[2:end], serie[1:(end-1)])) / var(serie)
+	essfac(serie::Vector) = abs(cov(serie[2:end], serie[1:(end-1)])) / var(serie)
 	# note the absolute value around the covar to penalize anti-correlation the same as
 	# correlation. This will also ensure that ess is <= number of samples
 

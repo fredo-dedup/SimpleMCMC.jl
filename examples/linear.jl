@@ -28,7 +28,7 @@ res = SimpleMCMC.simpleRWM(model, 10000)
 
 
 # run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 3, 0.02)
+res = SimpleMCMC.simpleHMC(model, 10000, 2, 0.02)
 
 [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
 
