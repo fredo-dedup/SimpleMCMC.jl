@@ -7,8 +7,6 @@ Pkg.cd_pkgdir()  do
     Pkg._resolve()
 end
 
-require("../../.julia/Distributions.jl/src/Distributions.jl")
-using Distributions
 ################################
 
 include("../src/SimpleMCMC.jl")
@@ -41,7 +39,7 @@ recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.2]))  # 20.000 ess/s, correc
 
 model = :(x::real ; x ~ Normal(3, 12)) # mean 0.0, std 1.0
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 6.200 ess/s
-recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.], 2, 0.8)) # 45.000 ess/s
+recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.], 2, 9.)) # 45.000 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.]))  # 17.000 ess/s, correct
 
 model = :(x::real(10) ; x ~ Normal(3, 12)) # mean 0.0, std 1.0
@@ -133,3 +131,59 @@ require("DataFrames")
 using DataFrames
 
 BitArray
+
+
+type MCMCRun2
+    acceptRate::Float64
+    time::Float64
+    ess::Range{Int32}
+    essBySec::Range{Float64}
+    params::Dict
+end
+
+x = MCMCRun2(.25, 5.6, 4:1000, 4.2:10.3, {:vars=>[1 2 3 ; 4 5 6 ]})
+
+
+
+##########  creates a parameterized type to ease AST exploration  ############
+type ExprH{H}
+    head::Symbol
+    args::Vector
+    typ::Any
+end
+toExprH(ex::Expr) = ExprH{ex.head}(ex.head, ex.args, ex.typ)
+toExpr(ex::ExprH) = expr(ex.head, ex.args)
+
+typealias Exprequal    ExprH{:(=)}
+typealias Exprdcolon   ExprH{:(::)}
+typealias Exprpequal   ExprH{:(+=)}
+typealias Exprcall     ExprH{:call}
+typealias Exprblock    ExprH{:block}
+typealias Exprline     ExprH{:line}
+typealias Exprref      ExprH{:ref}
+typealias Exprif       ExprH{:if}
+
+##########  helper function to get symbols appearing in AST ############
+getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
+getSymbols(ex::ExprH) =      Set{Symbol}()
+getSymbols(ex::Symbol) =     Set{Symbol}(ex)
+getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
+getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
+getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])
+getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
+getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
+
+ex = quote
+    x::real
+
+    a = b[3]
+    c = 12a
+    z[3] = "abcd"
+    c = exp(max(a,b)) / 3.0
+end
+
+dump(ex)
+
+getSymbols(ex)
+f, n, pmap = SimpleMCMC.parseModel(ex, true)
+pmap[:x]

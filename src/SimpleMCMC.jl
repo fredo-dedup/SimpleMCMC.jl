@@ -35,6 +35,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunction(model) # build function, count the number of parameters
+	println(ll_func)
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
@@ -91,6 +92,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+	println(ll_func)
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
@@ -105,7 +107,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
  	for i in 1:steps  #i=1
  		local jump, beta0, llik0, jump0
  		local j
- 		
+
  		jump = randn(nparams)
 		beta0 = beta
 		llik0 = llik
