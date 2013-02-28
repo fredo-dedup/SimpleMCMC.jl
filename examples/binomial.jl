@@ -34,7 +34,8 @@ mean(res[:,2]) # accept rate
 # run NUTS HMC (10000 steps, 1000 for burnin)
 res = SimpleMCMC.simpleNUTS(model, 10000, 1000, zeros(nbeta))
 res = SimpleMCMC.simpleNUTS(model, 100, 0, zeros(nbeta))
-__loglik(zeros(nbeta)+1.)
+
+__loglik(ones(nbeta)+1.)
 
 mean(res[:,2]) # accept rate
 [ [mean(res[:,i])::Float64 for i in 3:size(res,2)] beta0 ] # calculated and original values side by side

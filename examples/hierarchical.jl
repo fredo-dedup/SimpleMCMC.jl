@@ -34,7 +34,7 @@ end
 res = SimpleMCMC.simpleRWM(model, 100000)
 [Float64[mean(res[:,i+2]) for i in 1:(D+D+L*D)][9:28] reshape(beta0, 20)]
 
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.01)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.001)
 
 res = SimpleMCMC.simpleNUTS(model, 10)
 
