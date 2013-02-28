@@ -189,6 +189,7 @@ end
 ########### distributions using libRmath ######### 
 _jl_libRmath = dlopen("libRmath")
 
+# TODO : use the signature length parameter for real !
 for d in {(:Normal,  	"dnorm4",	2),
 		  (:Weibull, 	"dweibull", 2),
 		  (:Uniform, 	"dunif", 	2)}
