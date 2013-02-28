@@ -50,6 +50,24 @@ samplers1(:(Normal(3, 12)))
 z = randn(10) .< 0.5
 samplers1(:(Normal(1, 1)))
 
+model = :(x::real ; x ~ Normal(0,1))
+res = SimpleMCMC.simpleRWM(model, 100000, 1000, 0.0)
+res = SimpleMCMC.simpleHMC(model, 100000, 1000, 0.0, 2, 0.2)
+
+model = :(x::real ; x ~ Normal(3,1))
+res = SimpleMCMC.simpleRWM(model, 100000, 1000, 0.0)
+res = SimpleMCMC.simpleHMC(model, 100000, 1000, 0.0, 2, 0.2)
+
+model = :(x::real ; x ~ Weibull(1,1))
+res = SimpleMCMC.simpleRWM(model, 100000, 1000, 1.0)
+res = SimpleMCMC.simpleRWM(model, 10, 0, 1.0)
+res = SimpleMCMC.simpleHMC(model, 100000, 1000, 1.0, 2, 0.2)
+res = SimpleMCMC.simpleHMC(model, 10, 0, 1.0, 2, 0.2)
+
+__loglik([3.0])
+
+myf, n = SimpleMCMC.buildFunctionWithGradient(model)
+
 # model = :(x::real ; z ~ Bernoulli(x)) # mean 0.5, std ...
 # recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.5]))  # 6.200 ess/s
 # recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.5], 2, 0.04)) # 140 ess/s

@@ -328,7 +328,12 @@ function buildFunction(model::Expr)
 	assigns = {expr(:(=), k, v) for (k,v) in pairs(pmap)}
 
 	body = expr(:block, vcat(assigns, {:($ACC_SYM = 0.)}, model2.args, {:(return($ACC_SYM))}))
-	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	body)
+	# enclose whole body in a try block
+	cblock = expr(:try, body,
+						:e, 
+						expr(:block, :(if e == "give up eval";return -Inf;else;throw(x);end)))
+
+	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	cblock)
 
 	(func, nparams)
 end
@@ -340,10 +345,8 @@ function buildFunctionWithGradient(model::Expr)
 	avars = listVars(exparray, keys(pmap))
 	dmodel = backwardSweep(exparray, avars)
 
-	# build body of function
-	body = { expr(:(=), k, v) for (k,v) in pairs(pmap)}
-
-	push!(body, :($ACC_SYM = 0.)) 
+	body = { expr(:(=), k, v) for (k,v) in pairs(pmap)} # beta assigment
+	push!(body, :($ACC_SYM = 0.)) # acc init
 
 	body = vcat(body, exparray)
 
@@ -368,10 +371,38 @@ function buildFunctionWithGradient(model::Expr)
 
 	push!(body, :(($finalacc, $dexp)))
 
+	# enclose whole body in a try block
+	cblock = expr(:try, expr(:block, body),
+						:e, 
+						expr(:block, :(if e == "give up eval";return (-Inf, zero($PARAM_SYM));else;throw(x);end)))
+
 	# build function
 	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
-				expr(:block, body))
+				expr(:block, cblock))
 
 	(func, nparams)
 end
 
+# ex = quote
+# 	try
+# 		a += beta
+# 	catch e
+# 		if e == "give up eval"
+# 		 	return (-Inf, [])
+# 		else
+# 		 	throw(x)
+# 		end
+# 	end
+# end
+
+# dump(ex)
+
+# ex2 = quote
+# 		if e == "give up eval"
+# 		 	return (-Inf, [])
+# 		else
+# 		 	throw(x)
+# 		end
+# end
+
+# dump(ex2)

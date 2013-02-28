@@ -204,7 +204,13 @@ for d in {(:Normal,  	"dnorm4",	2),
 			res = ccall(dlsym(_jl_libRmath, $(d[2])), Float64, 
 				(Float64, Float64, Float64, Int32), 
 					x, a, b, 1)
-			isfinite(res) ? res : throw("break loglik")
+			if res == -Inf
+				throw("give up eval")
+			elseif res == NaN
+				error(string("calling ", $fsym, "with $x, $a, $b returned an error"))
+			else
+				return(res)
+			end
 		end
 
 		function ($fsym)(a::Union(Real, AbstractArray), 
@@ -214,9 +220,8 @@ for d in {(:Normal,  	"dnorm4",	2),
 
 			acc = 0.0
 			for i in 1:max(length(a), length(b), length(x))
-				res = ccall(dlsym(_jl_libRmath, $(d[2]) ), Float64, (Float64, Float64, Float64, Int32), 
-					next(x,i)[1], next(a,i)[1], next(b,i)[1], 1)
-				acc += isfinite(res) ? res : throw("break loglik")
+				res = ($fsym)(next(a,i)[1], next(b,i)[1], next(x,i)[1])
+				acc += res
 			end
 			acc
 		end
@@ -227,7 +232,9 @@ end
 
 ########## locally defined distributions #############
 
-logpdfBernoulli(prob::Real, x::Real) = x == 0 ? log(1. - prob) : (x == 1 ? log(prob) : throw("break loglik"))
+function logpdfBernoulli(prob::Real, x::Real)
+	x == 0 ? log(1. - prob) : (x == 1 ? log(prob) : throw("break loglik"))
+end
 
 for d in [:Bernoulli]
 	fsym = symbol("logpdf$d")

@@ -1,13 +1,11 @@
 module SimpleMCMC
 
-require("Distributions")
+# require("Distributions")
 
-import 	Distributions.logpdf, Distributions.logpmf
-import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
-import 	Distributions.Normal, 
-		Distributions.Uniform, 
-		Distributions.Weibull,
-		Distributions.Bernoulli
+# import 	Distributions.logpdf, Distributions.logpmf
+# import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
+# import 	Distributions.Normal, Distributions.Uniform, Distributions.Weibull,
+# 		Distributions.Bernoulli
 
 include("parsing.jl") #  include model processing functions		
 include("diff.jl") #  include derivatives definitions
@@ -92,7 +90,6 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunctionWithGradient(model) # build function, count the number of parameters
-	(ll_func, nparams) = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
 	println(ll_func)
 
 	Main.eval(ll_func) # create function (in Main !)
@@ -346,11 +343,11 @@ function runStats(res::Matrix{Float64}, delay::Float64)
 	ess = [ essfac(res[:,i])::Float64 for i in 3:nvar ]
 	ess = nsamp .* max(0., 1.-ess) ./ (1.+ess)
 	if nvar==3
-		print("effective samples $(round(ess[1])), ")
-		println("effective samples by sec $(round(ess[1]/delay))")
+		print("effective samples $(iround(ess[1])), ")
+		println("effective samples by sec $(iround(ess[1]/delay))")
 	else
-		print("effective samples $(round(min(ess))) to $(round(max(ess))), ")
-		println("effective samples by sec $(round(min(ess)/delay)) to $(round(max(ess)/delay))")
+		print("effective samples $(iround(min(ess))) to $(iround(max(ess))), ")
+		println("effective samples by sec $(iround(min(ess)/delay)) to $(iround(max(ess)/delay))")
 	end
 end	
 
