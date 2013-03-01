@@ -133,13 +133,50 @@ using DataFrames
 BitArray
 
 
-type MCMCRun2
+type MCMCRun6
     acceptRate::Float64
     time::Float64
-    ess::Range{Int32}
-    essBySec::Range{Float64}
+    ess::Range1
+    essBySec::Range1
+    loglik::Vector
+    accept::Vector
     params::Dict
 end
 
-x = MCMCRun2(.25, 5.6, 4:1000, 4.2:10.3, {:vars=>[1 2 3 ; 4 5 6 ]})
+x = MCMCRun6(.25, 5.6, 4:1000, 4.2:10.3, [], [], Dict())
+1:1
+
+import Base.show
+show(io::IO, x::MCMCRun6) = print("Accept rate $(x.acceptRate), Eff. samples $(x.ess), Eff. samples per sec. $(x.essBySec)")
+
+x
+x.essBySec
+
+type MCMCRun3
+    acceptRate::Float64
+    time::Float64
+end
+
+type MCMCRun4
+    acceptRate::Float64
+    time::Float64
+    ess::Range{Int32}
+end
+
+x = MCMCRun4(.25, 5.6, 2:4)
+
+
+
+##################################################################
+
+ll, bet = __loglik(reshape(res[end,3:12], 10))
+res[end,1]
+
+
+ll, bet = Main.__loglik(ones(10))
+println(" $beta     $(Main.__loglik(ones(10)))")
+ll, bet = __loglik(zeros(10))
+
+
+typeof(ll)
 

@@ -6,6 +6,7 @@ include("../src/SimpleMCMC.jl")
 require("Distributions")  # used to provide exact mean and std of distributions
 
 TOLERANCE = 1e-1  # 10% tolerance due to small sampling sizes
+TOLERANCE = 1  # 
 
 function samplers1(ex::Expr)  # ex = :(Normal(3, 12))
 	model = :(x::real ; x ~ $ex)
@@ -18,6 +19,9 @@ function samplers1(ex::Expr)  # ex = :(Normal(3, 12))
 	println("testing simpleRWM x $ex")
 	srand(1)
 	res = SimpleMCMC.simpleRWM(model, 100000, 1000, [realMean])
+	# res = SimpleMCMC.simpleRWM(model, 10, 0, [realMean])
+	println(res[:,3])
+
 	calcMean = mean(res[:,3])
 	calcStd = std(res[:,3])
 	assert(abs((calcMean-realMean)/realMean) < TOLERANCE, "expected mean $realMean, got $calcMean")
@@ -26,6 +30,9 @@ function samplers1(ex::Expr)  # ex = :(Normal(3, 12))
 	println("testing simpleHMC x $ex")
 	srand(1)
 	res = SimpleMCMC.simpleHMC(model, 100000, 1000, [realMean], 2, realStd/5)
+	# res = SimpleMCMC.simpleHMC(model, 10, 0, [realMean], 2, realStd/5)
+	println(res[:,3])
+	
 	calcMean = mean(res[:,3])
 	calcStd = std(res[:,3])
 	assert(abs((calcMean-realMean)/realMean) < TOLERANCE, "expected mean $realMean, got $calcMean")
@@ -41,6 +48,7 @@ function samplers1(ex::Expr)  # ex = :(Normal(3, 12))
 end
 
 samplers1(:(Weibull(1, 1)))
+
 samplers1(:(Weibull(3, 1)))
 samplers1(:(Uniform(0, 2)))
 samplers1(:(Normal(1, 1)))
@@ -56,15 +64,17 @@ res = SimpleMCMC.simpleHMC(model, 100000, 1000, 0.0, 2, 0.2)
 
 model = :(x::real ; x ~ Normal(3,1))
 res = SimpleMCMC.simpleRWM(model, 100000, 1000, 0.0)
+res = SimpleMCMC.simpleRWM(model, 10, 0, 0.0)
 res = SimpleMCMC.simpleHMC(model, 100000, 1000, 0.0, 2, 0.2)
 
 model = :(x::real ; x ~ Weibull(1,1))
 res = SimpleMCMC.simpleRWM(model, 100000, 1000, 1.0)
 res = SimpleMCMC.simpleRWM(model, 10, 0, 1.0)
 res = SimpleMCMC.simpleHMC(model, 100000, 1000, 1.0, 2, 0.2)
+srand(1)
 res = SimpleMCMC.simpleHMC(model, 10, 0, 1.0, 2, 0.2)
 
-__loglik([3.0])
+__loglik([1.1])
 
 myf, n = SimpleMCMC.buildFunctionWithGradient(model)
 
@@ -72,3 +82,34 @@ myf, n = SimpleMCMC.buildFunctionWithGradient(model)
 # recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.5]))  # 6.200 ess/s
 # recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.5], 2, 0.04)) # 140 ess/s
 # recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.5]))  # 17.000 ess/s, correct
+
+
+
+#########################
+
+include("../src/SimpleMCMC.jl")
+function samplers2(ex::Expr)  # ex = :(Normal(3, 12))
+	model = :(x::real ; x ~ $ex)
+
+	res = SimpleMCMC.simpleRWM(model, 10000, 0, [1.])
+	println("ll : $(res[end,1]), x : $(res[end,3])")
+
+	res = SimpleMCMC.simpleHMC(model, 10000, 0, [1.], 2, 1./5)
+	println("ll : $(res[end,1]), x : $(res[end,3])")
+end
+
+samplers2(:(Weibull(1, 1)))
+samplers1(:(Weibull(1, 1)))
+
+SimpleMCMC.mwhos()
+
+__loglik([-14.])
+
+
+model = :(x::real ; x ~ Weibull(1,1))
+res = SimpleMCMC.simpleRWM(model, 100000, 1000, 1.0)
+res = SimpleMCMC.simpleRWM(model, 10, 0, 1.0)
+
+
+whos()
+whos(SimpleMCMC)

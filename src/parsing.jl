@@ -331,7 +331,7 @@ function buildFunction(model::Expr)
 	# enclose whole body in a try block
 	cblock = expr(:try, body,
 						:e, 
-						expr(:block, :(if e == "give up eval";return -Inf;else;throw(x);end)))
+						expr(:block, :(if e == "give up eval";return -Inf;else;throw(e);end)))
 
 	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	cblock)
 
@@ -374,7 +374,7 @@ function buildFunctionWithGradient(model::Expr)
 	# enclose whole body in a try block
 	cblock = expr(:try, expr(:block, body),
 						:e, 
-						expr(:block, :(if e == "give up eval";return (-Inf, zero($PARAM_SYM));else;throw(x);end)))
+						expr(:block, :(if e == "give up eval";return (-Inf, zero($PARAM_SYM));else;throw(e);end)))
 
 	# build function
 	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
@@ -382,27 +382,3 @@ function buildFunctionWithGradient(model::Expr)
 
 	(func, nparams)
 end
-
-# ex = quote
-# 	try
-# 		a += beta
-# 	catch e
-# 		if e == "give up eval"
-# 		 	return (-Inf, [])
-# 		else
-# 		 	throw(x)
-# 		end
-# 	end
-# end
-
-# dump(ex)
-
-# ex2 = quote
-# 		if e == "give up eval"
-# 		 	return (-Inf, [])
-# 		else
-# 		 	throw(x)
-# 		end
-# end
-
-# dump(ex2)

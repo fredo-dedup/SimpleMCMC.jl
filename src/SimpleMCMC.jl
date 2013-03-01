@@ -10,6 +10,7 @@ module SimpleMCMC
 include("parsing.jl") #  include model processing functions		
 include("diff.jl") #  include derivatives definitions
 
+import Base.show
 
 export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
@@ -21,27 +22,53 @@ const LLFUNC_SYM = :__loglik
 const TEMP_NAME = "tmp"
 const DERIV_PREFIX = "d"
 
+# type containing results
+type MCMCRun
+    acceptRate::Float64
+    time::Float64
+    steps::Integer
+    burnin::Integer
+    samples::Integer
+    ess::Range1
+    essBySec::Range1
+    loglik::Vector
+    accept::Vector
+    params::Dict
+end
+MCMCRun(steps::Integer, burnin::Integer) = MCMCRun(NaN, NaN, steps, burnin, steps-burnin, NaN:NaN, NaN:NaN, [], [], Dict())
+
+function show(io::IO, x::MCMCRun)
+	print("Accept rate $(x.acceptRate), Eff. samples $(x.ess), Eff. samples per sec. $(x.essBySec)")
+end
+
 ##########################################################################################
 #   Random Walk Metropolis function
 ##########################################################################################
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	const local target_accept = 0.234
+	local ll_func, nparams
+
 	# steps=100; burnin=10; init=1
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunction(model) # build function, count the number of parameters
-	println(ll_func)
 	Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
 
-
 	#  first calc
 	__lp = Main.__loglik(beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
+
+	#  result structure setup
+	res = MCMCRun(steps, burnin)
+	res.accept = res.loglik = fill(NaN, res.samples)
+	for p in pmap
+		res.params[p.sym] = fill(NaN, tuple([res.samples, p.size]...))
+	end
 
 	#  main loop
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
@@ -94,23 +121,33 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 
 	Main.eval(ll_func) # create function (in Main !)
 
+	Main.eval(ll_func) # create function (in Main !)
+
+	Main.eval(ll_func) # create function (in Main !)
+
 	beta = setInit(init, nparams) # build the initial values
 
 	#  first calc
+	println(" $beta     $(Main.__loglik(beta))")
+	println(" $beta     $(Main.__loglik(beta))")
+	println(" $beta     $(Main.__loglik(beta))")
+	println(" $beta     $(Main.__loglik(beta))")
+	println(" $beta     $(Main.__loglik(beta))")
 	llik, grad = Main.__loglik(beta) # eval(llcall)
+	println("starting with $llik - $grad")
 	assert(isfinite(llik), "Initial values out of model support, try other values")
 
 	#  main loop
 	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
 
+	local jump, beta0, llik0, jump0
  	for i in 1:steps  #i=1
- 		local jump, beta0, llik0, jump0
  		local j
 
- 		jump = randn(nparams)
+		println(" ++++ $i   $llik  $beta")
+ 		jump = jump0 = randn(nparams)
 		beta0 = beta
 		llik0 = llik
-		jump0 = jump
 
 		j=1
 		while j <= isteps && isfinite(llik)
@@ -124,7 +161,9 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 		# revert to initial values if new is not good enough
 		if rand() > exp((llik - dot(jump,jump)/2.0) - (llik0 - dot(jump0,jump0)/2.0))
 			llik, beta = llik0, beta0
+			println("  $i   $llik0  $beta0")
 		end
+		println(" === $i   $llik  $beta")
 		draws[i, :] = vcat(llik, llik0 != llik, beta) 
 
 	end
@@ -311,9 +350,8 @@ simpleNUTS(model::Expr, steps::Integer, burnin::Integer) = simpleNUTS(model, ste
 
 ### checks consistency of steps and burnin steps
 function checkSteps(steps, burnin)
-	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
 	assert(burnin >= 0, "Burnin rounds ($burnin) should be >= 0")
-	assert(steps > 0, "Steps ($steps) should be > 0")
+	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
 end
 
 ### sets inital values from 'init' given as parameter
@@ -330,10 +368,24 @@ function setInit(init, nparams)
 end
 
 ##### stats calculated after a full run
-function runStats(res::Matrix{Float64}, delay::Float64)
+function runStats(pmap::Vector, res::Matrix{Float64}, delay::Float64, accept::AbstractVector,
+					loglik::Vector)
 	nsamp = size(res,1)
 	nvar = size(res,2)
 
+	res = MCMCRun(mean(accept), delay, )
+# 	type MCMCRun
+#     acceptRate::Float64
+#     time::Float64
+#     steps::Integer
+#     burnin::Integer
+#     samples::Integer
+#     ess::Range1
+#     essBySec::Range1
+#     loglik::Vector
+#     accept::Vector
+#     params::Dict
+# end
 	print("$(round(delay,1)) sec., ")
 
 	essfac(serie::Vector) = abs(cov(serie[2:end], serie[1:(end-1)])) / var(serie)
@@ -350,9 +402,6 @@ function runStats(res::Matrix{Float64}, delay::Float64)
 		println("effective samples by sec $(iround(min(ess)/delay)) to $(iround(max(ess)/delay))")
 	end
 end	
-
-
-
 
 # module end
 end

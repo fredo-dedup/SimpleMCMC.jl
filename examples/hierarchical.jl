@@ -34,9 +34,9 @@ end
 res = SimpleMCMC.simpleRWM(model, 100000)
 [Float64[mean(res[:,i+2]) for i in 1:(D+D+L*D)][9:28] reshape(beta0, 20)]
 
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.001)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.1)
 
-res = SimpleMCMC.simpleNUTS(model, 10)
+res = SimpleMCMC.simpleNUTS(model, 10)  # hangs
 
 
 my, np = SimpleMCMC.buildFunctionWithGradient(model)
