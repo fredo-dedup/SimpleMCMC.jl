@@ -18,7 +18,7 @@ export buildFunction, buildFunctionWithGradient
 # naming conventions
 const ACC_SYM = :__acc
 const PARAM_SYM = :__beta
-const LLFUNC_SYM = :__loglik
+const LLFUNC_NAME = "loglik"
 const TEMP_NAME = "tmp"
 const DERIV_PREFIX = "d"
 
@@ -55,12 +55,13 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunction(model) # build function, count the number of parameters
-	Main.eval(ll_func) # create function (in Main !)
+	# Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
 
 	#  first calc
-	__lp = Main.__loglik(beta)
+	# __lp = Main.__loglik(beta)
+	__lp = ll_func(beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  result structure setup
@@ -78,7 +79,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		jump = 0.1 * randn(nparams)
 		oldbeta, beta = beta, beta + S * jump
 
- 		old__lp, __lp = __lp, Main.__loglik(beta) 
+ 		old__lp, __lp = __lp, ll_func(beta) #Main.__loglik(beta) 
 
  		alpha = min(1, exp(__lp - old__lp))
 		if rand() > exp(__lp - old__lp)
@@ -117,23 +118,20 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	(ll_func, nparams) = buildFunctionWithGradient(model) # build function, count the number of parameters
-	println(ll_func)
-
-	Main.eval(ll_func) # create function (in Main !)
-
-	Main.eval(ll_func) # create function (in Main !)
-
-	Main.eval(ll_func) # create function (in Main !)
+	# println(ll_func)
+	# Main.eval(ll_func) # create function (in Main !)
+	# Main.eval(ll_func) # create function (in Main !)
+	# Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
 
 	#  first calc
-	println(" $beta     $(Main.__loglik(beta))")
-	println(" $beta     $(Main.__loglik(beta))")
-	println(" $beta     $(Main.__loglik(beta))")
-	println(" $beta     $(Main.__loglik(beta))")
-	println(" $beta     $(Main.__loglik(beta))")
-	llik, grad = Main.__loglik(beta) # eval(llcall)
+	# println(" $beta     $(Main.__loglik(beta))")
+	# println(" $beta     $(Main.__loglik(beta))")
+	# println(" $beta     $(Main.__loglik(beta))")
+	# println(" $beta     $(Main.__loglik(beta))")
+	# println(" $beta     $(Main.__loglik(beta))")
+	llik, grad = ll_func(beta) #Main.__loglik(beta) # eval(llcall)
 	println("starting with $llik - $grad")
 	assert(isfinite(llik), "Initial values out of model support, try other values")
 
@@ -144,7 +142,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
  	for i in 1:steps  #i=1
  		local j
 
-		println(" ++++ $i   $llik  $beta")
+		# println(" ++++ $i   $llik  $beta")
  		jump = jump0 = randn(nparams)
 		beta0 = beta
 		llik0 = llik
@@ -153,7 +151,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 		while j <= isteps && isfinite(llik)
 			jump += stepsize/2. * grad
 			beta += stepsize * jump
-			llik, grad = Main.__loglik(beta)
+			llik, grad = ll_func(beta) #Main.__loglik(beta)
 			jump += stepsize/2. * grad
 			j +=1
 		end
@@ -161,9 +159,9 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 		# revert to initial values if new is not good enough
 		if rand() > exp((llik - dot(jump,jump)/2.0) - (llik0 - dot(jump0,jump0)/2.0))
 			llik, beta = llik0, beta0
-			println("  $i   $llik0  $beta0")
+			# println("  $i   $llik0  $beta0")
 		end
-		println(" === $i   $llik  $beta")
+		# println(" === $i   $llik  $beta")
 		draws[i, :] = vcat(llik, llik0 != llik, beta) 
 
 	end
@@ -193,7 +191,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	ll_func, nparams = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
-	Main.eval(ll_func) # create function (in Main !)
+	# Main.eval(ll_func) # create function (in Main !)
 
 	beta0 = setInit(init, nparams) # build the initial values
 
@@ -368,24 +366,10 @@ function setInit(init, nparams)
 end
 
 ##### stats calculated after a full run
-function runStats(pmap::Vector, res::Matrix{Float64}, delay::Float64, accept::AbstractVector,
-					loglik::Vector)
+function runStats(res::Matrix{Float64}, delay::Float64)
 	nsamp = size(res,1)
 	nvar = size(res,2)
 
-	res = MCMCRun(mean(accept), delay, )
-# 	type MCMCRun
-#     acceptRate::Float64
-#     time::Float64
-#     steps::Integer
-#     burnin::Integer
-#     samples::Integer
-#     ess::Range1
-#     essBySec::Range1
-#     loglik::Vector
-#     accept::Vector
-#     params::Dict
-# end
 	print("$(round(delay,1)) sec., ")
 
 	essfac(serie::Vector) = abs(cov(serie[2:end], serie[1:(end-1)])) / var(serie)
@@ -402,6 +386,35 @@ function runStats(pmap::Vector, res::Matrix{Float64}, delay::Float64, accept::Ab
 		println("effective samples by sec $(iround(min(ess)/delay)) to $(iround(max(ess)/delay))")
 	end
 end	
+
+function calcEss(res::MCMCRun)
+	nsamp = size(res,1)
+	nvar = size(res,2)
+
+	print("$(round(delay,1)) sec., ")
+
+	function ess(serie::Vector)
+		fac = abs(cov(serie[2:end], serie[1:(end-1)])) / var(serie)
+		length(serie) * max(0., 1. - fac) / (1. + fac)
+	end
+	# note the absolute value around the covar to penalize anti-correlation the same as
+	# correlation. This will also ensure that ess is <= number of samples
+
+	emin = emax = NaN
+	for p in keys(res.params)
+		vess = map(ess, [()
+	end
+	ess = [ essfac(res[:,i])::Float64 for i in 3:nvar ]
+	ess = nsamp .* max(0., 1.-ess) ./ (1.+ess)
+	if nvar==3
+		print("effective samples $(iround(ess[1])), ")
+		println("effective samples by sec $(iround(ess[1]/delay))")
+	else
+		print("effective samples $(iround(min(ess))) to $(iround(max(ess))), ")
+		println("effective samples by sec $(iround(min(ess)/delay)) to $(iround(max(ess)/delay))")
+	end
+end	
+
 
 # module end
 end

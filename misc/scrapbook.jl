@@ -180,3 +180,27 @@ ll, bet = __loglik(zeros(10))
 
 typeof(ll)
 
+
+
+module test
+end
+
+whos()
+test.whos()
+
+nf = gensym("loglik")
+test.eval(:( ($nf)(x)=x+1))
+
+test.
+
+llfunc(x) = eval( :( $(expr(:., :test, expr(:quote, nf))) ) )(x)
+coucou = eval( :( $(expr(:., :test, expr(:quote, nf))) ) )
+
+coucou(18)
+
+llfunc(7)
+
+myfunc = test.eval( :( ($nf)(x)=x+1) )
+myfunc(14)
+
+llfunc(5)

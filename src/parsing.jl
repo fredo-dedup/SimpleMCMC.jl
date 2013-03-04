@@ -123,7 +123,7 @@ end
 
 ######## unfolds expressions to prepare derivation ###################
 function unfold(ex::Expr)
-	# TODO : assumes there is only refs or calls on rhs of equal expressions, improve (add blocks ?)
+	# Assumes there is only refs or calls on rhs of equal expressions, TODO : generalize ? (add blocks ?)
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[unfold] unmanaged expr type $(ex.head)")
@@ -333,7 +333,10 @@ function buildFunction(model::Expr)
 						:e, 
 						expr(:block, :(if e == "give up eval";return -Inf;else;throw(e);end)))
 
-	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	cblock)
+
+	func = Main.eval(expr(:function, 
+							expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
+							cblock))
 
 	(func, nparams)
 end
@@ -377,8 +380,9 @@ function buildFunctionWithGradient(model::Expr)
 						expr(:block, :(if e == "give up eval";return (-Inf, zero($PARAM_SYM));else;throw(e);end)))
 
 	# build function
-	func = expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
-				expr(:block, cblock))
+	func = Main.eval(expr(:function, 
+							expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
+							expr(:block, cblock)))
 
 	(func, nparams)
 end
