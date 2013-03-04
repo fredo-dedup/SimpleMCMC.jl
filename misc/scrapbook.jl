@@ -204,3 +204,23 @@ myfunc = test.eval( :( ($nf)(x)=x+1) )
 myfunc(14)
 
 llfunc(5)
+#########################################################################""
+
+
+model = quote
+    mu::real(3)
+    scale::real(2,3)
+
+    scale ~ Weibull(2,1)
+    mu ~ Uniform(0,1)
+end
+
+include("../src/SimpleMCMC.jl")
+f, n, pmap = SimpleMCMC.buildFunction(model)
+
+r = SimpleMCMC.simpleRWM(model, 10,2)
+
+r.accept
+r.params[:scale][1,2,:]
+r.params[:mu][1,:]
+

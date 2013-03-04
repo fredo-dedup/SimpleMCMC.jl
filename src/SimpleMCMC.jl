@@ -1,11 +1,5 @@
 module SimpleMCMC
 
-# require("Distributions")
-
-# import 	Distributions.logpdf, Distributions.logpmf
-# import  Distributions.DiscreteDistribution, Distributions.ContinuousDistribution
-# import 	Distributions.Normal, Distributions.Uniform, Distributions.Weibull,
-# 		Distributions.Bernoulli
 
 include("parsing.jl") #  include model processing functions		
 include("diff.jl") #  include derivatives definitions
@@ -15,6 +9,7 @@ import Base.show
 export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
 
+
 # naming conventions
 const ACC_SYM = :__acc
 const PARAM_SYM = :__beta
@@ -22,7 +17,8 @@ const LLFUNC_NAME = "loglik"
 const TEMP_NAME = "tmp"
 const DERIV_PREFIX = "d"
 
-# type containing results
+
+# returned result structure
 type MCMCRun
     acceptRate::Float64
     time::Float64
@@ -35,11 +31,16 @@ type MCMCRun
     accept::Vector
     params::Dict
 end
-MCMCRun(steps::Integer, burnin::Integer) = MCMCRun(NaN, NaN, steps, burnin, steps-burnin, NaN:NaN, NaN:NaN, [], [], Dict())
+MCMCRun(steps::Integer, burnin::Integer) = 
+	MCMCRun(NaN, NaN, steps, burnin, steps-burnin, 0:0, 0:0, [], [], Dict())
 
 function show(io::IO, x::MCMCRun)
 	print("Accept rate $(x.acceptRate), Eff. samples $(x.ess), Eff. samples per sec. $(x.essBySec)")
 end
+
+
+
+
 
 ##########################################################################################
 #   Random Walk Metropolis function
@@ -54,26 +55,17 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	(ll_func, nparams) = buildFunction(model) # build function, count the number of parameters
+	ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
 	# Main.eval(ll_func) # create function (in Main !)
 
 	beta = setInit(init, nparams) # build the initial values
+	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
-	# __lp = Main.__loglik(beta)
 	__lp = ll_func(beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
-	#  result structure setup
-	res = MCMCRun(steps, burnin)
-	res.accept = res.loglik = fill(NaN, res.samples)
-	for p in pmap
-		res.params[p.sym] = fill(NaN, tuple([res.samples, p.size]...))
-	end
-
 	#  main loop
-	draws = zeros(Float64, (steps, 2+nparams)) # 2 additionnal columns for storing log lik and accept/reject flag
-
 	S = eye(nparams) # initial value for jump scaling matrix
  	for i in 1:steps	
 		jump = 0.1 * randn(nparams)
@@ -85,7 +77,17 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		if rand() > exp(__lp - old__lp)
 			__lp, beta = old__lp, oldbeta
 		end
-		draws[i, :] = vcat(__lp, (old__lp != __lp), beta) 
+		
+		i > burnin ? addToRes!(res, pmap, i-burnin, __lp, old__lp != __lp, beta) : nothing
+		# if i>burnin # save results if past the burnin phase
+		# 	res.loglik[i-burnin] = __lp
+		# 	res.accept[i-burnin] = old__lp != __lp
+		# 	for p in pmap
+		# 		str = prod(p.size)
+		# 		res.params[p.sym][((i-burnin-1)*str+1):((i-burnin)*str)] = beta[p.map[1]:p.map[2]]
+		# 	end
+		# end
+		# draws[i, :] = vcat(__lp, (old__lp != __lp), beta) 
 
 		#  Adaptive scaling using R.A.M. method
 		eta = min(1, nparams*i^(-2/3))
@@ -96,10 +98,11 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		S = S'
 	end
 
-	# print a few stats on the run
-	runStats(draws[(burnin+1):steps,:], toq())
+	# print a few stats
+	# runStats(draws[(burnin+1):steps,:], toq())
 
-	draws[(burnin+1):steps, :]
+	# draws[(burnin+1):steps, :]
+	res
 end
 
 simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, min(steps-1, div(steps,2)))
@@ -365,6 +368,27 @@ function setInit(init, nparams)
 	end
 end
 
+### sets the result structurer
+function setRes(steps, burnin, pmap)
+	res = MCMCRun(steps, burnin)
+	res.accept = res.loglik = fill(NaN, res.samples)
+	for p in pmap
+		res.params[p.sym] = fill(NaN, tuple([p.size, res.samples]...))
+	end
+
+	res
+end
+
+### adds a sample to the result structurer
+function addToRes!(res::MCMCRun, pmap, index, ll::Float64, accept, beta)
+	res.loglik[index] = ll
+	res.accept[index] = accept
+	for p in pmap
+		str = prod(p.size)
+		res.params[p.sym][((index-1)*str+1):(index*str)] = beta[p.map[1]:p.map[2]]
+	end
+end
+
 ##### stats calculated after a full run
 function runStats(res::Matrix{Float64}, delay::Float64)
 	nsamp = size(res,1)
@@ -400,10 +424,10 @@ function calcEss(res::MCMCRun)
 	# note the absolute value around the covar to penalize anti-correlation the same as
 	# correlation. This will also ensure that ess is <= number of samples
 
-	emin = emax = NaN
-	for p in keys(res.params)
-		vess = map(ess, [()
-	end
+	# emin = emax = NaN
+	# for p in keys(res.params)
+	# 	vess = map(ess, [()
+	# end
 	ess = [ essfac(res[:,i])::Float64 for i in 3:nvar ]
 	ess = nsamp .* max(0., 1.-ess) ./ (1.+ess)
 	if nvar==3
@@ -416,6 +440,6 @@ function calcEss(res::MCMCRun)
 end	
 
 
-# module end
-end
+
+end # module end
 

@@ -30,11 +30,16 @@ getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])
 getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 
+######### parameters structure  ############
+type MCMCParams
+	sym::Symbol
+	size::Vector{Integer}
+	map::Vector{Integer}   #Range1{Int64}
+end
 
 
 ######### parses model to extracts parameters and rewrite ~ operators #############
-function parseModel(ex::Expr, gradient::Bool)
-	# 'gradient' specifies if gradient is to be calculated later because it affects ~ translation
+function parseModel(ex::Expr)
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[parseModel] unmanaged expr type $(ex.head)")
@@ -61,7 +66,8 @@ function parseModel(ex::Expr, gradient::Bool)
 		def = ex.args[2]
 
 		if def == :real  #  single param declaration
-			pmap[par] = :($PARAM_SYM[$(index+1)])
+			push!(pmap, MCMCParams(par, Integer[], Integer[index+1, index+1]))
+				# ange1(pmap[par] = :($PARAM_SYM[$(index+1)])
 			index += 1
 
 		elseif isa(def, Expr) && def.head == :call
@@ -71,7 +77,8 @@ function parseModel(ex::Expr, gradient::Bool)
 					nb = Main.eval(e2[2])
 					assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
 
-					pmap[par] = :($PARAM_SYM[$(index+1):$(nb+index)])
+					push!(pmap, MCMCParams(par, Integer[nb], Integer[index+1, index+nb]))
+					# pmap[par] = :($PARAM_SYM[$(index+1):$(nb+index)])
 					index += nb
 				elseif length(e2) == 3 #  matrix param declaration
 					nb1 = Main.eval(e2[2])
@@ -79,7 +86,8 @@ function parseModel(ex::Expr, gradient::Bool)
 					nb2 = Main.eval(e2[3])
 					assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
 
-					pmap[par] = :(reshape($PARAM_SYM[$(index+1):$(nb1*nb2+index)], $nb1, $nb2))
+					push!(pmap, MCMCParams(par, Integer[nb1, nb2], Integer[index+1, index+nb1*nb2]))
+					# pmap[par] = :(reshape($PARAM_SYM[$(index+1):$(nb1*nb2+index)], $nb1, $nb2))
 					index += nb1*nb2
 				else
 					error("up to 2 dim for parameters in $ex")
@@ -96,23 +104,16 @@ function parseModel(ex::Expr, gradient::Bool)
 	function explore(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
-		if gradient
-			fn = symbol("logpdf$(ex.args[3].args[1])")
-			args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
-			args = vcat(args, ex.args[3].args[2:end])
-			push!(args, ex.args[2])
-			return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
-
-		else	
-			args = {expr(:., :Distributions, expr(:quote, symbol("logpdf"))),
-					expr(:call, expr(:., :Distributions, expr(:quote, ex.args[3].args[1])), ex.args[3].args[2:end]...),
-					ex.args[2]}
-			return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
-		end
+		fn = symbol("logpdf$(ex.args[3].args[1])")
+		args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
+		args = vcat(args, ex.args[3].args[2:end])
+		push!(args, ex.args[2])
+		return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 
 	end
 
-	pmap = Dict{Symbol, Expr}()
+	pmap = MCMCParams[]
+	# () Dict{Symbol, Expr}()
 	index = 0
 
 	ex = explore(ex)
@@ -323,9 +324,12 @@ end
 
 function buildFunction(model::Expr)
 	# (model2, nparams, pmap) = parseModel(model, false)
-	(model2, nparams, pmap) = parseModel(model, true)
+	(model2, nparams, pmap) = parseModel(model)
 
-	assigns = {expr(:(=), k, v) for (k,v) in pairs(pmap)}
+	# assigns = {expr(:(=), p.sym, 
+	# 				expr(:ref, ACC_SYM, 
+	# 					p.map)) for p in pmap} # beta assigment
+	assigns = {:($(p.sym) = $PARAM_SYM[ $(p.map[1]):$(p.map[2])]) for p in pmap} # beta assigment
 
 	body = expr(:block, vcat(assigns, {:($ACC_SYM = 0.)}, model2.args, {:(return($ACC_SYM))}))
 	# enclose whole body in a try block
@@ -337,18 +341,20 @@ function buildFunction(model::Expr)
 	func = Main.eval(expr(:function, 
 							expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
 							cblock))
-
-	(func, nparams)
+	println(cblock)
+	(func, nparams, pmap)
 end
 
 function buildFunctionWithGradient(model::Expr)
 	
-	(model2, nparams, pmap) = parseModel(model, true)
+	(model2, nparams, pmap) = parseModel(model)
 	exparray, finalacc = unfold(model2)
-	avars = listVars(exparray, keys(pmap))
+	avars = listVars(exparray, [p.sym for p in pmap])
 	dmodel = backwardSweep(exparray, avars)
 
-	body = { expr(:(=), k, v) for (k,v) in pairs(pmap)} # beta assigment
+	body = 	{:($(p.sym) = $PARAM_SYM[ $(p.map[1]):$(p.map[2])]) for p in pmap} # beta assigment
+
+	# body = { expr(:(=), k, v) for (k,v) in pairs(pmap)} # beta assigment
 	push!(body, :($ACC_SYM = 0.)) # acc init
 
 	body = vcat(body, exparray)
@@ -364,11 +370,12 @@ function buildFunctionWithGradient(model::Expr)
 	body = vcat(body, dmodel)
 
 	if length(pmap) == 1
-		dn = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
+		# dn = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
+		dn = symbol("$DERIV_PREFIX$(pmap[1].sym)")
 		dexp = :(reshape([$dn], length($dn)))  # reshape to transform potential matrices into vectors
 	else
 		dexp = {:vcat}
-		dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$v"); :(reshape([$dn], length($dn))) ) for v in keys(pmap)})
+		dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(reshape([$dn], length($dn))) ) for p in pmap})
 		dexp = expr(:call, dexp)
 	end
 
