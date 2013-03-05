@@ -34,7 +34,7 @@ getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 type MCMCParams
 	sym::Symbol
 	size::Vector{Integer}
-	map::Vector{Integer}   #Range1{Int64}
+	map::Union(Integer, Range1)  
 end
 
 
@@ -66,8 +66,7 @@ function parseModel(ex::Expr)
 		def = ex.args[2]
 
 		if def == :real  #  single param declaration
-			push!(pmap, MCMCParams(par, Integer[], Integer[index+1, index+1]))
-				# ange1(pmap[par] = :($PARAM_SYM[$(index+1)])
+			push!(pmap, MCMCParams(par, Integer[], index+1)) #Integer[index+1, index+1]))
 			index += 1
 
 		elseif isa(def, Expr) && def.head == :call
@@ -77,8 +76,7 @@ function parseModel(ex::Expr)
 					nb = Main.eval(e2[2])
 					assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
 
-					push!(pmap, MCMCParams(par, Integer[nb], Integer[index+1, index+nb]))
-					# pmap[par] = :($PARAM_SYM[$(index+1):$(nb+index)])
+					push!(pmap, MCMCParams(par, Integer[nb], (index+1):(index+nb)))
 					index += nb
 				elseif length(e2) == 3 #  matrix param declaration
 					nb1 = Main.eval(e2[2])
@@ -86,8 +84,7 @@ function parseModel(ex::Expr)
 					nb2 = Main.eval(e2[3])
 					assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
 
-					push!(pmap, MCMCParams(par, Integer[nb1, nb2], Integer[index+1, index+nb1*nb2]))
-					# pmap[par] = :(reshape($PARAM_SYM[$(index+1):$(nb1*nb2+index)], $nb1, $nb2))
+					push!(pmap, MCMCParams(par, Integer[nb1, nb2], (index+1):(index+nb1*nb2))) #Integer[index+1, index+nb1*nb2]))
 					index += nb1*nb2
 				else
 					error("up to 2 dim for parameters in $ex")
@@ -113,7 +110,6 @@ function parseModel(ex::Expr)
 	end
 
 	pmap = MCMCParams[]
-	# () Dict{Symbol, Expr}()
 	index = 0
 
 	ex = explore(ex)
@@ -286,7 +282,6 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 		end
 		
 		rhs = ex.args[2]
-		# dsym2 = :($(DERIV_PREFIX)$dsym)
 		if isa(rhs,Symbol) 
 			if contains(avars, rhs)
 				vsym2 = symbol("$(DERIV_PREFIX)$rhs")
@@ -323,25 +318,15 @@ end
 ######### builds the full functions ##############
 
 function buildFunction(model::Expr)
-	# (model2, nparams, pmap) = parseModel(model, false)
 	(model2, nparams, pmap) = parseModel(model)
 
-	# assigns = {expr(:(=), p.sym, 
-	# 				expr(:ref, ACC_SYM, 
-	# 					p.map)) for p in pmap} # beta assigment
-	assigns = {:($(p.sym) = $PARAM_SYM[ $(p.map[1]):$(p.map[2])]) for p in pmap} # beta assigment
+	body = [betaAssign(pmap), 
+				[:($ACC_SYM = 0.)], 
+				model2.args, 
+				[:(return($ACC_SYM))] ]
 
-	body = expr(:block, vcat(assigns, {:($ACC_SYM = 0.)}, model2.args, {:(return($ACC_SYM))}))
-	# enclose whole body in a try block
-	cblock = expr(:try, body,
-						:e, 
-						expr(:block, :(if e == "give up eval";return -Inf;else;throw(e);end)))
+	func = Main.eval(tryAndFunc(body, false))
 
-
-	func = Main.eval(expr(:function, 
-							expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
-							cblock))
-	println(cblock)
 	(func, nparams, pmap)
 end
 
@@ -352,44 +337,63 @@ function buildFunctionWithGradient(model::Expr)
 	avars = listVars(exparray, [p.sym for p in pmap])
 	dmodel = backwardSweep(exparray, avars)
 
-	body = 	{:($(p.sym) = $PARAM_SYM[ $(p.map[1]):$(p.map[2])]) for p in pmap} # beta assigment
-
-	# body = { expr(:(=), k, v) for (k,v) in pairs(pmap)} # beta assigment
+	body = betaAssign(pmap)
 	push!(body, :($ACC_SYM = 0.)) # acc init
-
 	body = vcat(body, exparray)
 
 	push!(body, :($(symbol("$DERIV_PREFIX$finalacc")) = 1.0))
-	if contains(avars, finalacc)
+	if contains(avars, finalacc) # remove accumulator, treated above
 		delete!(avars, finalacc)
 	end
-	for v in avars # remove accumulator, treated above
+	for v in avars 
 		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
 	end
 
 	body = vcat(body, dmodel)
 
 	if length(pmap) == 1
-		# dn = symbol("$DERIV_PREFIX$(keys(pmap)[1])")
 		dn = symbol("$DERIV_PREFIX$(pmap[1].sym)")
-		dexp = :(reshape([$dn], length($dn)))  # reshape to transform potential matrices into vectors
+		dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
 	else
 		dexp = {:vcat}
-		dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(reshape([$dn], length($dn))) ) for p in pmap})
+		# dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(vec([$DERIV_PREFIX$(p.sym)])) for p in pmap})
+		dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in pmap})
 		dexp = expr(:call, dexp)
 	end
 
 	push!(body, :(($finalacc, $dexp)))
+	func = Main.eval(tryAndFunc(body, true))
 
-	# enclose whole body in a try block
-	cblock = expr(:try, expr(:block, body),
-						:e, 
-						expr(:block, :(if e == "give up eval";return (-Inf, zero($PARAM_SYM));else;throw(e);end)))
+	# println(expr(:block, body))
+	(func, nparams, pmap)
+end
 
-	# build function
-	func = Main.eval(expr(:function, 
-							expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
-							expr(:block, cblock)))
 
-	(func, nparams)
+
+######   Common functionality  ###########
+
+# returns an array of expr assigning parameters from the beta vector
+function betaAssign(pmap::Vector{MCMCParams})
+	assigns = Expr[]
+	for p in pmap
+		if length(p.size) <= 1  # scalar or vector
+			push!(assigns, :($(p.sym) = $PARAM_SYM[ $(p.map) ]) )
+		else # matrix case  (needs a reshape)
+			push!(assigns, :($(p.sym) = reshape($PARAM_SYM[ $(p.map) ], $(p.size[1]), $(p.size[2]))) )
+		end
+	end			
+	assigns
+end
+
+# encloses an array of expr in a try block to catch zero probabilities (-Inf log lik)
+#  and generates function expression
+function tryAndFunc(body::Vector, grad::Bool)
+	body = expr(:try, expr(:block, body),
+					:e, 
+					expr(:block, 
+						grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
+									:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+
+	expr(:function, expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
+					expr(:block, body) )
 end

@@ -20,20 +20,15 @@ model = quote
 end
 
 # run random walk metropolis (1000 steps, 500 for burnin)
-# res = SimpleMCMC.simpleRWM(model, 1000)
+res = SimpleMCMC.simpleRWM(model, 1000)
 
-# [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
+res.acceptRate  # acceptance rate
+[ sum(res.params[:vars],2)./res.samples beta0 ] # show calculated and original coefs side by side
 
+# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.05 inner step size)
+res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.05)
 
-# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10, 0, 1., 2, 0.02)
-
-# res = SimpleMCMC.simpleHMC(model, 10000, 2, 0.02)
-
-# [ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ] # show original values and mean of samples side by side
-
-
+# run NUTS - HMC (1000 steps, 500 for burnin)
 res = SimpleMCMC.simpleNUTS(model, 1000)
 
-println([ [mean(res[:,i+2])::Float64 for i in 1:nbeta] beta0 ]) # show original values and mean of samples side by side
 

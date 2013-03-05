@@ -14,8 +14,6 @@ good_enough(t::Tuple) = good_enough(t[1], t[2])
 # compares numerical gradient to automated gradient
 
 function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(sum(2+x)) ; x0 = [2., 3]
-	global __beta
-
 	println("testing gradient of $ex at x = $x0")
 
 	nx = length(x0)  # nx=3
@@ -33,16 +31,18 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 	model = expr(:block, pexpr, :(y = $ex), :(y ~ TestDiff()))
 
 	myf, np = SimpleMCMC.buildFunctionWithGradient(model)
-	ex2 = myf.args[2] # use body of function only
+	# ex2 = myf.args[2] # use body of function only
 
-	__beta = [x0]
-	l0, grad0 = eval(ex2)  
+	__beta = vec([x0])
+	# l0, grad0 = eval(ex2)  
+	l0, grad0 = myf(__beta)  
 
 	gradn = zeros(nx)
 	for i in 1:nx 
-		__beta = [x0]
+		__beta = vec([x0])
 		__beta[i] += DIFF_DELTA
-		l, grad = eval(ex2) 
+		# l, grad = eval(ex2) 
+		l, grad = myf(__beta)  
 		gradn[i] = (l-l0)/DIFF_DELTA
 	end
 
@@ -499,8 +499,8 @@ zz4 = [1 0 ; 1 1 ; 0 0 ]
 @mult deriv1    sum(x[2:4])            {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
 @mult deriv1    sum(x[:,2])            {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
 @mult deriv1    sum(x[1,:])            {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
-@mult deriv1    sum(x[2:end,:])            {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
-@mult deriv1    sum(x[:,2:end])            {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
+@mult deriv1    sum(x[2:end,:])        {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
+@mult deriv1    sum(x[:,2:end])        {[-3. 2 0 ; 1 1 -2], [-3. 2 ; 0 1 ; 1 -2]}
 
 @mult deriv1    x[2]+x[1]              {[-3., -2, -6], [-1., -10, -8]}
 @mult deriv1    log(x[2]^2+x[1]^2)     {[-3., -2, -6], [-1., -10, -8]}

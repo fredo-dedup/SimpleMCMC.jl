@@ -3,6 +3,7 @@
 
 include("../src/SimpleMCMC.jl")
 
+## generate random values
 N = 50 # number of observations
 D = 4  # number of groups
 L = 5  # number of predictors
@@ -16,13 +17,14 @@ X = randn(N, L)  # predictors
 beta0 = randn(D, L)  # model matrix nb group rows x nb predictors columns
 Y = [rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * onecol)))]
 
+## define model
 model = quote
 	mu::real(D)
 	sigma::real(D)
 	beta::real(D,L)
 
 	mu ~ Normal(0, 100)
-	sigma ~ Uniform(0, 1000)
+	sigma ~ Uniform(0, 1)
 
 	beta ~ Normal(mu * onerow, (sigma.^2) * onerow)
 
@@ -31,20 +33,17 @@ model = quote
 	Y ~ Bernoulli(prob)
 end
 
-res = SimpleMCMC.simpleRWM(model, 100000)
-[Float64[mean(res[:,i+2]) for i in 1:(D+D+L*D)][9:28] reshape(beta0, 20)]
+# run random walk metropolis (10000 steps, 5000 for burnin)
+res = SimpleMCMC.simpleRWM(model, 10000)
 
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.1)
+sum(res.params[:mu],2) / res.samples  # mu samples mean
+sum(res.params[:sigma],2) / res.samples # sigma samples mean
+sum(res.params[:beta],3) / res.samples # beta samples mean
 
-res = SimpleMCMC.simpleNUTS(model, 10)  # hangs
+# run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 2 inner steps, 0.1 inner step size)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.05)
 
+# run NUTS - HMC (1000 steps, 500 for burnin)
+res = SimpleMCMC.simpleNUTS(model, 10000)
 
-my, np = SimpleMCMC.buildFunctionWithGradient(model)
-eval(my)
-
-ll, grad = __loglik(ones(D+D+L*D))
-ll, grad = __loglik(ones(D+D+L*D))
-
-ll
-grad
 

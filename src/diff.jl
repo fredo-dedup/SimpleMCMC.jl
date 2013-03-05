@@ -137,59 +137,10 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	return :($(symbol("$(DERIV_PREFIX)$vs")) += $dexp )
 end
 
-
-
-###############  hooks into Distributions library  ###################
-#  (allows to vectorize on distributions parameters)
-
-#TODO ? : implement here functions that can be simplified (eg. logpdf(Normal)) 
-# as this is not always done in Distributions
-
-#  1 parameter distributions
-# for d in [:Bernoulli]
-# 	fsym = symbol("logpdf$d")  # function to be created
-#     dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
-
-# 	@eval ($fsym)(a::Real, x::Real) = ($dlf)(($d)(a), x)
-
-# 	@eval ($fsym)(a::Real, x::Array) = sum([($dlf)(($d)(a), x)])
-
-# 	eval(quote
-# 		function ($fsym)(a::Union(Real, Array), x::Union(Real, Array))
-# 			res = 0.0
-# 			for i in 1:max(length(a), length(x))
-# 				res += ($dlf)(($d)(next(a,i)[1]), next(x,i)[1])
-# 			end
-# 			res
-# 		end
-# 	end) 
-# end
-
-# #  2 parameters distributions
-# for d in [:Normal, :Weibull, :Uniform]
-# # for d in [:Weibull, :Uniform]
-# 	fsym = symbol("logpdf$d")
-#     dlf = eval(d) <: DiscreteDistribution ? :logpmf : :logpdf # function to be called depends on distribution type
-
-# 	@eval ($fsym)(a::Real, b::Real, x::Real) = ($dlf)(($d)(a, b), x)
-
-# 	@eval ($fsym)(a::Real, b::Real, x::Array) = sum([($dlf)(($d)(a, b), x)])
-
-# 	eval(quote
-# 		function ($fsym)(a::Union(Real, Array), b::Union(Real, Array), x::Union(Real, Array))
-# 			res = 0.0
-# 			for i in 1:max(length(a), length(b), length(x))
-# 				res += ($dlf)(($d)(next(a,i)[1], next(b,i)[1]), next(x,i)[1])
-# 			end
-# 			res
-# 		end
-# 	end) 
-# end
-
 ########### distributions using libRmath ######### 
 _jl_libRmath = dlopen("libRmath")
 
-# TODO : use the signature length parameter for real !
+# TODO : use the signature length parameter 
 for d in {(:Normal,  	"dnorm4",	2),
 		  (:Weibull, 	"dweibull", 2),
 		  (:Uniform, 	"dunif", 	2)}
