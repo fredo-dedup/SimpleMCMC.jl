@@ -385,7 +385,7 @@ function betaAssign(pmap::Vector{MCMCParams})
 	assigns
 end
 
-# encloses an array of expr in a try block to catch zero probabilities (-Inf log lik)
+# encloses an array of expr in a try block to catch zero likelihoods (-Inf log likelihood)
 #  and generates function expression
 function tryAndFunc(body::Vector, grad::Bool)
 	body = expr(:try, expr(:block, body),

@@ -41,9 +41,9 @@ sum(res.params[:sigma],2) / res.samples # sigma samples mean
 sum(res.params[:beta],3) / res.samples # beta samples mean
 
 # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 2, 0.05)
+res = SimpleMCMC.simpleHMC(model, 10000, 1000, 1., 10, 0.005)
 
 # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 10000)
+res = SimpleMCMC.simpleNUTS(model, 10000)  # hangs !
 
 

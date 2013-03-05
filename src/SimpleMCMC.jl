@@ -174,10 +174,12 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	beta0 = setInit(init, nparams) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
+	dump(res)
 	# first calc
 	llik0, grad0 = ll_func(beta0)
 	assert(isfinite(llik0), "Initial values out of model support, try other values")
 
+	println(llik0, grad0)
 	# Leapfrog step
 	function leapFrog(beta, r, grad, ve, ll)
 		local llik
@@ -202,7 +204,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		beta1, jump1, llik1, grad1 = leapFrog(beta0, jump, grad0, epsilon, ll_func)
 		ratio = exp(llik1-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
 	end
-	# println("starting epsilon = $epsilon")
+	println("starting epsilon = $epsilon")
 
 	### adaptation parameters
 	const delta = 0.7  # target acceptance
@@ -299,6 +301,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			epsilon = exp(lebar)
 		end
 
+		println(llik, beta)
 		i > burnin ? addToRes!(res, pmap, i-burnin, llik, beta != beta0, beta) : nothing
 
 		beta0 = beta
@@ -342,7 +345,8 @@ end
 ### sets the result structure
 function setRes(steps, burnin, pmap)
 	res = MCMCRun(steps, burnin)
-	res.accept = res.loglik = fill(NaN, res.samples)
+	res.accept = fill(NaN, res.samples) 
+	res.loglik = fill(NaN, res.samples)
 	for p in pmap
 		res.params[p.sym] = fill(NaN, tuple([p.size, res.samples]...))
 	end
@@ -350,7 +354,7 @@ function setRes(steps, burnin, pmap)
 	res
 end
 
-### adds a sample to the result structurer
+### adds a sample to the result structure
 function addToRes!(res::MCMCRun, pmap::Vector{MCMCParams}, index::Integer, ll::Float64, accept::Bool, beta::Vector{Float64})
 	res.loglik[index] = ll
 	res.accept[index] = accept
