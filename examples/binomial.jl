@@ -34,12 +34,12 @@ res = SimpleMCMC.simpleHMC(model, 10, 0, 2, 0.1)
 
 # run NUTS HMC (10000 steps, 1000 for burnin)
 res = SimpleMCMC.simpleNUTS(model, 10000, 1000, zeros(nbeta))
-res = SimpleMCMC.simpleNUTS(model, 10, 0, zeros(nbeta))
+res = SimpleMCMC.simpleNUTS(model, 50, 0, zeros(nbeta))
 
 
 myf, n, pmap = SimpleMCMC.buildFunctionWithGradient(model)
 
-myf(ones(nbeta))
+myf(10*ones(nbeta))
 myf(zeros(nbeta))
 
 res.params[:vars]

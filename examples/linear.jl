@@ -29,6 +29,6 @@ res.acceptRate  # acceptance rate
 res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.05)
 
 # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 1000)
+res = SimpleMCMC.simpleNUTS(model, 10000)
 
 

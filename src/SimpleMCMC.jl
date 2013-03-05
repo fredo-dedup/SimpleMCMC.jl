@@ -72,13 +72,14 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	#  main loop
 	S = eye(nparams) # initial value for jump scaling matrix
  	for i in 1:steps	
-		jump = 0.1 * randn(nparams)
-		oldbeta, beta = beta, beta + S * jump
+		jump = randn(nparams)
+		oldbeta = copy(beta)
+		beta += S * jump
 
  		old__lp, __lp = __lp, ll_func(beta) 
 
  		alpha = min(1, exp(__lp - old__lp))
-		if rand() > exp(__lp - old__lp)
+		if rand() > alpha # reject, go back to previous state
 			__lp, beta = old__lp, oldbeta
 		end
 		
@@ -127,9 +128,10 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
  	for i in 1:steps  #i=1
  		local j
 
- 		jump = jump0 = randn(nparams)
-		beta0 = beta
-		llik0 = llik
+ 		jump = randn(nparams)
+ 		jump0 = copy(jump)
+		beta0 = copy(beta)
+		llik0 = copy(llik)
 
 		j=1
 		while j <= isteps && isfinite(llik)
@@ -174,20 +176,22 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	beta0 = setInit(init, nparams) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
-	dump(res)
 	# first calc
 	llik0, grad0 = ll_func(beta0)
 	assert(isfinite(llik0), "Initial values out of model support, try other values")
 
-	println(llik0, grad0)
 	# Leapfrog step
 	function leapFrog(beta, r, grad, ve, ll)
 		local llik
+
+		# println("IN --- beta=$beta, r=$r, grad=$grad, ve=$ve")
 
 		r += grad * ve / 2.
 		beta += ve * r
 		llik, grad = ll(beta) 
 		r += grad * ve / 2.
+
+		# println("OUT --- beta=$beta, r=$r, grad=$grad, llik=$llik")
 
 		return beta, r, llik, grad
 	end
@@ -264,8 +268,13 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 
  		r0 = randn(nparams)
  		u_slice  = log(rand()) + llik0 - dot(r0,r0)/2.0 # use log ( != paper) to avoid underflow
- 		beta = betap = betam = beta0
- 		grad = gradp = gradm = grad0
+ 		
+ 		beta = copy(beta0)
+ 		betap = betam = beta0
+
+ 		grad = copy(grad0)
+ 		gradp = gradm = grad0
+
  		rp = rm = r0
  		llik = llik0
 
@@ -273,7 +282,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  		j, n = 0, 1
  		s = true
  		while s
- 			dir = (randn() > 0.5) * 2. - 1.
+ 			dir = (rand() > 0.5) * 2. - 1.
  			if dir == -1
  				betam, rm, gradm,  dummy, dummy, dummy,  beta1, llik1, grad1,  n1, s1, alpha, nalpha = 
  					buildTree(betam, rm, gradm, dir, j, ll_func)
@@ -282,6 +291,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  					buildTree(betap, rp, gradp, dir, j, ll_func)
  			end
  			if s1 && rand() < n1/n  # accept and set new beta
+ 				println("    accepted s1=$s1, n1/n=$(n1/n)")
  				beta = beta1
  				llik = llik1
  				grad = grad1
@@ -289,19 +299,21 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  			n += n1
  			j += 1
  			s = s1 && (dot((betap-betam), rm) >= 0.0) && (dot((betap-betam), rp) >= 0.0)
+ 			println("---  dir=$dir, j=$j, n=$n, s=$s, s1=$s1")
  		end
  		
  		# epsilon adjustment
  		if i <= nadapt  # warming up period
  			hbar = hbar * (1-1/(i+t0)) + (delta-alpha/nalpha)/(i+t0)
 			le = mu-sqrt(i)/gam*hbar
-			lebar = i^(-kappa) * le + (1-i^-kappa) * lebar
+			lebar = i^(-kappa) * le + (1-i^(-kappa)) * lebar
 			epsilon = exp(le)
+			println("alpha=$alpha, nalpha=$nalpha, hbar=$hbar, \n le=$le, lebar=$lebar, epsilon=$epsilon")
 		else # post warm up, keep same epsilon
 			epsilon = exp(lebar)
 		end
 
-		println(llik, beta)
+		# println(llik, beta)
 		i > burnin ? addToRes!(res, pmap, i-burnin, llik, beta != beta0, beta) : nothing
 
 		beta0 = beta
