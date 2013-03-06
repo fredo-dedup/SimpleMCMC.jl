@@ -21,26 +21,12 @@ end
 
 # run random walk metropolis (10000 steps, 1000 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000, 1000)
-res = SimpleMCMC.simpleRWM(model, 10, 0)
 
-dump(res)
-mean(res.accept)
 mean(res.loglik)
 [ sum(res.params[:vars],2) / res.samples beta0] # calculated vs original coefs
 
 # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 2 inner steps, 0.1 inner step size)
 res = SimpleMCMC.simpleHMC(model, 10000, 1000, 2, 0.1)
-res = SimpleMCMC.simpleHMC(model, 10, 0, 2, 0.1)
 
 # run NUTS HMC (10000 steps, 1000 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 10000, 1000, zeros(nbeta))
-res = SimpleMCMC.simpleNUTS(model, 50, 0, zeros(nbeta))
-
-
-myf, n, pmap = SimpleMCMC.buildFunctionWithGradient(model)
-
-myf(10*ones(nbeta))
-myf(zeros(nbeta))
-
-res.params[:vars]
-res.loglik
+res = SimpleMCMC.simpleNUTS(model, 10000, 1000)

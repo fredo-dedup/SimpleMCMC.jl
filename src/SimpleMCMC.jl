@@ -166,13 +166,14 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 
 function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
     local epsilon
-    local beta0, r0, llik0, grad0  # starting state of each loop
+    local beta0, r0, llik0, grad0, H0  # starting state of each loop
     local u_slice 
 	
+	# beta0 = ones(30)
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+	ll_func, nparams, pmap = buildFunctionWithGradient(model) # build function, count the number of parameters
 	beta0 = setInit(init, nparams) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
@@ -226,16 +227,17 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		local beta1, r1, llik1, grad1, n1, s1, alpha1, nalpha1
 		local beta2, r2, llik2, grad2, n2, s2, alpha2, nalpha2
 		local betam, rm, gradm, betap, rp, gradp
-		local dummy
-		const deltamax = 1000
+		local dummy, H1
+		const deltamax = 100
 
 		if j == 0
 			beta1, r1, llik1, grad1 = leapFrog(beta, r, grad, dir*epsilon, ll)
-			n1 = (u_slice <= ( llik1 - dot(r1,r1)/2.0 )) + 0 
-			s1 = u_slice < ( deltamax + llik1 - dot(r1,r1)/2.0 )
+			H1 = llik1 - dot(r1,r1)/2.0
+			n1 = ( u_slice <= H1 ) + 0 
+			s1 = u_slice < ( deltamax + H1 )
 
 			return beta1, r1, grad1,  beta1, r1, grad1,  beta1, llik1, grad1,  n1, s1, 
-				min(1., exp(llik1 - dot(r1,r1)/2. - llik0 + dot(r0,r0)/2.)), 1
+				min(1., exp(H1 - H0)), 1
 		else
 			betam, rm, gradm,  betap, rp, gradp,  beta1, llik1, grad1,  n1, s1, alpha1, nalpha1 = 
 				buildTree(beta, r, grad, dir, j-1, ll)
@@ -267,7 +269,9 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  		local dummy, alpha, nalpha
 
  		r0 = randn(nparams)
- 		u_slice  = log(rand()) + llik0 - dot(r0,r0)/2.0 # use log ( != paper) to avoid underflow
+ 		H0 = llik0 - dot(r0,r0)/2.
+
+ 		u_slice  = log(rand()) + H0 # use log ( != paper) to avoid underflow
  		
  		beta = copy(beta0)
  		betap = betam = beta0
@@ -281,7 +285,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  		# inner loop
  		j, n = 0, 1
  		s = true
- 		while s
+ 		while s && j < 8
  			dir = (rand() > 0.5) * 2. - 1.
  			if dir == -1
  				betam, rm, gradm,  dummy, dummy, dummy,  beta1, llik1, grad1,  n1, s1, alpha, nalpha = 
@@ -291,7 +295,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  					buildTree(betap, rp, gradp, dir, j, ll_func)
  			end
  			if s1 && rand() < n1/n  # accept and set new beta
- 				println("    accepted s1=$s1, n1/n=$(n1/n)")
+ 				# println("    accepted s1=$s1, n1/n=$(n1/n)")
  				beta = beta1
  				llik = llik1
  				grad = grad1
@@ -299,7 +303,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  			n += n1
  			j += 1
  			s = s1 && (dot((betap-betam), rm) >= 0.0) && (dot((betap-betam), rp) >= 0.0)
- 			println("---  dir=$dir, j=$j, n=$n, s=$s, s1=$s1")
+ 			# println("---  dir=$dir, j=$j, n=$n, s=$s, s1=$s1, alpha/nalpha=$(alpha/nalpha)")
  		end
  		
  		# epsilon adjustment
@@ -308,7 +312,7 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			le = mu-sqrt(i)/gam*hbar
 			lebar = i^(-kappa) * le + (1-i^(-kappa)) * lebar
 			epsilon = exp(le)
-			println("alpha=$alpha, nalpha=$nalpha, hbar=$hbar, \n le=$le, lebar=$lebar, epsilon=$epsilon")
+			# println("alpha=$alpha, nalpha=$nalpha, hbar=$hbar, \n le=$le, lebar=$lebar, epsilon=$epsilon")
 		else # post warm up, keep same epsilon
 			epsilon = exp(lebar)
 		end

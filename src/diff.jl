@@ -184,7 +184,14 @@ end
 ########## locally defined distributions #############
 
 function logpdfBernoulli(prob::Real, x::Real)
-	x == 0 ? log(1. - prob) : (x == 1 ? log(prob) : throw("break loglik"))
+	prob > 1. || prob < 0. ? error("calling Bernoulli with prob > 1. or < 0.") : nothing
+	if x == 0.
+		prob == 1. ? throw("give up eval") : return(log(1. - prob))
+	elseif x == 1.
+		prob == 0. ? throw("give up eval") : return(log(prob))
+	elseif
+	 	error("calling Bernoulli with variable other than 0 or 1 (false or true)")
+	end
 end
 
 for d in [:Bernoulli]
