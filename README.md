@@ -8,19 +8,9 @@ Implements :
 2. a set of sampling functions
 
 ## The model DSL
-For sampling without gradient (simpleRWM), basically the full Julia language can be used with the following limitations :
-- the `::` operator is redefined to declare model parameters being sampled, this makes the usual meaning of the operator inaccessible within the model definition.
-- the `~` operator is redefined to associate model variables with a distribution, with the same consequences.
-- as the model parsing creates a new function in the 'Main' namespace (__loglik), and introduces new variables within the model (__acc and __beta) there are potential variables collisions : don't use those names !
+Largely inspired from the BUGS/JAGS syntax, it uses the `~` operator to associate a variable with a distribution. Model parameters are defined with the `::` operator followed by the keyword real and optional dimensions in parentheses (up to 2 dimensions).
 
-For sampling using gradient (simpleHMC), the reverse mode automated derivation implemented in this library adds significant limits : 
-- No control flow operators (if, for loops, ..) are currently possible. These will necessitate a bit more work on the parsing functions. Note that very often for loops can be replaced by matrix/vector operations (see examples) so this may not be such a big limitation.
-- Only a subset of julia's operators and functions can be derived (an error message will appear otherwise). The list can easily be extended though.
-- If reference within vector/matrix depends directly or indirectly on a model parameter (for example  `shift = X[ round(sigma)]` ) , the gradient will be false.
-- Only a few of the continuous distributions of the 'Distributions' library are implemented : Normal, Uniform and Weibull. The list can easily be extended here too.
-
-
-An example model spec should be enough to illustrate the DSL : 
+An example model spec should make it very clear : 
 
 ```
 model = quote
@@ -28,18 +18,23 @@ model = quote
 	k::real(5)
 	
 	a = b+6
-	x = sin(dot(k, z))
+	x = exp(-dot(k, z))
 
-	x ~ Weibull(a, 2.0)
+	x ~ Weibull(a, 2)
 end
 ```
+- `::` indicates variables to be sampled (i.e model parameters): `b::real` declares a scalar parameter b, `k::real(5)` declares a vector k of size 5. The size can be also be an expression as long as it is evaluates to a stricly positive integer (an error will be thrown otherwise).
+- Statements with the operator ~ (`x ~ Weibull(a, 2)`) declare how to build the model likelihood, here this says that x should have a Weibull distributions (SimpleMCMC.jl uses the same naming conventions as the "Distribution.jl" module).
+- other statements are evaluated normaly and can either use and define model-local variables (`a`, `x`) or use variables defined in the calling environment (`z`) __calling environment actually means in `Main` !__.
 
-- `::` indicates variables to be sampled : `b::real` declares a scalar model parameter b, `k::real(5)` declares a vector k of size 5. The size can be also be an expression as long as it is evaluates to a stricly positive integer (an error will be thrown otherwise).
-- Statements with the operator ~ (`x ~ Weibull(a, 2.0)`) declare how to build the model likelihood, here this says that x should have a Weibull distributions (any continuous distribution of the "Distribution.jl" module can be used for Random Walk Metropolis, sampling methods using the gradient are limited to those with partial derivatives defined) of shape `a` and scale `2`
-- other statements are evaluated normaly and can either use and define model-local variables (`a`, `x`) or use variables defined in the calling environment (`z`)
+This usage make the usual meaning of `~` and `::` in Julia inacessible within a model definition. Note too that the transformation of the model expression by the parser creates 2 additionnal variables (__acc and __beta) => don't use those names !
+
+The samplers using gradients (simpleHMC and simpleNUTS) require an additionnal parsing step that will generate the gradient code by automated derivation. This marginally increases the calculation time (by O(1), not by O(# of parameter) ) but it imposes limits of what the model can contain : there are the 'nice' limitations : functions and distributions whose partial derivatives are not handled (see src/diff.jl), these can be added easily (you can contribute !). And then there are the other limitations : control flow operators (if, for loops, ..) are not handled yet because they will necessitate a bit more work on the parsing functions (`if` may not be too hard though). Note that very often for loops can be replaced by matrix/vector algebra (see examples) so this may not be such a big limitation.
+
+A last note : the automated derivation will not look into refs, if somehow a ref depends directly or indirectly on a model parameter (for example  `x = Y[ round(sigma)]` ) , the gradient will be false.
 
 ## The sampling functions
-Currently, we have `simpleRWM` running a random walk metropolis and `simpleHMC` running an Hamiltonian Monte-Carlo with a reverse mode gradient calculation (for the curious you can run SimpleMCMC.buildFunctionWithGradient(model) to get the generated code).
+Currently, we have `simpleRWM` running a random walk metropolis, `simpleHMC` running an Hamiltonian Monte-Carlo and `simpleNUTS` using the NUTS algo to automatically find the proper number of inner steps and stepsize.
 
 ###Calling syntax
 - `simpleRWM(model, steps, burnin, init)` : `init` can either be a vector (same size as the number of parameters) or a real that will be assigned to all parameters
@@ -50,14 +45,13 @@ Currently, we have `simpleRWM` running a random walk metropolis and `simpleHMC` 
 - `simpleHMC(model, steps, burnin, length, stepsize)` : with inital values set to 1.0
 - `simpleHMC(model, steps, length, stepsize)` : with burnin equal to half of steps
 
+- `simpleNUTS(model, steps, burnin, init)` 
+- `simpleNUTS(model, steps, burnin)` : with inital values set to 1.0
+- `simpleNUTS(model, steps)` : with burnin equal to half of steps
+
+
 ###Return value
-A Float64 Matrix with : 
-- the first column containing the log-likelihoog
-- the second column containing a flag indicating acceptance or rejection
-- and 1 column for each model parameter
-
-by (steps - burnin) rows.
-
+A structure containing the samples and a few stats (use dump to see what's inside it is self explanatory).
 
 ## Examples
 
@@ -86,19 +80,17 @@ end
 res = SimpleMCMC.simpleRWM(model, 10000)
 # or a Hamiltonian Monte-Carlo (with 5 inner steps of size 0.1)
 res = SimpleMCMC.simpleHMC(model, 1000, 5, 1e-1)
+# or a NUTS flavoured HMC
+res = SimpleMCMC.simpleNUTS(model, 1000)
 ```
 
 ## Issues
-- Hangs a lot when apparently calling logpdf(_Distributions_) outside the distribution support, have to look into that...
+- May be some bugs left in the NUTS implementation as it sometimes seem to go into a huge amount of doubling steps and converges toward tiny epsilons
 - Gradient generated code is not optimized, could be better...
 
 ## Ideas for improvements
-- Build a serious test directory
-- Add adaptative algorithms for simpleHMC for inner steps and stepsize parameters (using NUTS ?)
-- Convert the set of jags/bugs examples, run them and compare timings
-- See if optimizing the generated gradient code is possible
-- Specify partial derivatives of other continuous distributions (currently only Normal, Uniform and Weibull)
-- Add truncation ?
-- Allow the declaration of validity domains for model parameters ?
-- Add discrete distributions ?
+- Compare timings with other sampling tools (JAGS, STAN)
+- Specify partial derivatives of other continuous distributions (currently only Normal, Uniform, Bernoulli and Weibull)
+- Enable other functions for automated derivation : max, min, transpose, ? :, ...
+- Add truncation, censoring
 

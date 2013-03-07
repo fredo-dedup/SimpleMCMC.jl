@@ -128,7 +128,6 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		S = S'
 	end
 
-	# print a few stats
 	calcStats!(res)
 
 	res
@@ -178,7 +177,7 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 		i > burnin ? addToRes!(res, pmap, i-burnin, state0.llik, state0 == state, state0.beta) : nothing
 	end
 
-	calcStats!(res) # calculate a few stats on the run
+	calcStats!(res) # calculate some stats on this run
 	res
 end
 
@@ -196,7 +195,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
     local epsilon, u_slice
     local state0  # starting state of each loop
 	
-	# beta0 = ones(30)
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
@@ -220,7 +218,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		state1 = leapFrog(state0, epsilon, ll_func)
 		ratio = exp(state1.H - state0.H)
 	end
-	println("starting epsilon = $epsilon")
 
 	### adaptation parameters
 	const delta = 0.7  # target acceptance
@@ -269,7 +266,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		end
 	end
 
-
 	res.misc[:jmax] = fill(NaN, res.steps)
 	res.misc[:epsilon] = fill(NaN, res.steps)
 
@@ -295,14 +291,12 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  			else
  				dummy, state_plus, state1, n1, s1, alpha, nalpha = buildTree(state_plus, dir, j, ll_func)
  			end
- 			if s1 && rand() < n1/n  # accept and set new beta
- 				# println("    accepted s1=$s1, n1/n=$(n1/n)")
+ 			if s1 && rand() < n1/n  # accept 
  				state = state1
  			end
  			n += n1
  			j += 1
  			s = s1 && !uturn(state_minus, state_plus)
- 			# println("---  dir=$dir, j=$j, n=$n, s=$s, s1=$s1, alpha/nalpha=$(alpha/nalpha)")
  		end
  		
  		# epsilon adjustment
@@ -311,7 +305,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			le = mu-sqrt(i)/gam*hbar
 			lebar = i^(-kappa) * le + (1-i^(-kappa)) * lebar
 			epsilon = exp(le)
-			# println("alpha=$alpha, nalpha=$nalpha, hbar=$hbar, \n le=$le, lebar=$lebar, epsilon=$epsilon")
 		else # post warm up, keep dual epsilon
 			epsilon = exp(lebar)
 		end
