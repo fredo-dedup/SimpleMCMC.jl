@@ -10,6 +10,10 @@ export simpleRWM, simpleHMC, simpleNUTS
 export buildFunction, buildFunctionWithGradient
 
 
+##########################################################################################
+#   Constants, structures
+##########################################################################################
+
 # naming conventions
 const ACC_SYM = :__acc
 const PARAM_SYM = :__beta
@@ -18,7 +22,7 @@ const TEMP_NAME = "tmp"
 const DERIV_PREFIX = "d"
 
 
-# returned result structure
+###### returned result structure ##########
 type MCMCRun
     acceptRate::Float64
     time::Float64
@@ -30,9 +34,10 @@ type MCMCRun
     loglik::Vector
     accept::Vector
     params::Dict
+    misc::Dict
 end
 MCMCRun(steps::Integer, burnin::Integer) = 
-	MCMCRun(NaN, NaN, steps, burnin, steps-burnin, (NaN, NaN), (NaN, NaN), [], [], Dict())
+	MCMCRun(NaN, NaN, steps, burnin, steps-burnin, (NaN, NaN), (NaN, NaN), [], [], Dict(), Dict())
 
 function show(io::IO, x::MCMCRun)
 	for v in keys(x.params)
@@ -46,7 +51,36 @@ function show(io::IO, x::MCMCRun)
 end
 
 
+###### HMC related structures and functions  ##########
+type Sample
+	beta::Vector{Float64}  	# sample position
+	grad::Vector{Float64}  	# gradient
+	v::Vector{Float64}  	# speed
+	llik::Float64			# log likelihood 
+	H::Float64				# Hamiltonian
+end
+Sample(beta::Vector{Float64}) = Sample(beta, Float64[], Float64[], NaN, NaN)
 
+function calc!(s::Sample, ll::Function)
+	s.llik, s.grad = ll(s.beta)
+end
+
+function update!(s::Sample)
+	s.H = s.llik - dot(s.v, s.v)/2
+end
+
+uturn(s1::Sample, s2::Sample) = dot(s2.beta-s1.beta, s1.v) < 0. || dot(s2.beta-s1.beta, s2.v) < 0.
+
+function leapFrog(s::Sample, ve, ll)
+	n = deepcopy(s)  # make a copy
+	n.v += n.grad * ve / 2.
+	n.beta += ve * n.v
+	calc!(n, ll)
+	n.v += n.grad * ve / 2.
+	update!(n)
+
+	n
+end
 
 
 ##########################################################################################
@@ -108,46 +142,40 @@ simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps
 ##########################################################################################
 
 function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
-	local ll_func, nparams
-	local beta, llik, grad
-	local draws
+	local ll_func, nparams, pmap
+	local state0
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	ll_func, nparams, pmap = buildFunctionWithGradient(model) # build function, count the number of parameters
-	beta = setInit(init, nparams) # build the initial values
+	state0 = Sample(setInit(init, nparams)) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
-	llik, grad = ll_func(beta) 
-	assert(isfinite(llik), "Initial values out of model support, try other values")
+	calc!(state0, ll_func)
+	assert(isfinite(state0.llik), "Initial values out of model support, try other values")
 
 	#  main loop
-	local jump, beta0, llik0, jump0
  	for i in 1:steps  #i=1
- 		local j
+ 		local j, state
 
- 		jump = randn(nparams)
- 		jump0 = copy(jump)
-		beta0 = copy(beta)
-		llik0 = copy(llik)
+ 		state0.v = randn(nparams)
+ 		update!(state0)
+ 		state = state0
 
 		j=1
-		while j <= isteps && isfinite(llik)
-			jump += stepsize/2. * grad
-			beta += stepsize * jump
-			llik, grad = ll_func(beta)
-			jump += stepsize/2. * grad
+		while j <= isteps && isfinite(state.llik)
+			state = leapFrog(state, stepsize, ll_func)
 			j +=1
 		end
 
-		# revert to initial values if new is not good enough
-		if rand() > exp((llik - dot(jump,jump)/2.0) - (llik0 - dot(jump0,jump0)/2.0))
-			llik, beta = llik0, beta0
+		# accept if new is good enough
+		if rand() < exp(state.H - state0.H)
+			state0 = state
 		end
 
-		i > burnin ? addToRes!(res, pmap, i-burnin, llik, llik0 != llik, beta) : nothing
+		i > burnin ? addToRes!(res, pmap, i-burnin, state0.llik, state0 == state, state0.beta) : nothing
 	end
 
 	calcStats!(res) # calculate a few stats on the run
@@ -165,49 +193,32 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 ##########################################################################################
 
 function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
-    local epsilon
-    local beta0, r0, llik0, grad0, H0  # starting state of each loop
-    local u_slice 
+    local epsilon, u_slice
+    local state0  # starting state of each loop
 	
 	# beta0 = ones(30)
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	ll_func, nparams, pmap = buildFunctionWithGradient(model) # build function, count the number of parameters
-	beta0 = setInit(init, nparams) # build the initial values
+	state0 = Sample(setInit(init, nparams)) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	# first calc
-	llik0, grad0 = ll_func(beta0)
-	assert(isfinite(llik0), "Initial values out of model support, try other values")
-
-	# Leapfrog step
-	function leapFrog(beta, r, grad, ve, ll)
-		local llik
-
-		# println("IN --- beta=$beta, r=$r, grad=$grad, ve=$ve")
-
-		r += grad * ve / 2.
-		beta += ve * r
-		llik, grad = ll(beta) 
-		r += grad * ve / 2.
-
-		# println("OUT --- beta=$beta, r=$r, grad=$grad, llik=$llik")
-
-		return beta, r, llik, grad
-	end
+	calc!(state0, ll_func)
+	assert(isfinite(state0.llik), "Initial values out of model support, try other values")
 
 	# find initial value for epsilon
 	epsilon = 1.
-	jump = randn(nparams)
-	beta1, jump1, llik1, grad1 = leapFrog(beta0, jump, grad0, epsilon, ll_func)
+	state0.v = randn(nparams)
+	state1 = leapFrog(state0, epsilon, ll_func)
 
-	ratio = exp(llik1-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
+	ratio = exp(state1.H - state0.H)
 	a = 2*(ratio>0.5)-1.
 	while ratio^a > 2^-a
-		epsilon = 2^a * epsilon
-		beta1, jump1, llik1, grad1 = leapFrog(beta0, jump, grad0, epsilon, ll_func)
-		ratio = exp(llik1-dot(jump1, jump1)/2. - (llik0-dot(jump,jump)/2.))
+		epsilon *= 2^a
+		state1 = leapFrog(state0, epsilon, ll_func)
+		ratio = exp(state1.H - state0.H)
 	end
 	println("starting epsilon = $epsilon")
 
@@ -223,86 +234,74 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	lebar = 0.0
 
 	# buidtree function
-	function buildTree(beta, r, grad, dir, j, ll)
-		local beta1, r1, llik1, grad1, n1, s1, alpha1, nalpha1
-		local beta2, r2, llik2, grad2, n2, s2, alpha2, nalpha2
-		local betam, rm, gradm, betap, rp, gradp
-		local dummy, H1
+	function buildTree(state, dir, j, ll)
+		local state1, n1, s1, alpha1, nalpha1
+		local state2, n2, s2, alpha2, nalpha2
+		local state_plus, state_minus
+		local dummy
 		const deltamax = 100
 
 		if j == 0
-			beta1, r1, llik1, grad1 = leapFrog(beta, r, grad, dir*epsilon, ll)
-			H1 = llik1 - dot(r1,r1)/2.0
-			n1 = ( u_slice <= H1 ) + 0 
-			s1 = u_slice < ( deltamax + H1 )
+			state1 = leapFrog(state, dir*epsilon, ll)
+			n1 = ( u_slice <= state1.H ) + 0 
+			s1 = u_slice < ( deltamax + state1.H )
 
-			return beta1, r1, grad1,  beta1, r1, grad1,  beta1, llik1, grad1,  n1, s1, 
-				min(1., exp(H1 - H0)), 1
+			return state1, state1, state1, n1, s1, min(1., exp(state1.H - state0.H)), 1
 		else
-			betam, rm, gradm,  betap, rp, gradp,  beta1, llik1, grad1,  n1, s1, alpha1, nalpha1 = 
-				buildTree(beta, r, grad, dir, j-1, ll)
+			state_minus, state_plus, state1, n1, s1, alpha1, nalpha1 = buildTree(state, dir, j-1, ll)
 			if s1 
 				if dir == -1
-					betam, rm, gradm,  dummy, dummy, dummy,  beta2, llik2, grad2,  n2, s2, alpha2, nalpha2 = 
-						buildTree(betam, rm, gradm, dir, j-1, ll)
+					state_minus, dummy, state2, n2, s2, alpha2, nalpha2 = buildTree(state_minus, dir, j-1, ll)
 	 			else
-	 				dummy, dummy, dummy,  betap, rp, gradp,  beta2, llik2, grad2,  n2, s2, alpha2, nalpha2 = 
-	 					buildTree(betap, rp, gradp, dir, j-1, ll)
+	 				dummy, state_plus, state2, n2, s2, alpha2, nalpha2 = buildTree(state_plus, dir, j-1, ll)
 	 			end
 	 			if rand() <= n2/(n2+n1)
-	 				beta1 = beta2
-	 				llik1 = llik2
-	 				grad1 = grad2
+	 				state1 = state2
 	 			end
+
 	 			alpha1 += alpha2
 	 			nalpha1 += nalpha2
-	 			s1 = s2 && (dot((betap-betam), rm) >= 0.0) && (dot((betap-betam), rp) >= 0.0)
+	 			s1 = s2 && !uturn(state_minus, state_plus)
 	 			n1 += n2
 	 		end
 
-	 		return betam, rm, gradm,  betap, rp, gradp,  beta1, llik1, grad1,  n1, s1, alpha1, nalpha1
+	 		return state_minus, state_plus, state1, n1, s1, alpha1, nalpha1
 		end
 	end
 
+
+	res.misc[:jmax] = fill(NaN, res.steps)
+	res.misc[:epsilon] = fill(NaN, res.steps)
+
 	### main loop
  	for i in 1:steps  # i=1
- 		local dummy, alpha, nalpha
+ 		local alpha, nalpha, n, s, j, n1, s1
+ 		local dummy, state_minus, state_plus, state, state1
 
- 		r0 = randn(nparams)
- 		H0 = llik0 - dot(r0,r0)/2.
+ 		state0.v = randn(nparams)
+ 		update!(state0)
 
- 		u_slice  = log(rand()) + H0 # use log ( != paper) to avoid underflow
+ 		u_slice  = log(rand()) + state0.H # use log ( != paper) to avoid underflow
  		
- 		beta = copy(beta0)
- 		betap = betam = beta0
-
- 		grad = copy(grad0)
- 		gradp = gradm = grad0
-
- 		rp = rm = r0
- 		llik = llik0
+ 		state = state_minus = state_plus = state0
 
  		# inner loop
  		j, n = 0, 1
  		s = true
- 		while s && j < 8
+ 		while s && j < 12
  			dir = (rand() > 0.5) * 2. - 1.
  			if dir == -1
- 				betam, rm, gradm,  dummy, dummy, dummy,  beta1, llik1, grad1,  n1, s1, alpha, nalpha = 
- 					buildTree(betam, rm, gradm, dir, j, ll_func)
+ 				state_minus, dummy, state1, n1, s1, alpha, nalpha = buildTree(state_minus, dir, j, ll_func)
  			else
- 				dummy, dummy, dummy,  betap, rp, gradp,  beta1, llik1, grad1,  n1, s1, alpha, nalpha = 
- 					buildTree(betap, rp, gradp, dir, j, ll_func)
+ 				dummy, state_plus, state1, n1, s1, alpha, nalpha = buildTree(state_plus, dir, j, ll_func)
  			end
  			if s1 && rand() < n1/n  # accept and set new beta
  				# println("    accepted s1=$s1, n1/n=$(n1/n)")
- 				beta = beta1
- 				llik = llik1
- 				grad = grad1
+ 				state = state1
  			end
  			n += n1
  			j += 1
- 			s = s1 && (dot((betap-betam), rm) >= 0.0) && (dot((betap-betam), rp) >= 0.0)
+ 			s = s1 && !uturn(state_minus, state_plus)
  			# println("---  dir=$dir, j=$j, n=$n, s=$s, s1=$s1, alpha/nalpha=$(alpha/nalpha)")
  		end
  		
@@ -313,16 +312,17 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 			lebar = i^(-kappa) * le + (1-i^(-kappa)) * lebar
 			epsilon = exp(le)
 			# println("alpha=$alpha, nalpha=$nalpha, hbar=$hbar, \n le=$le, lebar=$lebar, epsilon=$epsilon")
-		else # post warm up, keep same epsilon
+		else # post warm up, keep dual epsilon
 			epsilon = exp(lebar)
 		end
 
 		# println(llik, beta)
-		i > burnin ? addToRes!(res, pmap, i-burnin, llik, beta != beta0, beta) : nothing
+		i > burnin ? addToRes!(res, pmap, i-burnin, state.llik, state != state0, state.beta) : nothing
 
-		beta0 = beta
-		grad0 = grad
-		llik0 = llik
+		res.misc[:epsilon][i] = epsilon
+		res.misc[:jmax][i] = j
+
+		state0 = state
 	end
 
 	calcStats!(res)
