@@ -14,18 +14,18 @@ for i in 2:duration
 	x[i] = x[i-1]*exp(-1/tau0) + mu0*(1-exp(-1/tau0)) +  sigma0*randn()
 end
 
-# model definition
+# model definition (with rescaling of variables)
 model = quote
     mu::real
     tau::real
     sigma::real
 
-    tau ~ Weibull(2, 100)
-    sigma ~ Uniform(0, 10)
-    mu ~ Weibull(2, 10)
+    tau ~ Uniform(0, 1)
+    sigma ~ Weibull(2, 1)
+    mu ~ Weibull(2, 1)
 
-    fac = exp(- 1 / tau)
-    resid = x[2:end] - x[1:end-1] * fac - mu * (1. - fac)
+    fac = exp(- 100 / tau)
+    resid = x[2:end] - x[1:end-1] * fac - mu * 10 * (1. - fac)
     resid ~ Normal(0, sigma)
 end
 
@@ -33,14 +33,14 @@ end
 # run random walk metropolis (10000 steps, 1000 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000, 1000)
 
-(mean(res.params[:mu]), std(res.params[:mu]))
-(mean(res.params[:sigma]), std(res.params[:sigma]))
-(mean(res.params[:tau]), std(res.params[:tau]))
+[mean(res.params[:mu]), std(res.params[:mu])] * 10
+[mean(res.params[:sigma]), std(res.params[:sigma])]
+[mean(res.params[:tau]), std(res.params[:tau])] * 100
 
 # # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 2 inner steps, 0.1 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 5000, 1, 0.01)
+res = SimpleMCMC.simpleHMC(model, 1000, 100, 1, 0.01)
 
 # # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 100, 0)  # very slow  (bug ?)
+res = SimpleMCMC.simpleNUTS(model, 1000, 0)  # very slow  (bug ?)
 
 
