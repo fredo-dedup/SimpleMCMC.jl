@@ -230,7 +230,8 @@ zz3 = [1. 3 0.1 ; 0.1 5 2]  # positive version for testing some parameters of di
 @mult deriv1    SimpleMCMC.logpdfUniform(x, zz, zz-.1)    {-2.2, -3., -10.}
 
 # Bernoulli distrib
-# note : having p=1 is ok but will make the numeric differentiator of deriv1 fail => not tested
+# note : having p=1 or 0 is ok but will make the numeric differentiator of deriv1 fail => not tested
+
 # parsing phase should throw an error from the gradient calc function
 try
 	@mult deriv1    SimpleMCMC.logpdfBernoulli(1, x)    {-1., 0., 1., 10.}
@@ -240,12 +241,12 @@ catch e
 		"parser not throwing error when logpdfBernoulli has a parameter dependant sampled variable")
 end
 
-@mult deriv1    SimpleMCMC.logpdfBernoulli(x, 1)   {0.999, 0., 0.8} 
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, 1)   {0.999, 0.01, 0.8} 
 @mult deriv1    SimpleMCMC.logpdfBernoulli(x, 0)   {0.999, 0., 0.8} 
 z2 = [0, 1, 1, 0] # binary outcomes
-@mult deriv1    SimpleMCMC.logpdfBernoulli(x, z2)   {0.999, 0., 0.8} 
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, z2)   {0.999, 0.01, 0.8} 
 zz4 = [0 1 1 0 ; 1 1 1 0 ; 0 0 1 0] # binary outcomes
-@mult deriv1    SimpleMCMC.logpdfBernoulli(x, zz4)   {0.999, 0., 0.8} 
+@mult deriv1    SimpleMCMC.logpdfBernoulli(x, zz4)   {0.999, 0.01, 0.8} 
 
 
 

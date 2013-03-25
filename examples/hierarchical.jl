@@ -30,7 +30,6 @@ model = quote
 	mu ~ Normal(0, 1)
 	sigma ~ Weibull(2, 1)
 
-	# beta ~ Normal(mu * onerow, (sigma.^2) * onerow)
 	beta ~ Normal(oneD * mu, oneD * sigma)
 
 	effect = (beta[ll,:] .* X) * oneL
@@ -45,7 +44,7 @@ sum(res.params[:mu],3) / res.samples  # mu samples mean
 sum(res.params[:sigma],3) / res.samples # sigma samples mean
 sum(res.params[:beta],3) / res.samples # beta samples mean
 
-# # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 4 inner steps, 0.1 inner step size)
+# # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 10 inner steps, 0.03 inner step size)
 res = SimpleMCMC.simpleHMC(model, 10000, 1000, 10, 0.03)
 
 # # run NUTS - HMC (1000 steps, 500 for burnin)
