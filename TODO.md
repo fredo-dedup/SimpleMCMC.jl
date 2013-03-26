@@ -1,0 +1,13 @@
+
+- add a benchmark.jl file to have timing references (against other samplers, to assess changes and optimizations)
+- add important distributions : discrete : Binomial / Poisson, continuous : Lognormal / Exponential / Gamma / Inverse Gamma / Beta / Student
+- add missing functions : max, min, transpose, hcat, vcat, comprehensions, map, reduce,  ? ...
+- add truncation and censoring
+- come back to Distributions.jl (since it now uses immutable types) : need to assess performance
+- optimize by priority : pre-calculated calcs (transpose), identical calcs fusion, refold, pre-determine size to avoid 'if size()' , +0, *1, ^1
+- make a demo file
+- optimize state struct : avoid deep copy ?, use immutable ?
+- make examples using stats data and DataFrames
+- find a way to avoid creation of a function in Main  
+- correct multiple ref bug
+- add progress bar

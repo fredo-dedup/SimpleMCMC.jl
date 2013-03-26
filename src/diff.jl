@@ -7,6 +7,112 @@
 
 # TODO : add operators :' , :vcat, max and min ?
 
+subst(ex::Expr, smap::Dict) = expr(ex.head, map(ex -> subst(ex, smap), ex.args))
+subst(ex::Symbol, smap::Dict) = has(smap, ex) ? smap[ex] : ex
+subst(ex::Any, smap::Dict) = ex
+
+subst(:(a+12*[sin(x), cos(e+exp(z))]), {:x=>:(myvar[2:end])})
+
+# function dfunc(func::Expr, dv::Symbol, diff::Expr)
+# 	println("op = $(func.args[1])")
+# 	assert(isa(toExprH(func), Exprcall), "malformed function $func")
+# 	pos = find(dv .== func.args[2:end])
+# 	assert(length(pos)>0, "$dv symbol not found in $func")
+# 	pos = pos[1]
+# 	println("position = $pos")
+# end
+
+macro dfunc(func::Expr, dv::Symbol, diff::Expr)
+	quote
+		local fsym = $(expr(:quote, func.args[1]))
+		local fdiff = $(expr(:quote, diff))
+		local pos = $(find(dv .== func.args[2:end])[1])
+		local pars = $([ expr(:quote, func.args[i]) for i in 2:length(func.args)])  
+
+		rules[(fsym, pos)] = {fdiff, pars}
+	end
+end
+
+rules = Dict()
+rules
+
+@dfunc x+y         x     isa(x, Real) ? sum(ds) : ds
+@dfunc x+y         y     isa(y, Real) ? sum(ds) : ds
+@dfunc -x          x     -ds
+@dfunc x-y         x     isa(x, Real) ? sum(ds) : ds
+@dfunc x-y         y     isa(y, Real) ? -sum(ds) : -ds
+
+@dfunc sum(x)      x     ds
+@dfunc dot(x,y)    x     y * ds
+@dfunc dot(x,y)    y     x * ds
+
+@dfunc log(x)      x     ds ./ x
+@dfunc exp(x)      x     exp(x) .* ds
+
+@dfunc sin(x)      x     cos(x) .* ds
+@dfunc cos(x)      x     -sin(x) .* ds
+
+@dfunc x*y         x     isa(x, Real) ? sum([ds .* y]) : ds * $y'
+@dfunc x*y         y     isa(y, Real) ? sum([ds .* x]) : x' * ds
+
+@dfunc x.*y        x     isa(x, Real) ? sum([ds .* y]) : ds .* y
+@dfunc x.*y        y     isa(y, Real) ? sum([ds .* x]) : ds .* x
+
+@dfunc x^y         x     y * x ^ (y-1) * ds # Both args reals
+@dfunc x^y         y     log(x) * x ^ y * ds # Both args reals
+
+@dfunc x.^y        x     isa(x, Real) ? sum([y .* x .^ (y-1) .* ds]) : y .* x .^ (y-1) .* ds
+@dfunc x.^y        y     isa(y, Real) ? sum([log(x) .* x .^ y .* ds]) : log(x) .* x .^ y .* ds
+
+# FIXME : this will not work if both args are arrays but without warning
+@dfunc x/y         x     isa(x, Real) ? sum([ds ./ y]) : ds ./ y
+@dfunc x/y         y     isa(y, Real) ? sum([- x ./ (y .* y) .* ds]) : - x ./ (y .* y) .* ds
+
+@dfunc x./y        x     isa(x, Real) ? sum([ds ./ y]) : ds ./ y
+@dfunc x./y        y     isa(y, Real) ? sum([- x ./ (y .* y) .* ds]) : - x ./ (y .* y) .* ds
+
+
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfNormal)) 
+			if index == 1 # mu
+				:( (tmp = [($a3 - $a1 ) ./ ($a2 .^ 2)] * $ds ; isa($a1, Real) ? sum(tmp) : tmp) * $ds)
+			elseif index == 2 # sigma
+				:( (tmp = (($a3 - $a1).^2 ./ $a2.^2 - 1.0) ./ $a2 * $ds ; isa($a2, Real) ? sum(tmp) : tmp) * $ds)
+			else # x  
+				:( (tmp = [($a1 - $a3 ) ./ ($a2 .^ 2)] * $ds ; isa($a3, Real) ? sum(tmp) : tmp) * $ds)
+			end
+		
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfUniform)) 
+			if index == 1 # a   
+				:( (tmp = [$a1 .<= $a3 .<= $a2] .* ($ds ./ ($a2 - $a1)) ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
+			elseif index == 2 # b
+			 	:( (tmp = [$a1 .<= $a3 .<= $a2] .* (-$ds ./ ($a2 - $a1)) ; isa($a2, Real) ? sum([tmp]) : tmp) .* $ds)
+			else # x  
+			 	:( 0.0 )
+			end
+		
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfWeibull)) 
+			if index == 1 # shape
+				:( (tmp = (1.0 - ($a3./$a2).^$a1) .* log($a3./$a2) + 1./$a1 * $ds ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
+			elseif index == 2 # scale
+			 	:( (tmp = (($a3./$a2).^$a1 - 1.0) .* $a1 ./ $a2 * $ds ; isa($a2, Real) ? sum([tmp]) : tmp) .* $ds)
+			else # x  
+			 	:( (tmp = ( (1.0 - ($a3./$a2).^$a1) .* $a1 -1.0) ./ $a3 * $ds ; isa($a3, Real) ? sum([tmp]) : tmp) .* $ds)
+			end
+		
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfBernoulli)) 
+			if index == 1 # probability
+				:( (tmp = 1. ./ ($a1 - (1. - $a2)) ; isa($a1, Real) ? sum([tmp]) : tmp) .* $ds)
+			else # x, x is discrete for Bernoulli therefore no derivative should be calculated
+			 	error("[derive] in $opex : the gradient cannot depend on a discrete variable")
+			end
+		
+		#  fake distribution to test gradient code
+		elseif op == expr(:., :SimpleMCMC, expr(:quote, :logpdfTestDiff)) 
+			ds
+
+derive(ex::ExprD{:sin,1}) = :( cos($(ex.arg1)) .* $(ex.as) )
+
+
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))
 	op = opex.args[1]  # operator
 	vs = opex.args[1+index]
