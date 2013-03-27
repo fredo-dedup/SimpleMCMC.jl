@@ -13,7 +13,7 @@ good_enough(t::Tuple) = good_enough(t[1], t[2])
 ############# gradient checking function  ######################
 # compares numerical gradient to automated gradient
 
-function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(sum(2+x)) ; x0 = [2., 3]
+function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(-x) ; x0 = 1.0
 	println("testing gradient of $ex at x = $x0")
 
 	nx = length(x0)  # nx=3
@@ -59,10 +59,31 @@ macro mult(func, myex, values)
 	end
 end
 
+## variables of different dimension for testing
+v0 = 2.
+v1 = [2., 3, 0.1, 0, -5]
+v2 = [-1. 3 0 ; 0 5 -2]
 
+## testing function, with constraints to avoid meaningless tests  (i.e. 1/x with x = 0)
+function mtestfunc(fsym::Union(Symbol,Expr), pars, typmax, rules, arity)
 
+end
 
+## macro to simplify tests expression
+macro mtest(func::Expr, typ::Expr, constraints...)
+	quote
+		local fsym = $(expr(:quote, func.args[1]))
+		local pars = $(expr(:quote, [func.args[2:end]...]) ) 
+		local typmax = $typ
+		local rules = $(expr(:quote, [constraints...]) ) 
+		local arity = $(length(func.args)-1)
 
+		mtestfunc(fsym, pars, typmax, rules, arity)
+	end
+end
+
+@mtest x+y (2,2) x>y y<0.
+@mtest SimlpeMCMC.sin(c) (2,2) x>y y<0.
 
 #########################################################################
 #  real parameter with other real/vector/matrix arguments 

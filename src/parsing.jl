@@ -263,7 +263,7 @@ function listVars(ex::Vector, avars)
 end
 
 ######### builds the gradient expression from unfolded expression ##############
-function backwardSweep(ex::Vector, avars::Set{Symbol})
+function backwardSweep(ex::Vector, avars::Set{Symbol})  
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[backwardSweep] unmanaged expr type $(ex.head)")
@@ -295,7 +295,7 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 			end
 
 		elseif isa(toExprH(rhs), Exprcall)  
-			for i in 2:length(rhs.args) #i=3
+			for i in 2:length(rhs.args) 
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
 					push!(el, derive(rhs, i-1, dsym))

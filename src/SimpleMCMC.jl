@@ -3,6 +3,7 @@ module SimpleMCMC
 
 include("parsing.jl") #  include model processing functions		
 include("diff.jl") #  include derivatives definitions
+include("distribs.jl") #  include distributions definitions
 
 import Base.show
 
