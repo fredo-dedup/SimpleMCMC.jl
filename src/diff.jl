@@ -198,7 +198,7 @@ for d in [:Bernoulli]
 	fsym = symbol("logpdf$d")
 
 	eval(quote
-		function ($fsym)(a::Union(Real, AbstractArray), x::Union(Real, AbstractArray))
+		function ($fsym)(a::Union(Real, AbstractArrya), x::Union(Real, AbstractArray))
 			res = 0.0
 			for i in 1:max(length(a), length(x))
 				res += ($fsym)(next(a,i)[1], next(x,i)[1])
