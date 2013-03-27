@@ -53,7 +53,7 @@ rules = Dict()
 @dfunc x.^y        x     isa(x, Real) ? sum([y .* x .^ (y-1) .* ds]) : y .* x .^ (y-1) .* ds
 @dfunc x.^y        y     isa(y, Real) ? sum([log(x) .* x .^ y .* ds]) : log(x) .* x .^ y .* ds
 
-# FIXME : this will not work if both args are arrays but without warning
+# FIXME : this will fail silently if both args are arrays
 @dfunc x/y         x     isa(x, Real) ? sum([ds ./ y]) : ds ./ y
 @dfunc x/y         y     isa(y, Real) ? sum([- x ./ (y .* y) .* ds]) : - x ./ (y .* y) .* ds
 

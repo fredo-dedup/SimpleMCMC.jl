@@ -15,7 +15,7 @@ recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.]))  # 400 ess/s
 
 res = SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.])
 mean(res.misc[:jmax])  # 3.7
-mean(res.misc[:epsilon])  # 3.7
+mean(res.misc[:epsilon])  # 0.08
 
 res.misc[:epsilon][1:20]
 res.misc[:epsilon][990:1010]

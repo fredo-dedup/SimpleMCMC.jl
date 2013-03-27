@@ -65,9 +65,37 @@ v1 = [2., 3, 0.1, 0, -5]
 v2 = [-1. 3 0 ; 0 5 -2]
 
 ## testing function, with constraints to avoid meaningless tests  (i.e. 1/x with x = 0)
+## generates all possible combinations of argument dimensions
+## with of one or several of them being the parameter for the gradient
 function mtestfunc(fsym::Union(Symbol,Expr), pars, typmax, rules, arity)
+	fsym = :+ ; pars = [:x, :y] ; typmax=nothing; rules=[] ; arity = 2
+
+	ps = Int32[ ifloor((i-1) / 2^(j-1)) % 2 for i=1:2^arity, j=1:arity]
+	ps = vcat(ps, 2*ps[2:end,:])
+	pp = Int32[ ifloor((i-1) / 2^(j-1)) % 2 for i=2:2^arity, j=1:arity]
+	combin = Any[]
+	for i in 1:size(ps,1) # i = 5
+		for j in 1:size(pp,1) # j = 6
+			pos = find(pp[j,:] .== 1)
+			ptyp = unique(ps[i, find(pp[j,:] .== 1)])
+			if length(ptyp) == 1 # all params have same dim
+				push!(combin, (ps[i,:], pp[j,:], ptyp[1]))
+			end
+		end
+	end
+
+	for p in combin  # p = combin[5]
+		par = tuple([[:v0, :v1, :v2][p[1][i]+1] for i in 1:arity]...)
+		par = [[:v0, :v1, :v2][p[1][i]+1] for i in 1:arity]
+		# [:v0, :v1, :v2][Int64(p[1]...)+1]
+		par[find(p[2].==1)] = :x  # i = 2
+		println("trying $fsym$(tuple(par...)) with x of dim $(p[3])")
+	end
 
 end
+
+(0,0,0)
+(0,0,1)
 
 ## macro to simplify tests expression
 macro mtest(func::Expr, typ::Expr, constraints...)
@@ -82,8 +110,8 @@ macro mtest(func::Expr, typ::Expr, constraints...)
 	end
 end
 
-@mtest x+y (2,2) x>y y<0.
-@mtest SimlpeMCMC.sin(c) (2,2) x>y y<0.
+# @mtest x+y (2,2) x>y y<0.
+# @mtest SimlpeMCMC.sin(c) (2,2) x>y y<0.
 
 #########################################################################
 #  real parameter with other real/vector/matrix arguments 
