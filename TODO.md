@@ -3,7 +3,7 @@
 - add important distributions : discrete : Binomial / Poisson, continuous : Lognormal / Exponential / Gamma / Inverse Gamma / Beta / Student
 - add missing functions : max, min, transpose, hcat, vcat, comprehensions, map, reduce,  ? ...
 - add truncation and censoring
-- come back to Distributions.jl (since it now uses immutable types) : need to assess performance
+- come back to Distributions.jl since it now uses immutable types ? => need to assess performance
 - optimize by priority : pre-calculated calcs (transpose), identical calcs fusion, refold, pre-determine size to avoid 'if size()' , +0, *1, ^1
 - make a demo file
 - optimize state struct : avoid deep copy ?, use immutable ?

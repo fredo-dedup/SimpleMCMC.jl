@@ -20,7 +20,7 @@ typealias Exprline     ExprH{:line}
 typealias Exprref      ExprH{:ref}
 typealias Exprif       ExprH{:if}
 
-##########  helper function to get symbols appearing in AST ############
+## variable symbol polling functions
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) =     Set{Symbol}(ex)
 getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
@@ -29,6 +29,12 @@ getSymbols(ex::Any) =        Set{Symbol}()
 getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])
 getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
+
+## symbol subsitution functions
+subst(ex::Expr, smap::Dict) = expr(ex.head, map(ex -> subst(ex, smap), ex.args))
+subst(ex::Symbol, smap::Dict) = has(smap, ex) ? smap[ex] : ex
+subst(ex::Any, smap::Dict) = ex
+
 
 ######### parameters structure  ############
 type MCMCParams
@@ -164,8 +170,8 @@ function unfold(ex::Expr)
 		# TODO : apply to other n-ary (n>2) operators ?
 		if contains([:+, :*, :sum], na[1]) 
 			while length(args) > 2
-				a2 = pop(args)
-				a1 = pop(args)
+				a2 = pop!(args)
+				a1 = pop!(args)
 				push!(args, expr(:call, ex.args[1], a1, a2))
 			end
 		end

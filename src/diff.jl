@@ -41,6 +41,8 @@ rules = Dict()
 @dfunc sin(x)      x     cos(x) .* ds
 @dfunc cos(x)      x     -sin(x) .* ds
 
+@dfunc abscos(x)      x     -sin(x) .* ds
+
 @dfunc x*y         x     isa(x, Real) ? sum([ds .* y]) : ds * transpose(y)
 @dfunc x*y         y     isa(y, Real) ? sum([ds .* x]) : transpose(x) * ds
 
@@ -95,11 +97,6 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(
 	ds = symbol("$(DERIV_PREFIX)$dsym")
 	args = opex.args[2:end]
 	arity = length(opex.args)-1
-
-	# variable subsitution functions
-	subst(ex::Expr, smap::Dict) = expr(ex.head, map(ex -> subst(ex, smap), ex.args))
-	subst(ex::Symbol, smap::Dict) = has(smap, ex) ? smap[ex] : ex
-	subst(ex::Any, smap::Dict) = ex
 
 	# strip out module name (for logpdf...) if present
 	if isa(op, Expr) && op.head==:(.) && op.args[1]==:SimpleMCMC 
