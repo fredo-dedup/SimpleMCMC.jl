@@ -87,10 +87,7 @@ function testpattern5(parnames, rules)
 end
 
 ## runs arg dimensions combinations
-function runpattern(fsym::Union(Symbol,Expr), parnames, rules, combin)
-	# fsym = :sum ; parnames = [:x] ; rules=[] ; combin = testpattern1(parnames, rules)
-	# rules=[:( prob->min(0.99, max(0.01, prob)) ), :(x->(x>0)+0.), :(exceptlast)]
-	# println(rules, '-', typeof(rules), "=", size(rules))
+function runpattern(fsym, parnames, rules, combin)
 	arity = length(parnames)
 
 	for ic in 1:size(combin,1)  # try each arg dim in combin
@@ -116,6 +113,7 @@ function runpattern(fsym::Union(Symbol,Expr), parnames, rules, combin)
 
 		# now run tests
 		prange = any(rules .== :(:exceptlast)) ? (1:(arity-1)) : (1:arity)
+		# println("$prange - $(length(rules)) - $rules")
 		for p in prange  # try each argument as parameter
 			tpar = copy(par)
 			tpar[p] = :x  # replace tested args with parameter symbol :x for deriv1 testing func
@@ -129,15 +127,45 @@ end
 
 ## macro to simplify tests expression
 macro mtest(pattern, func::Expr, constraints...)
+	tmp = [ isa(e, Symbol) ? expr(:quote, e) : e for e in constraints]
 	quote
 		local fsym = $(expr(:quote, func.args[1]))
 		local pars = $(expr(:quote, [func.args[2:end]...]) ) 
-		local rules = $(expr(:quote, [constraints...]) ) 
+		local rules = $(expr(:quote, [tmp...]) ) 
 
 		combin = ($pattern)(pars, rules)
 		runpattern(fsym, pars, rules, combin)
 	end
 end
+
+macro mtest2(pattern, func::Expr, constraints...)
+	println()
+	dump(constraints)
+	# tmp = length(constraints) > 0 ? [ expr(:quote, e) for e in constraints] : []
+	# tmp = length(constraints) > 0 ? [ e for e in constraints] : []
+	tmp = [ isa(e, Symbol) ? expr(:quote, e) : e for e in constraints]
+	# tmp = [constraints...]
+	println()
+	dump(tmp)
+	println()
+	dump(func.args[2:end])
+	quote
+		# dump($constraints)
+
+		local fsym = $(expr(:quote, func.args[1]))
+		local pars = $(expr(:quote, [func.args[2:end]...]) ) 
+		local rules = $(expr(:quote, [tmp...]) )  
+		# local rules = $tmp
+		# local rules = $(expr(:quote, [collect(constraints)...]) )  
+
+		println("$(typeof(fsym)) - $fsym")
+		println("$(typeof(pars)) - $pars")
+		dump(rules,3)
+		println("$(length(rules)) - $rules")
+	end
+end
+
+# @mtest2 testpattern1 SimpleMCMC.logpdfBernoulli(prob,x) exceptlast prob->min(0., prob) x->sign(x)  
 
 #########################################################################
 #  tests on functions
@@ -146,7 +174,7 @@ end
 ## regular functions
 @mtest testpattern1 x+y 
 @mtest testpattern1 x+y+z 
-@mtest testpattern1 sum(x) x -> x==0 ? 0.1 : x
+@mtest testpattern1 sum(x)
 @mtest testpattern1 x-y
 @mtest testpattern1 x.*y
 @mtest testpattern1 x./y  y -> y==0 ? 0.1 : y
@@ -176,21 +204,21 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 ## distributions
 @mtest testpattern1 SimpleMCMC.logpdfNormal(mu,sigma,x)  sigma -> sigma<=0 ? 0.1 : sigma
 @mtest testpattern1 SimpleMCMC.logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
+@mtest testpattern1 SimpleMCMC.logpdfUniform(a,b,x)      a->a-10 b->b+10
 
 # note for Bernoulli : having prob=1 or 0 is ok but will make the numeric differentiator 
 #  of deriv1 fail => not tested
-@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   (prob->min(0.99, max(0.01, prob))) (x->(x>0)+0)   :exceptlast
+@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
 
-@mtest testpattern1 SimpleMCMC.logpdfUniform(a,b,x)      a->a-10 b->b+10
 
 
 #########################################################################
 #   misc. tests
 #########################################################################
 
-# parsing phase should throw an error from the gradient calc function
+# Parsing should throw an error on generating the gradient code 
 try
-	@mult deriv1    SimpleMCMC.logpdfBernoulli(1, x)    {-1., 0., 1., 10.}
+	deriv1(:(SimpleMCMC.logpdfBernoulli(1, x)), [0.])
 	throw("no error !!")
 catch e
 	assert(e != "no error !!", 
