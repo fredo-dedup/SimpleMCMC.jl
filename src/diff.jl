@@ -3,7 +3,7 @@
 #    function 'derive' returning the expr for the gradient calculation
 #    +  definition of functions logpdf... 
 #
-# TODO : add operators : :vcat, ?
+# TODO : add operators : hcat, vcat, ? : , map, mapreduce, if else 
 #
 ##########################################################################################
 
@@ -41,7 +41,7 @@ rules = Dict()
 @dfunc sin(x)      x     cos(x) .* ds
 @dfunc cos(x)      x     -sin(x) .* ds
 
-@dfunc abscos(x)      x     -sin(x) .* ds
+@dfunc abs(x)      x     sign(x) .* ds
 
 @dfunc x*y         x     isa(x, Real) ? sum([ds .* y]) : ds * transpose(y)
 @dfunc x*y         y     isa(y, Real) ? sum([ds .* x]) : transpose(x) * ds
@@ -82,6 +82,34 @@ rules = Dict()
 @dfunc logpdfWeibull(sh, sc, x)   sh  ( tmp = (1. - (x./sc).^sh) .* log(x./sc) + 1./sh * ds ; isa(sh, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfWeibull(sh, sc, x)   sc  ( tmp = ((x./sc).^sh - 1.) .* sh./sc * ds ; isa(sc, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfWeibull(sh, sc, x)   x   ( tmp = ((1. - (x./sc).^sh) .* sh - 1.) ./ x * ds ; isa(x, Real) ? sum(tmp) : tmp) .* ds
+
+
+#     Beta,
+#     Categorical,
+#     Cauchy,
+#     Dirichlet,
+#     DiscreteUniform,
+#     Exponential,
+#     FDist,
+#     Gamma,
+#     Geometric,
+#     HyperGeometric,
+#     Laplace,
+#     Levy,
+#     Logistic,
+#     logNormal,
+#     NegativeBinomial,
+#     Pareto,
+#     Rayleigh,
+#     TDist,
+
+#     Poisson,
+#     Binomial,
+
+# Student  ??
+
+
+
 
 @dfunc logpdfBernoulli(p, x)    p      ( tmp = 1. ./ (p - (1. - x)) ; isa(p, Real) ? sum(tmp) : tmp) * ds
 # Note no derivation on x parameter as it is an integer

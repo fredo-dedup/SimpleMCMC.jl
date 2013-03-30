@@ -14,6 +14,9 @@ toExpr(ex::ExprH) = expr(ex.head, ex.args)
 typealias Exprequal    ExprH{:(=)}
 typealias Exprdcolon   ExprH{:(::)}
 typealias Exprpequal   ExprH{:(+=)}
+typealias Exprmequal   ExprH{:(-=)}
+typealias Exprtequal   ExprH{:(*=)}
+typealias Exprtrans    ExprH{symbol("'")}       #'
 typealias Exprcall     ExprH{:call}
 typealias Exprblock	   ExprH{:block}
 typealias Exprline     ExprH{:line}
@@ -31,9 +34,9 @@ getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 
 ## symbol subsitution functions
-subst(ex::Expr, smap::Dict) = expr(ex.head, map(ex -> subst(ex, smap), ex.args))
-subst(ex::Symbol, smap::Dict) = has(smap, ex) ? smap[ex] : ex
-subst(ex::Any, smap::Dict) = ex
+subst(ex::Expr, smap::Dict) =    expr(ex.head, map(ex -> subst(ex, smap), ex.args))
+subst(ex::Symbol, smap::Dict) =  has(smap, ex) ? smap[ex] : ex
+subst(ex::Any, smap::Dict) =     ex
 
 
 ######### parameters structure  ############
@@ -44,14 +47,21 @@ type MCMCParams
 end
 
 
-######### parses model to extracts parameters and rewrite ~ operators #############
+######### first pass on the model
+#  - extracts parameters definition
+#  - rewrite ~ operators  as acc += logpdf..(=)
+#  - translates x += y into x = x + y, also for -= and *=
 function parseModel(ex::Expr)
 
-	explore(ex::Expr) = explore(toExprH(ex))
-	explore(ex::ExprH) = error("[parseModel] unmanaged expr type $(ex.head)")
-	explore(ex::Exprline) = nothing  # remove #line statements
-	explore(ex::Exprref) = toExpr(ex) # no processing
-	explore(ex::Exprequal) = toExpr(ex) # no processing
+	explore(ex::Expr) =       explore(toExprH(ex))
+	explore(ex::ExprH) =      error("[parseModel] unmanaged expr type $(ex.head)")
+	explore(ex::Exprline) =   nothing  # remove #line statements
+	explore(ex::Exprref) =    toExpr(ex) # no processing
+	explore(ex::Exprequal) =  toExpr(ex) # no processing
+	
+	explore(ex::Exprpequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :+, args...)) )
+	explore(ex::Exprmequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :-, args...)) )
+	explore(ex::Exprtequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :*, args...)) )
 
 	function explore(ex::Exprblock)
 		al = {}
@@ -126,12 +136,14 @@ end
 
 ######## unfolds expressions to prepare derivation ###################
 function unfold(ex::Expr)
-	# Assumes there is only refs or calls on rhs of equal expressions, TODO : generalize ? (add blocks ?)
+	# Assumes there is only refs or calls on rhs of equal expressions, 
+	# TODO : generalize ? (add blocks ?)
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[unfold] unmanaged expr type $(ex.head)")
 	explore(ex::Exprline) = nothing
 	explore(ex::Exprref) = toExpr(ex)
+	explore(ex::Exprtrans) = explore(expr(:call, :transpose, ex.args[1]) )
 
 	function explore(ex::Exprblock)
 		for ex2 in ex.args # ex2 = ex.args[1]

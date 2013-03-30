@@ -138,35 +138,6 @@ macro mtest(pattern, func::Expr, constraints...)
 	end
 end
 
-macro mtest2(pattern, func::Expr, constraints...)
-	println()
-	dump(constraints)
-	# tmp = length(constraints) > 0 ? [ expr(:quote, e) for e in constraints] : []
-	# tmp = length(constraints) > 0 ? [ e for e in constraints] : []
-	tmp = [ isa(e, Symbol) ? expr(:quote, e) : e for e in constraints]
-	# tmp = [constraints...]
-	println()
-	dump(tmp)
-	println()
-	dump(func.args[2:end])
-	quote
-		# dump($constraints)
-
-		local fsym = $(expr(:quote, func.args[1]))
-		local pars = $(expr(:quote, [func.args[2:end]...]) ) 
-		local rules = $(expr(:quote, [tmp...]) )  
-		# local rules = $tmp
-		# local rules = $(expr(:quote, [collect(constraints)...]) )  
-
-		println("$(typeof(fsym)) - $fsym")
-		println("$(typeof(pars)) - $pars")
-		dump(rules,3)
-		println("$(length(rules)) - $rules")
-	end
-end
-
-# @mtest2 testpattern1 SimpleMCMC.logpdfBernoulli(prob,x) exceptlast prob->min(0., prob) x->sign(x)  
-
 #########################################################################
 #  tests on functions
 #########################################################################
@@ -180,10 +151,14 @@ end
 @mtest testpattern1 x./y  y -> y==0 ? 0.1 : y
 @mtest testpattern1 x.^y  x -> x<=0 ? 0.2 : x 
 @mtest testpattern1 sin(x)
+@mtest testpattern1 abs(x)
 @mtest testpattern1 cos(x)
 @mtest testpattern1 exp(x)
 @mtest testpattern1 log(x) x -> x<=0 ? 0.1 : x
+
 @mtest testpattern1 transpose(x) 
+deriv1(:(x'), [-3., 2, 0]) 
+
 @mtest testpattern1 max(x,y) 
 @mtest testpattern1 min(x,y)
 
