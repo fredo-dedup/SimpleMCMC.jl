@@ -83,6 +83,10 @@ rules = Dict()
 @dfunc logpdfWeibull(sh, sc, x)   sc  ( tmp = ((x./sc).^sh - 1.) .* sh./sc * ds ; isa(sc, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfWeibull(sh, sc, x)   x   ( tmp = ((1. - (x./sc).^sh) .* sh - 1.) ./ x * ds ; isa(x, Real) ? sum(tmp) : tmp) .* ds
 
+@dfunc logpdfBeta(a, b, x)     x     ( tmp = (a-1) ./ x - (b-1) ./ (1-x) ; isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) + log(x) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfBeta(a, b, x)     b     ( tmp = digamma(a+b) - digamma(b) + log(1-x) ; isa(b, Real) ? sum(tmp) : tmp) .* ds
+
 
 #     Beta,
 #     Categorical,
@@ -103,7 +107,6 @@ rules = Dict()
 #     Rayleigh,
 #     TDist,
 
-#     Poisson,
 #     Binomial,
 
 # Student  ??
@@ -111,8 +114,15 @@ rules = Dict()
 
 
 
-@dfunc logpdfBernoulli(p, x)    p      ( tmp = 1. ./ (p - (1. - x)) ; isa(p, Real) ? sum(tmp) : tmp) * ds
+@dfunc logpdfBernoulli(p, x)    p       ( tmp = 1. ./ (p - (1. - x)) ; isa(p, Real) ? sum(tmp) : tmp) * ds
 # Note no derivation on x parameter as it is an integer
+
+@dfunc logpdfBinomial(n, p, x)  p       ( tmp = x ./ p - (n-x) ./ (1 - p) ; isa(p, Real) ? sum(tmp) : tmp) * ds
+# Note no derivation on x and n parameters as they are integers
+
+@dfunc logpdfPoisson(lambda, x) lambda  ( tmp = x ./ lambda - 1 ; isa(lambda, Real) ? sum(tmp) : tmp) * ds
+# Note no derivation on x parameter as it is an integer
+
 
 #  fake distribution to test gradient code
 @dfunc logpdfTestDiff(x)    x      +ds

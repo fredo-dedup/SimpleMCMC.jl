@@ -180,10 +180,25 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 @mtest testpattern1 SimpleMCMC.logpdfNormal(mu,sigma,x)  sigma -> sigma<=0 ? 0.1 : sigma
 @mtest testpattern1 SimpleMCMC.logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 @mtest testpattern1 SimpleMCMC.logpdfUniform(a,b,x)      a->a-10 b->b+10
+@mtest testpattern1 SimpleMCMC.logpdfBeta(a,b,x)         x->min(0.99, max(0.01, x)) a->a<=0?0.1:a b->b<=0?0.1:b
 
 # note for Bernoulli : having prob=1 or 0 is ok but will make the numeric differentiator 
 #  of deriv1 fail => not tested
 @mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
+
+@mtest testpattern1 SimpleMCMC.logpdfPoisson(l,x)   exceptlast l->l<=0?0.1:l x->iround(abs(x)) 
+
+
+# fails, should not test parameter on 'size'
+@mtest testpattern1 SimpleMCMC.logpdfBinomial(size, prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
+
+
+# for x in 0.1:0.1:1.0
+# 	println(SimpleMCMC.logpdfBeta(2,5, x))
+# end
+# SimpleMCMC.logpdfBeta(0.5, 0.5, 0.1)
+
+
 
 
 
