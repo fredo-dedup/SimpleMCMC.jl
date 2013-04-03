@@ -52,6 +52,12 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 		"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
 end
 
+
+
+
+
+
+
 ## argument pattern generation for testing
 # all args can be scalar, vector or matrices, but with compatible dimensions (i.e same size for arrays)
 function testpattern1(parnames, rules)
@@ -142,6 +148,10 @@ end
 #  tests on functions
 #########################################################################
 
+
+
+
+
 ## regular functions
 @mtest testpattern1 x+y 
 @mtest testpattern1 x+y+z 
@@ -180,23 +190,32 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 @mtest testpattern1 SimpleMCMC.logpdfNormal(mu,sigma,x)  sigma -> sigma<=0 ? 0.1 : sigma
 @mtest testpattern1 SimpleMCMC.logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 @mtest testpattern1 SimpleMCMC.logpdfUniform(a,b,x)      a->a-10 b->b+10
-@mtest testpattern1 SimpleMCMC.logpdfBeta(a,b,x)         x->min(0.99, max(0.01, x)) a->a<=0?0.1:a b->b<=0?0.1:b
+@mtest testpattern1 SimpleMCMC.logpdfBeta(a,b,x)         x->clamp(x, 0.01, 0.99) a->a<=0?0.1:a b->b<=0?0.1:b
+@mtest testpattern1 SimpleMCMC.logpdfTDist(df,x)         df->df<=0?0.1:df
+@mtest testpattern1 SimpleMCMC.logpdfExponential(sc,x)   sc->sc<=0?0.1:sc  x->x<=0?0.1:x
+@mtest testpattern1 SimpleMCMC.logpdfGamma(sh,sc,x)      sh->sh<=0?0.1:sh  sc->sc<=0?0.5:sc  x->x<=0?0.1:x
+@mtest testpattern1 SimpleMCMC.logpdfCauchy(mu,sc,x)      sc->sc<=0?0.1:sc
 
 # note for Bernoulli : having prob=1 or 0 is ok but will make the numeric differentiator 
 #  of deriv1 fail => not tested
-@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
+@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptlast prob->clamp(prob, 0.01, 0.99) x->(x>0)+0. 
+
 
 @mtest testpattern1 SimpleMCMC.logpdfPoisson(l,x)   exceptlast l->l<=0?0.1:l x->iround(abs(x)) 
 
 
 # fails, should not test parameter on 'size'
-@mtest testpattern1 SimpleMCMC.logpdfBinomial(size, prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
+# @mtest testpattern1 SimpleMCMC.logpdfBinomial(size, prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
 
 
-# for x in 0.1:0.1:1.0
-# 	println(SimpleMCMC.logpdfBeta(2,5, x))
-# end
-# SimpleMCMC.logpdfBeta(0.5, 0.5, 0.1)
+1000 * (SimpleMCMC.logpdfTDist(2.002, 1.0) - SimpleMCMC.logpdfTDist(2.001, 1.0) )
+function f(df,x)
+	tmp2 = (x.*x + df)
+	( ( x.*x - 1) ./ tmp2 + log(df./tmp2) + digamma((df+1)/2) - digamma(df/2) ) / 2
+end
+map(x->f(2.,x), -5:5)
+
+
 
 
 

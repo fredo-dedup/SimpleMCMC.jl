@@ -87,15 +87,24 @@ rules = Dict()
 @dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) + log(x) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfBeta(a, b, x)     b     ( tmp = digamma(a+b) - digamma(b) + log(1-x) ; isa(b, Real) ? sum(tmp) : tmp) .* ds
 
+@dfunc logpdfTDist(df, x)    x     ( tmp = -(df+1).*x ./ (df+x.*x) ; isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfTDist(df, x)    df    (tmp2 = (x.*x + df) ; tmp=( (x.*x-1)./tmp2 + log(df./tmp2) + digamma((df+1)/2) - digamma(df/2) ) / 2 ; isa(df, Real) ? sum(tmp) : tmp) .* ds
 
-#     Beta,
+@dfunc logpdfExponential(sc, x)   x   (isa(x, Real) ? sum(-1/sc) : -1/sc) .* ds
+@dfunc logpdfExponential(sc, x)   sc  (isa(sc, Real) ? sum((x-sc)./(sc.*sc)) : (x-sc)./(sc.*sc)) .* ds
+
+@dfunc logpdfGamma(sh, sc, x)   x   ( tmp = -( sc + x - sh.*sc)./(sc.*x) ;         isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfGamma(sh, sc, x)   sh  ( tmp = log(x) - log(sc) - digamma(sh) ; isa(sh, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfGamma(sh, sc, x)   sc  ( tmp = (x - sc.*sh) ./ (sc.*sc) ;       isa(sc, Real) ? sum(tmp) : tmp) .* ds
+
+@dfunc logpdfCauchy(mu, sc, x)   x   ( tmp = 2(mu-x) ./ (sc.*sc + (x-mu).*(x-mu)) ;  isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfCauchy(mu, sc, x)   mu  ( tmp = 2(x-mu) ./ (sc.*sc + (x-mu).*(x-mu)) ;  isa(mu, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfCauchy(mu, sc, x)   sc  ( tmp = ((x-mu).*(x-mu) - sc.*sc) ./ (sc.*(sc.*sc + (x-mu).*(x-mu))) ;  isa(sc, Real) ? sum(tmp) : tmp) .* ds
+
+
 #     Categorical,
-#     Cauchy,
 #     Dirichlet,
-#     DiscreteUniform,
-#     Exponential,
 #     FDist,
-#     Gamma,
 #     Geometric,
 #     HyperGeometric,
 #     Laplace,
@@ -105,12 +114,11 @@ rules = Dict()
 #     NegativeBinomial,
 #     Pareto,
 #     Rayleigh,
-#     TDist,
 
 #     Binomial,
+#     DiscreteUniform,
 
-# Student  ??
-
+# TODO : find a way to implement multi variate distribs that goes well with vectorization (Dirichlet)
 
 
 

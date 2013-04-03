@@ -50,6 +50,8 @@ for d in {(:Normal,  	"dnorm4"),
 		  (:Weibull, 	"dweibull"),
 		  (:Uniform, 	"dunif"),
 		  (:Binomial, 	"dbinom"),
+	      (:Gamma,  	"dgamma"),
+	      (:Cauchy,  	"dcauchy"),
 		  (:Beta, 	    "dbeta")}
 
 	fsym = symbol("logpdf$(d[1])")
@@ -87,7 +89,9 @@ for d in {(:Normal,  	"dnorm4"),
 
 end
 
-for d in {(:Poisson,  	"dpois")}
+for d in {(:Poisson,  	  "dpois"),
+	      (:TDist,  	  "dt"),
+	      (:Exponential,  "dexp")}
 
 	fsym = symbol("logpdf$(d[1])")
 
