@@ -101,25 +101,13 @@ rules = Dict()
 @dfunc logpdfCauchy(mu, sc, x)   mu  ( tmp = 2(x-mu) ./ (sc.*sc + (x-mu).*(x-mu)) ;  isa(mu, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfCauchy(mu, sc, x)   sc  ( tmp = ((x-mu).*(x-mu) - sc.*sc) ./ (sc.*(sc.*sc + (x-mu).*(x-mu))) ;  isa(sc, Real) ? sum(tmp) : tmp) .* ds
 
+@dfunc logpdflogNormal(lmu, lsc, x)  x   ( tmp2=lsc.*lsc ; tmp = (lmu - tmp2 - log(x)) ./ (tmp2.*x) ;  isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdflogNormal(lmu, lsc, x)  lmu ( tmp = (log(x) - lmu) ./ (lsc .* lsc) ;  isa(lmu, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdflogNormal(lmu, lsc, x)  lsc ( tmp2=lsc.*lsc ; tmp = (lmu.*lmu - tmp2 - log(x).*(2lmu-log(x))) ./ (lsc.*tmp2) ;  isa(lsc, Real) ? sum(tmp) : tmp) .* ds
 
-#     Categorical,
-#     Dirichlet,
-#     FDist,
-#     Geometric,
-#     HyperGeometric,
-#     Laplace,
-#     Levy,
-#     Logistic,
-#     logNormal,
-#     NegativeBinomial,
-#     Pareto,
-#     Rayleigh,
-
-#     Binomial,
-#     DiscreteUniform,
-
-# TODO : find a way to implement multi variate distribs that goes well with vectorization (Dirichlet)
-
+# TODO : find a way to implement multi variate distribs that goes along well with vectorization (Dirichlet, Categorical)
+# TODO : other continuous distribs ? : Pareto, Rayleigh, Logistic, Levy, Laplace, Dirichlet, FDist
+# TODO : other discrete distribs ? : NegativeBinomial, DiscreteUniform, HyperGeometric, Geometric, Categorical
 
 
 @dfunc logpdfBernoulli(p, x)    p       ( tmp = 1. ./ (p - (1. - x)) ; isa(p, Real) ? sum(tmp) : tmp) * ds

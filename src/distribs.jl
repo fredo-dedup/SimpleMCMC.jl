@@ -52,6 +52,7 @@ for d in {(:Normal,  	"dnorm4"),
 		  (:Binomial, 	"dbinom"),
 	      (:Gamma,  	"dgamma"),
 	      (:Cauchy,  	"dcauchy"),
+	      (:logNormal,  "dlnorm"),
 		  (:Beta, 	    "dbeta")}
 
 	fsym = symbol("logpdf$(d[1])")
