@@ -1,7 +1,6 @@
 ##########################################################################################
 #
-#    function 'derive' returning the expr for the gradient calculation
-#    +  definition of functions logpdf... 
+#    function 'derive' returning the expr of gradient
 #
 # TODO : add operators : hcat, vcat, ? : , map, mapreduce, if else 
 #
@@ -88,31 +87,27 @@ rules = Dict()
 @dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfBeta(a, b, x)     b     ( tmp = digamma(a+b) - digamma(b) + log(1-x) ; isa(b, Real) ? sum(tmp) : tmp) .* ds
 
+@dfunc logpdfTDist(df, x)    x     ( tmp = -(df+1).*x ./ (df+x.*x) ; isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfTDist(df, x)    df    (tmp2 = (x.*x + df) ; tmp=( (x.*x-1)./tmp2 + log(df./tmp2) + digamma((df+1)/2) - digamma(df/2) ) / 2 ; isa(df, Real) ? sum(tmp) : tmp) .* ds
 
-#     Beta,
-#     Categorical,
-#     Cauchy,
-#     Dirichlet,
-#     DiscreteUniform,
-#     Exponential,
-#     FDist,
-#     Gamma,
-#     Geometric,
-#     HyperGeometric,
-#     Laplace,
-#     Levy,
-#     Logistic,
-#     logNormal,
-#     NegativeBinomial,
-#     Pareto,
-#     Rayleigh,
-#     TDist,
+@dfunc logpdfExponential(sc, x)   x   (isa(x, Real) ? sum(-1/sc) : -1/sc) .* ds
+@dfunc logpdfExponential(sc, x)   sc  (isa(sc, Real) ? sum((x-sc)./(sc.*sc)) : (x-sc)./(sc.*sc)) .* ds
 
-#     Binomial,
+@dfunc logpdfGamma(sh, sc, x)   x   ( tmp = -( sc + x - sh.*sc)./(sc.*x) ;         isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfGamma(sh, sc, x)   sh  ( tmp = log(x) - log(sc) - digamma(sh) ; isa(sh, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfGamma(sh, sc, x)   sc  ( tmp = (x - sc.*sh) ./ (sc.*sc) ;       isa(sc, Real) ? sum(tmp) : tmp) .* ds
 
-# Student  ??
+@dfunc logpdfCauchy(mu, sc, x)   x   ( tmp = 2(mu-x) ./ (sc.*sc + (x-mu).*(x-mu)) ;  isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfCauchy(mu, sc, x)   mu  ( tmp = 2(x-mu) ./ (sc.*sc + (x-mu).*(x-mu)) ;  isa(mu, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfCauchy(mu, sc, x)   sc  ( tmp = ((x-mu).*(x-mu) - sc.*sc) ./ (sc.*(sc.*sc + (x-mu).*(x-mu))) ;  isa(sc, Real) ? sum(tmp) : tmp) .* ds
 
+@dfunc logpdflogNormal(lmu, lsc, x)  x   ( tmp2=lsc.*lsc ; tmp = (lmu - tmp2 - log(x)) ./ (tmp2.*x) ;  isa(x, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdflogNormal(lmu, lsc, x)  lmu ( tmp = (log(x) - lmu) ./ (lsc .* lsc) ;  isa(lmu, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdflogNormal(lmu, lsc, x)  lsc ( tmp2=lsc.*lsc ; tmp = (lmu.*lmu - tmp2 - log(x).*(2lmu-log(x))) ./ (lsc.*tmp2) ;  isa(lsc, Real) ? sum(tmp) : tmp) .* ds
 
+# TODO : find a way to implement multi variate distribs that goes along well with vectorization (Dirichlet, Categorical)
+# TODO : other continuous distribs ? : Pareto, Rayleigh, Logistic, Levy, Laplace, Dirichlet, FDist
+# TODO : other discrete distribs ? : NegativeBinomial, DiscreteUniform, HyperGeometric, Geometric, Categorical
 
 
 @dfunc logpdfBernoulli(p, x)    p       ( tmp = 1. ./ (p - (1. - x)) ; isa(p, Real) ? sum(tmp) : tmp) * ds

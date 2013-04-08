@@ -1,0 +1,7 @@
+test	julia.version	lib.version time.ms
+binomial-function-with-gradient	0.1.0	b79399	1.138
+binomial-function-with-gradient	0.1.0	b79399	1.138
+binomial-function-with-gradient	0.1.0	b79399	1.138
+binomial-function-with-gradient	0.1.0	b79399	1.138
+binomial-function-with-gradient	0.1.0	b79399	1.154
+binomial-function-without-gradient	0.1.0	b79399	0.514

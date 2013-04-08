@@ -52,6 +52,12 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 		"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
 end
 
+
+
+
+
+
+
 ## argument pattern generation for testing
 # all args can be scalar, vector or matrices, but with compatible dimensions (i.e same size for arrays)
 function testpattern1(parnames, rules)
@@ -112,7 +118,9 @@ function runpattern(fsym, parnames, rules, combin)
 		end
 
 		# now run tests
-		prange = any(rules .== :(:exceptlast)) ? (1:(arity-1)) : (1:arity)
+		prange = [1:arity]
+		prange = any(rules .== :(:exceptLast)) ? prange[1:end-1] : prange
+		prange = any(rules .== :(:exceptFirstAndLast)) ? prange[2:end-1] : prange
 		# println("$prange - $(length(rules)) - $rules")
 		for p in prange  # try each argument as parameter
 			tpar = copy(par)
@@ -176,43 +184,39 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 @mtest testpattern2 dot(x,y) 
 @mtest testpattern3 dot(x,y) 
 
-## distributions
-@mtest testpattern1 SimpleMCMC.logpdfNormal(mu,sigma,x)  sigma -> sigma<=0 ? 0.1 : sigma
+## continuous distributions
+@mtest testpattern1 SimpleMCMC.logpdfNormal(mu,sigma,x)  sigma->sigma<=0?0.1:sigma
 @mtest testpattern1 SimpleMCMC.logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 @mtest testpattern1 SimpleMCMC.logpdfUniform(a,b,x)      a->a-10 b->b+10
-@mtest testpattern1 SimpleMCMC.logpdfBeta(a,b,x)         x->min(0.99, max(0.01, x)) a->a<=0?0.1:a b->b<=0?0.1:b
+@mtest testpattern1 SimpleMCMC.logpdfBeta(a,b,x)         x->clamp(x, 0.01, 0.99) a->a<=0?0.1:a b->b<=0?0.1:b
+@mtest testpattern1 SimpleMCMC.logpdfTDist(df,x)         df->df<=0?0.1:df
+@mtest testpattern1 SimpleMCMC.logpdfExponential(sc,x)   sc->sc<=0?0.1:sc  x->x<=0?0.1:x
+@mtest testpattern1 SimpleMCMC.logpdfGamma(sh,sc,x)      sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
+@mtest testpattern1 SimpleMCMC.logpdfCauchy(mu,sc,x)      sc->sc<=0?0.1:sc
+@mtest testpattern1 SimpleMCMC.logpdflogNormal(lmu,lsc,x)  lsc->lsc<=0?0.1:lsc x->x<=0?0.1:x
 
-# note for Bernoulli : having prob=1 or 0 is ok but will make the numeric differentiator 
-#  of deriv1 fail => not tested
-@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
+## discrete distributions
+@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptLast prob->clamp(prob, 0.01, 0.99) x->(x>0)+0. 
+# note for Bernoulli : having prob=1 or 0 is ok but will make the numeric differentiator fail => not tested
 
-@mtest testpattern1 SimpleMCMC.logpdfPoisson(l,x)   exceptlast l->l<=0?0.1:l x->iround(abs(x)) 
-
-
-# fails, should not test parameter on 'size'
-@mtest testpattern1 SimpleMCMC.logpdfBinomial(size, prob,x)   exceptlast prob->min(0.99, max(0.01, prob)) x->(x>0)+0. 
-
-
-# for x in 0.1:0.1:1.0
-# 	println(SimpleMCMC.logpdfBeta(2,5, x))
-# end
-# SimpleMCMC.logpdfBeta(0.5, 0.5, 0.1)
-
-
-
+@mtest testpattern1 SimpleMCMC.logpdfPoisson(l,x)   exceptLast l->l<=0?0.1:l x->iround(abs(x)) 
+@mtest testpattern1 SimpleMCMC.logpdfBinomial(n, prob,x)   exceptFirstAndLast prob->clamp(prob, 0.01, 0.99) x->iround(abs(x)) n->iround(abs(n)+10)
 
 
 #########################################################################
 #   misc. tests
 #########################################################################
 
-# Parsing should throw an error on generating the gradient code 
+# Parsing should throw an error when model parameter is used as an integer variable
 try
 	deriv1(:(SimpleMCMC.logpdfBernoulli(1, x)), [0.])
+	deriv1(:(SimpleMCMC.logpdfPoisson(1, x)), [0.])
+	deriv1(:(SimpleMCMC.logpdfBinomial(3, 0.5, x)), [0.])
+	deriv1(:(SimpleMCMC.logpdfBinomial(x, 0.5, 2)), [0.])
 	throw("no error !!")
 catch e
 	assert(e != "no error !!", 
-		"parser not throwing error when logpdfBernoulli has a parameter dependant sampled variable")
+		"parser not throwing error when discrete distribution has a parameter dependant integer argument")
 end
 
 ##  ref  testing
