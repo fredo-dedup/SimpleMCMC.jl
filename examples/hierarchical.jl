@@ -38,7 +38,7 @@ model = quote
 end
 
 # run random walk metropolis (10000 steps, 1000 for burnin)
-res = SimpleMCMC.simpleRWM(model, 100000, 1000)
+res = SimpleMCMC.simpleRWM(model, 10000, 1000)
 
 sum(res.params[:mu],3) / res.samples  # mu samples mean
 sum(res.params[:sigma],3) / res.samples # sigma samples mean
