@@ -1,7 +1,6 @@
 ##########################################################################################
 #
-#    function 'derive' returning the expr for the gradient calculation
-#    +  definition of functions logpdf... 
+#    function 'derive' returning the expr of gradient
 #
 # TODO : add operators : hcat, vcat, ? : , map, mapreduce, if else 
 #

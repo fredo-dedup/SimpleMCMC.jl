@@ -118,8 +118,9 @@ function runpattern(fsym, parnames, rules, combin)
 		end
 
 		# now run tests
-		prange = any(rules .== :(:exceptLast)) ? (1:(arity-1)) : (1:arity)
-		prange = any(rules .== :(:exceptFirstAndLast)) ? (2:(arity-1)) : (1:arity)
+		prange = [1:arity]
+		prange = any(rules .== :(:exceptLast)) ? prange[1:end-1] : prange
+		prange = any(rules .== :(:exceptFirstAndLast)) ? prange[2:end-1] : prange
 		# println("$prange - $(length(rules)) - $rules")
 		for p in prange  # try each argument as parameter
 			tpar = copy(par)
@@ -206,13 +207,16 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 #   misc. tests
 #########################################################################
 
-# Parsing should throw an error on generating the gradient code 
+# Parsing should throw an error when model parameter is used as an integer variable
 try
 	deriv1(:(SimpleMCMC.logpdfBernoulli(1, x)), [0.])
+	deriv1(:(SimpleMCMC.logpdfPoisson(1, x)), [0.])
+	deriv1(:(SimpleMCMC.logpdfBinomial(3, 0.5, x)), [0.])
+	deriv1(:(SimpleMCMC.logpdfBinomial(x, 0.5, 2)), [0.])
 	throw("no error !!")
 catch e
 	assert(e != "no error !!", 
-		"parser not throwing error when logpdfBernoulli has a parameter dependant sampled variable")
+		"parser not throwing error when discrete distribution has a parameter dependant integer argument")
 end
 
 ##  ref  testing
