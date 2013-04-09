@@ -113,6 +113,7 @@ mu0 = 10.  # target value
 tau0 = 20  # convergence time
 sigma0 = 0.1  # noise term
 
+srand(1)
 x = fill(NaN, duration)
 x[1] = 1.
 for i in 2:duration
@@ -135,15 +136,15 @@ end
 
 
 ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
-init = SimpleMCMC.setInit(1.0, nparams)
+init = [1., 0.1, 1.]
 @timeit ll_func(init) 1000 Ornstein_function_with_gradient
 
 ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) # build function, count the number of parameters
 @timeit ll_func(init) 1000 Ornstein_function_without_gradient
 
-@timeit SimpleMCMC.simpleRWM(model, 1000, 100, [1., 0.1, 1.]) 1 Ornstein_RWM
-@timeit SimpleMCMC.simpleHMC(model, 1000, 100, [1., 0.1, 1.], 5, 0.002) 1 Ornstein_HMC
-@timeit SimpleMCMC.simpleNUTS(model, 1000, 100, [1., 0.1, 1.]) 1 Ornstein_NUTS
+@timeit SimpleMCMC.simpleRWM(model, 1000, 100, init) 1 Ornstein_RWM
+@timeit SimpleMCMC.simpleHMC(model, 1000, 100, init, 5, 0.002) 1 Ornstein_HMC
+@timeit SimpleMCMC.simpleNUTS(model, 1000, 100, init) 1 Ornstein_NUTS
 
 ############ close benchmark file ####################
 
