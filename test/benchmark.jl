@@ -114,6 +114,7 @@ mu0 = 10.  # target value
 tau0 = 20  # convergence time
 sigma0 = 0.1  # noise term
 
+srand(1)
 x = fill(NaN, duration)
 x[1] = 1.
 for i in 2:duration
