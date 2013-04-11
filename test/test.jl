@@ -147,7 +147,7 @@ macro mtest(pattern, func::Expr, constraints...)
 end
 
 #########################################################################
-#  tests on functions
+#  Tests on functions
 #########################################################################
 
 ## regular functions

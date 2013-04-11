@@ -7,7 +7,6 @@ require("../src/SimpleMCMC.jl")
 
 BENCHFILE = "benchmarks.txt"
 LIBVERSION = readchomp(`git rev-parse --verify HEAD`)[1:6]
-# LIBVERSION = "b79399"
 JULVERSION = VERSION
 MACHINEID = string(hash(string(gethostname(), getipaddr())))[1:6]
 

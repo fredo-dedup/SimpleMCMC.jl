@@ -83,8 +83,8 @@ rules = Dict()
 @dfunc logpdfWeibull(sh, sc, x)   x   ( tmp = ((1. - (x./sc).^sh) .* sh - 1.) ./ x * ds ; isa(x, Real) ? sum(tmp) : tmp) .* ds
 
 @dfunc logpdfBeta(a, b, x)     x     ( tmp = (a-1) ./ x - (b-1) ./ (1-x) ; isa(x, Real) ? sum(tmp) : tmp) .* ds
-#@dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) + log(x) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
-@dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
+@dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) + log(x) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
+# @dfunc logpdfBeta(a, b, x)     a     ( tmp = digamma(a+b) - digamma(a) ; isa(a, Real) ? sum(tmp) : tmp) .* ds
 @dfunc logpdfBeta(a, b, x)     b     ( tmp = digamma(a+b) - digamma(b) + log(1-x) ; isa(b, Real) ? sum(tmp) : tmp) .* ds
 
 @dfunc logpdfTDist(df, x)    x     ( tmp = -(df+1).*x ./ (df+x.*x) ; isa(x, Real) ? sum(tmp) : tmp) .* ds
