@@ -16,7 +16,7 @@ Inspired from the BUGS/JAGS syntax, it uses the `~` operator to associate a vari
 
 An example model spec should make it very clear : 
 
-```
+```jl
 model = quote
 	b::real
 	k::real(5)
@@ -40,7 +40,7 @@ A last note : the automated derivation will not look into refs, if somehow a ref
 ###Available operators
 
 operator       |   arguments
-===============|==============
+-------------|----------
 `+`  			| with operands scalar, vector or matrix (of compatible size)
 `-` (unary)  	| with operand scalar, vector or matrix 
 `-` (binary) 	| with operands scalar, vector or matrix (of compatible size)
@@ -58,26 +58,26 @@ operator       |   arguments
 `/`      		| with operands scalar, vector or matrix, with at least one operand scalar
 `./`      		| with operands scalar, vector or matrix (of compatible size)
 `max(,)` (binary only) | with operands scalar, vector or matrix (of compatible size)
-`min(x, y)` (binary only) | with operands scalar, vector or matrix (of compatible size)
-`transpose(x)` `'` | with operand scalar, vector or matrix
+`min(,)` (binary only) | with operands scalar, vector or matrix (of compatible size)
+`transpose()` or `'` | with operand scalar, vector or matrix
 
 ###Available distributions
 All distributions follow the "Distributions" library conventions for naming and arguments.
 
-distribution       |   notes
-===============|==============
-`Normal(mu, sigma)`			|  sigma > 0
-`Uniform(min, max)`			|  min < max
+Distribution  |   Notes
+--------------|-----------
+`Normal(mu, sigma)`		|  sigma > 0
+`Uniform(min, max)`		|  min < max
 `Weibull(shape, scale)`		|  shape and scale > 0
-`Beta(a, b)`					|  a and b > 0
-`TDist(df)`					|  df > 0
-`Exponential(scale)`			|  scale > 0
-`Gamma(shape, scale)`			|  shape and scale > 0	
-`Cauchy(mu, scale)`			|  scale > 0
-`logNormal(logmu, logscale)`|
-`Bernoulli(prob)`				|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
+`Beta(a, b)`			|  a and b > 0
+`TDist(df)`			|  df > 0
+`Exponential(scale)`		|  scale > 0
+`Gamma(shape, scale)`		|  shape and scale > 0	
+`Cauchy(mu, scale)`	       	|  scale > 0
+`logNormal(logmu, logscale)`   	|
+`Bernoulli(prob)`		|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
 `Binomial(size, prob)`		|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
-`Poisson(lambda)`				|  sampled var is an integer and cannot depend on model parameter
+`Poisson(lambda)`		|  sampled var is an integer and cannot depend on model parameter
 
 
 ## The sampling functions
@@ -88,11 +88,11 @@ Currently, we have `simpleRWM` running a random walk metropolis, `simpleHMC` run
 - `simpleRWM(model, steps, burnin)` : with inital values set to 1.0
 - `simpleRWM(model, steps)` : with burnin equal to half of steps
 
-- `simpleHMC(model, steps, burnin, init, length, stepsize)`
+- `simpleHMC(model, steps, burnin, init, length, stepsize)` : length is # sub-steps and `stepsize` their size
 - `simpleHMC(model, steps, burnin, length, stepsize)` : with inital values set to 1.0
 - `simpleHMC(model, steps, length, stepsize)` : with burnin equal to half of steps
 
-- `simpleNUTS(model, steps, burnin, init)` 
+- `simpleNUTS(model, steps, burnin, init)` : _same as Random Walk Metropolis_
 - `simpleNUTS(model, steps, burnin)` : with inital values set to 1.0
 - `simpleNUTS(model, steps)` : with burnin equal to half of steps
 
@@ -104,9 +104,8 @@ A structure containing the samples and a few stats (use dump to see what's insid
 
 ### Linear regression
 
-```
+```jl
 # Generate values
-
 srand(1)
 n = 1000
 nbeta = 10 # number of predictors, including intercept
@@ -123,7 +122,7 @@ model = quote
 	resid ~ Normal(0, 1.0)  
 end
 
-# run random walk metropolis (10000 steps, 500 for burnin)
+# run random walk metropolis (10000 steps, 5000 for burnin)
 res = SimpleMCMC.simpleRWM(model, 10000)
 # or a Hamiltonian Monte-Carlo (with 5 inner steps of size 0.1)
 res = SimpleMCMC.simpleHMC(model, 1000, 5, 1e-1)
