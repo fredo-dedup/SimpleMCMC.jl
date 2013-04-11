@@ -4,12 +4,17 @@ simple-mcmc
 Basic mcmc samplers written in Julia
 
 Implements :
-1. a DSL for specifying models
-2. a set of sampling functions
+- a DSL for specifying models
+- a set of sampling methods : Randow Walk Metropolis, Hamiltonian Monte-Carlo and NUTS Hamiltonian Monte-Carlo
+- an automatic derivation (reverse mode) to generate gradient code for Hamiltonian MC methods
 
+______________________________________________
+__Update (april 11th) :__
+- __added most missing distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta)__
+- __...and a few functions (min, max, abs, transpose, +=, *=)__ 
+- __and simplified unit testing of derivation and distributions that will make future improvements much easier to test__
 
-__update (april 11th) : added most used distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) and a few functions (min, max, abs, transpose) + simplifcation for unit testing of derivation and distributions that will make future improvements easier to test__
-
+_______________________________________________________________
 
 ## The model DSL
 Inspired from the BUGS/JAGS syntax, it uses the `~` operator to associate a variable with a distribution. Model parameters are defined with the `::` operator followed by the keyword real and optional dimensions in parentheses (up to 2 dimensions). The rest is standard Julia operators and syntax.
@@ -33,7 +38,7 @@ end
 
 The DSL design decisions make the usual meaning of `~` and `::` in Julia inacessible within a model definition. Note too that the transformation of the model expression by the parser creates additionnal variables whose name you should avoid in your model : `__acc` and `__beta`. The model parsing won't check for naming collisions.
 
-The samplers using gradients (simpleHMC and simpleNUTS) require an additionnal parsing step that will generate the gradient code by automated derivation. This marginally increases the calculation time (by O(1), not by O(# of parameter) ) but it imposes limits of what the model can contain : there are the 'nice' limitations : functions and distributions whose partial derivatives are not handled (see src/diff.jl), these can be added easily (file an issue for the functions that you miss the most). And then there are the other limitations : control flow operators (if, for loops, ..) are not handled yet because they will necessitate a bit more work on the parsing functions. Note that very often for loops can be replaced by matrix/vector algebra (see examples) so this may not be such a big limitation.
+The samplers using gradients (simpleHMC and simpleNUTS) require an additionnal parsing step that will generate the gradient code by automated derivation. This marginally increases the calculation time (by O(1), not by O(# of parameter) ) but it imposes limits of what the model can contain : there are the 'nice' limitations : functions and distributions whose partial derivatives are not defined (see src/diff.jl), these can be added easily (file an issue for the functions that you miss the most). And then there are the other limitations : control flow operators (if, for loops, ..) are not handled yet because they will necessitate a bit more work on the parsing functions. Note that very often for loops can be replaced by matrix/vector algebra (see examples) so this may not be such a big limitation.
 
 A last note : the automated derivation will not look into refs, if somehow a ref depends directly or indirectly on a model parameter (for example  `x = Y[ round(sigma)]` ) , the gradient will be false.
 
@@ -60,6 +65,7 @@ operator       |   arguments
 `max(,)` (binary only) | with operands scalar, vector or matrix (of compatible size)
 `min(,)` (binary only) | with operands scalar, vector or matrix (of compatible size)
 `transpose()` or `'` | with operand scalar, vector or matrix
+`+=`, `-=` and `*=` | -
 
 ###Available distributions
 All distributions follow the "Distributions" library conventions for naming and arguments.
@@ -85,20 +91,18 @@ Currently, we have `simpleRWM` running a random walk metropolis, `simpleHMC` run
 
 ###Calling syntax
 - `simpleRWM(model, steps, burnin, init)` : `init` can either be a vector (same size as the number of parameters) or a real that will be assigned to all parameters
-- `simpleRWM(model, steps, burnin)` : with inital values set to 1.0
-- `simpleRWM(model, steps)` : with burnin equal to half of steps
-
+- or `simpleRWM(model, steps, burnin)` : with inital values set to 1.0
+- or `simpleRWM(model, steps)` : with burnin equal to half of steps
 - `simpleHMC(model, steps, burnin, init, length, stepsize)` : length is # sub-steps and `stepsize` their size
-- `simpleHMC(model, steps, burnin, length, stepsize)` : with inital values set to 1.0
-- `simpleHMC(model, steps, length, stepsize)` : with burnin equal to half of steps
-
+- or `simpleHMC(model, steps, burnin, length, stepsize)` : with inital values set to 1.0
+- or `simpleHMC(model, steps, length, stepsize)` : with burnin equal to half of steps
 - `simpleNUTS(model, steps, burnin, init)` : _same as Random Walk Metropolis_
-- `simpleNUTS(model, steps, burnin)` : with inital values set to 1.0
-- `simpleNUTS(model, steps)` : with burnin equal to half of steps
+- or `simpleNUTS(model, steps, burnin)` : with inital values set to 1.0
+- or `simpleNUTS(model, steps)` : with burnin equal to half of steps
 
 
 ###Return value
-A structure containing the samples and a few stats (use dump to see what's inside it is self explanatory).
+A structure containing the samples and a few stats (use dump to see what's inside).
 
 ## Examples
 
@@ -107,7 +111,7 @@ A structure containing the samples and a few stats (use dump to see what's insid
 ```jl
 # Generate values
 srand(1)
-n = 1000
+n = 1000 # number of observations
 nbeta = 10 # number of predictors, including intercept
 X = [ones(n) randn((n, nbeta-1))]
 beta0 = randn((nbeta,))
@@ -117,9 +121,9 @@ Y = X * beta0 + randn((n,))
 model = quote
 	vars::real(nbeta)
 
-	vars ~ Normal(0, 1.0)  # Normal prior, variance 1.0 for predictors
+	vars ~ Normal(0, 1.0)  # Normal prior, zero mean and unit standard deviation for predictors
 	resid = Y - X * vars
-	resid ~ Normal(0, 1.0)  
+	resid ~ Normal(0, 1.0)  # Normal prior, zero mean and unit standard deviation for residuals
 end
 
 # run random walk metropolis (10000 steps, 5000 for burnin)
@@ -132,11 +136,13 @@ res = SimpleMCMC.simpleNUTS(model, 1000)
 
 ## Issues
 - May be some bugs left in the NUTS implementation as it sometimes seem to go into a huge amount of doubling steps and converges toward tiny epsilons
-- Gradient generated code is not optimized, could be better... though most of the computation time is spent in Rmath library calls...
+- Gradient generated code is not optimized, could be better... though most of the computation time seems to be spent in Rmath calls for distributions.
 
-## Future work
+## (Possible) future work
 - Compare timings with other sampling tools (JAGS, STAN)
-- Enable other functions for automated derivation : vcat, hcat, one, zero, ...  ?
+- Enable other functions for automated derivation : vcat, hcat, one, zero, comprehensions ...  ?
+- Add for loops and ifs ?
 - Add truncation, censoring
+- Add a gradient descent function (CG, Nesterov) to find mode of models ?
 - _ideas ?_
 
