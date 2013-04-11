@@ -8,7 +8,7 @@ Implements :
 2. a set of sampling functions
 
 
-__update (april 11th) : added most used distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) and a few functions (min, max, abs, transpose) + simplifcation for unit testing of derivation and distributions__
+__update (april 11th) : added most used distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) and a few functions (min, max, abs, transpose) + simplifcation for unit testing of derivation and distributions that will make future improvements easier to test__
 
 
 ## The model DSL
@@ -66,18 +66,18 @@ All distributions follow the "Distributions" library conventions for naming and 
 
 distribution       |   notes
 ===============|==============
-Normal(mu, sigma)			|  sigma > 0
-Uniform(min, max)			|  min < max
-Weibull(shape, scale)		|  shape and scale > 0
-Beta(a, b)					|  a and b > 0
-TDist(df)					|  df > 0
-Exponential(scale)			|  scale > 0
-Gamma(shape, scale)			|  shape and scale > 0	
-Cauchy(mu, scale)			|  scale > 0
-logNormal(logmu, logscale)	|
-Bernoulli(prob)				|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
-Binomial(size, prob)		|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
-Poisson(lambda)				|  sampled var is an integer and cannot depend on model parameter
+`Normal(mu, sigma)`			|  sigma > 0
+`Uniform(min, max)`			|  min < max
+`Weibull(shape, scale)`		|  shape and scale > 0
+`Beta(a, b)`					|  a and b > 0
+`TDist(df)`					|  df > 0
+`Exponential(scale)`			|  scale > 0
+`Gamma(shape, scale)`			|  shape and scale > 0	
+`Cauchy(mu, scale)`			|  scale > 0
+`logNormal(logmu, logscale)`|
+`Bernoulli(prob)`				|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
+`Binomial(size, prob)`		|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
+`Poisson(lambda)`				|  sampled var is an integer and cannot depend on model parameter
 
 
 ## The sampling functions

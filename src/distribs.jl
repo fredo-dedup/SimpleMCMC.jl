@@ -7,44 +7,6 @@
 ########### distributions using libRmath ######### 
 _jl_libRmath = dlopen("libRmath")
 
-## macro for linking 2 params distribs
-# macro link_2p(fsym2::Symbol, rname::String)
-# 	fsym2 = :blugh
-# 	fsym = expr(:quote, strcat("logpdf", fsym2))
-# 	rname = "dpois"
-# 	quote
-# 		function ($fsym)(a::Real, b::Real, x::Real)
-# 			local res
-# 			res = ccall(dlsym(_jl_libRmath, $rname), Float64, 
-# 				(Float64, Float64, Float64, Int32), 
-# 					x, a, b, 1)
-# 			if res == -Inf
-# 				throw("give up eval")
-# 			elseif res == NaN
-# 				error(string("calling ", $fsym, "with $x, $a, $b returned an error"))
-# 			else
-# 				return(res)
-# 			end
-# 		end
-
-# 		function ($fsym)(a::Union(Real, AbstractArray), 
-# 			             b::Union(Real, AbstractArray), 
-# 			             x::Union(Real, AbstractArray))
-# 			local res, acc
-
-# 			acc = 0.0
-# 			for i in 1:max(length(a), length(b), length(x))
-# 				res = ($fsym)(next(a,i)[1], next(b,i)[1], next(x,i)[1])
-# 				acc += res
-# 			end
-# 			acc
-# 		end
-
-# 	end
-# end
-
-# @link_2p myfunc "dnorm4"
-
 # TODO : factorize
 for d in {(:Normal,  	"dnorm4"),
 		  (:Weibull, 	"dweibull"),
