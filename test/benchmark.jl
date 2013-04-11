@@ -3,13 +3,13 @@
 #     and the samplers
 ########################################################################
 
-require("../src/SimpleMCMC.jl")
+include("../src/SimpleMCMC.jl")
 
 BENCHFILE = "benchmarks.txt"
-LIBVERSION = readchomp(`git rev-parse --verify HEAD`)[1:6]
+LIBVERSION = try ; readchomp(`git rev-parse --verify HEAD`)[1:6]; catch e; "-none-";end
 JULVERSION = VERSION
-MACHINEID = string(hash(string(gethostname(), getipaddr())))[1:6]
-
+# TODO : improve (gethostname hangs on my windows machine)
+MACHINEID = string(hash(string(OS_NAME == :Windows ?  "-none-" : gethostname(), getipaddr())))[1:6]
 
 fb = open(BENCHFILE, "a+")
 
@@ -22,9 +22,9 @@ macro timeit(ex, nit, name)
             $t = min($t, @elapsed for j in 1:$nit; $ex; end)
         end
         println(fb, join([$(expr(:quote, name)), iround(time()), JULVERSION, 
-            LIBVERSION, MACHINEID, round($t/$nit,6)], "\t"))
+            LIBVERSION, MACHINEID, round($t/$nit,9)], "\t"))
         println(join([$(expr(:quote, name)), iround(time()), JULVERSION, 
-            LIBVERSION, MACHINEID, round($t/$nit,6)], "\t"))
+            LIBVERSION, MACHINEID, round($t/$nit,9)], "\t"))
     end
 end
 
@@ -42,16 +42,16 @@ Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0)))
 model = quote
 	vars::real(nbeta)
 
-	vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
+	vars ~ Normal(0, 1.0) 
 	prob = 1 / (1. + exp(X * vars)) 
 	Y ~ Bernoulli(prob)
 end
 
-ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) 
 init = SimpleMCMC.setInit(1.0, nparams)
 @timeit ll_func(init) 1000 binomial_function_with_gradient
 
-ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) # build function, count the number of parameters
+ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) 
 @timeit ll_func(init) 1000 binomial_function_without_gradient
 
 @timeit SimpleMCMC.simpleRWM(model, 1000, 100) 1 binomial_RWM
@@ -94,19 +94,20 @@ model = quote
 end
 
 
-ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model)
 init = SimpleMCMC.setInit(1.0, nparams)
 @timeit ll_func(init) 1000 hierarchical_function_with_gradient
 
-ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) # build function, count the number of parameters
+ll_func, nparams, pmap = SimpleMCMC.buildFunction(model)
 @timeit ll_func(init) 1000 hierarchical_function_without_gradient
 
 @timeit SimpleMCMC.simpleRWM(model, 1000, 100) 1 hierarchical_RWM
 @timeit SimpleMCMC.simpleHMC(model, 1000, 100, 10, 0.03) 1 hierarchical_HMC
-@timeit SimpleMCMC.simpleNUTS(model, 10) 1 hierarchical_NUTS
+@timeit SimpleMCMC.simpleNUTS(model, 10) 1 hierarchical_NUTS   # poor perf of NUTS here, less iterations
 
 ############  Ornstein–Uhlenbeck process  ###############
 
+srand(1)
 duration = 1000  # 1000 time steps
 mu0 = 10.  # target value
 tau0 = 20  # convergence time
@@ -134,11 +135,11 @@ model = quote
 end
 
 
-ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
-init = [1., 0.1, 1.]
+ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) 
+init = [1., 0.05, 1.]
 @timeit ll_func(init) 1000 Ornstein_function_with_gradient
 
-ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) # build function, count the number of parameters
+ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) 
 @timeit ll_func(init) 1000 Ornstein_function_without_gradient
 
 @timeit SimpleMCMC.simpleRWM(model, 1000, 100, init) 1 Ornstein_RWM
