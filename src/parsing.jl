@@ -14,13 +14,16 @@ toExpr(ex::ExprH) = expr(ex.head, ex.args)
 typealias Exprequal    ExprH{:(=)}
 typealias Exprdcolon   ExprH{:(::)}
 typealias Exprpequal   ExprH{:(+=)}
+typealias Exprmequal   ExprH{:(-=)}
+typealias Exprtequal   ExprH{:(*=)}
+typealias Exprtrans    ExprH{symbol("'")}       #'
 typealias Exprcall     ExprH{:call}
 typealias Exprblock	   ExprH{:block}
 typealias Exprline     ExprH{:line}
 typealias Exprref      ExprH{:ref}
 typealias Exprif       ExprH{:if}
 
-##########  helper function to get symbols appearing in AST ############
+## variable symbol polling functions
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) =     Set{Symbol}(ex)
 getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
@@ -30,6 +33,12 @@ getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])
 getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 
+## symbol subsitution functions
+subst(ex::Expr, smap::Dict) =    expr(ex.head, map(ex -> subst(ex, smap), ex.args))
+subst(ex::Symbol, smap::Dict) =  has(smap, ex) ? smap[ex] : ex
+subst(ex::Any, smap::Dict) =     ex
+
+
 ######### parameters structure  ############
 type MCMCParams
 	sym::Symbol
@@ -38,14 +47,21 @@ type MCMCParams
 end
 
 
-######### parses model to extracts parameters and rewrite ~ operators #############
+######### first pass on the model
+#  - extracts parameters definition
+#  - rewrite ~ operators  as acc += logpdf..(=)
+#  - translates x += y into x = x + y, also for -= and *=
 function parseModel(ex::Expr)
 
-	explore(ex::Expr) = explore(toExprH(ex))
-	explore(ex::ExprH) = error("[parseModel] unmanaged expr type $(ex.head)")
-	explore(ex::Exprline) = nothing  # remove #line statements
-	explore(ex::Exprref) = toExpr(ex) # no processing
-	explore(ex::Exprequal) = toExpr(ex) # no processing
+	explore(ex::Expr) =       explore(toExprH(ex))
+	explore(ex::ExprH) =      error("[parseModel] unmanaged expr type $(ex.head)")
+	explore(ex::Exprline) =   nothing  # remove #line statements
+	explore(ex::Exprref) =    toExpr(ex) # no processing
+	explore(ex::Exprequal) =  toExpr(ex) # no processing
+	
+	explore(ex::Exprpequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :+, args...)) )
+	explore(ex::Exprmequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :-, args...)) )
+	explore(ex::Exprtequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :*, args...)) )
 
 	function explore(ex::Exprblock)
 		al = {}
@@ -120,12 +136,14 @@ end
 
 ######## unfolds expressions to prepare derivation ###################
 function unfold(ex::Expr)
-	# Assumes there is only refs or calls on rhs of equal expressions, TODO : generalize ? (add blocks ?)
+	# Assumes there is only refs or calls on rhs of equal expressions, 
+	# TODO : generalize ? (add blocks ?)
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[unfold] unmanaged expr type $(ex.head)")
 	explore(ex::Exprline) = nothing
 	explore(ex::Exprref) = toExpr(ex)
+	explore(ex::Exprtrans) = explore(expr(:call, :transpose, ex.args[1]) )
 
 	function explore(ex::Exprblock)
 		for ex2 in ex.args # ex2 = ex.args[1]
@@ -164,8 +182,8 @@ function unfold(ex::Expr)
 		# TODO : apply to other n-ary (n>2) operators ?
 		if contains([:+, :*, :sum], na[1]) 
 			while length(args) > 2
-				a2 = pop(args)
-				a1 = pop(args)
+				a2 = pop!(args)
+				a1 = pop!(args)
 				push!(args, expr(:call, ex.args[1], a1, a2))
 			end
 		end
@@ -263,7 +281,7 @@ function listVars(ex::Vector, avars)
 end
 
 ######### builds the gradient expression from unfolded expression ##############
-function backwardSweep(ex::Vector, avars::Set{Symbol})
+function backwardSweep(ex::Vector, avars::Set{Symbol})  
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[backwardSweep] unmanaged expr type $(ex.head)")
@@ -295,7 +313,7 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 			end
 
 		elseif isa(toExprH(rhs), Exprcall)  
-			for i in 2:length(rhs.args) #i=3
+			for i in 2:length(rhs.args) 
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
 					push!(el, derive(rhs, i-1, dsym))

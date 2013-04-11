@@ -29,7 +29,6 @@ model = quote
     resid ~ Normal(0, sigma)
 end
 
-
 # run random walk metropolis (10000 steps, 1000 for burnin, setting initial values)
 res = SimpleMCMC.simpleRWM(model, 10000, 1000, [1., 0.1, 1.])
 

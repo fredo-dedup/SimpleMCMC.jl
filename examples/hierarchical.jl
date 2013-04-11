@@ -28,7 +28,7 @@ model = quote
 	beta::real(D,L)
 
 	mu ~ Normal(0, 1)
-	sigma ~ Uniform(0, 5)
+	sigma ~ Weibull(2, 1)
 
 	beta ~ Normal(oneD * mu, oneD * sigma)
 
@@ -38,7 +38,7 @@ model = quote
 end
 
 # run random walk metropolis (10000 steps, 1000 for burnin)
-res = SimpleMCMC.simpleRWM(model, 100000, 1000)
+res = SimpleMCMC.simpleRWM(model, 10000, 1000)
 
 sum(res.params[:mu],3) / res.samples  # mu samples mean
 sum(res.params[:sigma],3) / res.samples # sigma samples mean
@@ -48,4 +48,16 @@ sum(res.params[:beta],3) / res.samples # beta samples mean
 res = SimpleMCMC.simpleHMC(model, 10000, 1000, 10, 0.03)
 
 # # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 1000)  # very slow  (bug ?)
+res = SimpleMCMC.simpleNUTS(model, 10)  # very slow  (bug ?)
+
+
+res.misc[:jmax]  
+res.misc[:epsilon]
+
+
+
+res.misc[:epsilon][1:20]
+res.misc[:epsilon][990:1010]
+res.misc[:jmax][1:20]
+res.misc[:jmax][990:1010]
+
