@@ -1,4 +1,4 @@
-test	date	julia.version	lib.version time.s
+test	date	julia.version	lib.version machine.hash time.s
 
 binomial_function_with_gradient	1365495972	0.1.0	-none-	0x5ba0	0.001072
 binomial_function_without_gradient	1365495975	0.1.0	-none-	0x5ba0	0.00049
