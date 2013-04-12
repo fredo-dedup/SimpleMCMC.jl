@@ -1,5 +1,4 @@
-
-- add a benchmark.jl file to have timing references (against other samplers, to assess changes and optimizations)
+- add other samplers (JAGS, Stan) to benchmark.jl file to have timing comparisons
 - add missing functions : hcat, vcat, comprehensions, map, reduce,  ? ...
 - add truncation and censoring
 - come back to Distributions.jl since it now uses immutable types ? => need to assess performance
@@ -10,9 +9,8 @@
 	- pre-determine size to avoid 'if isa(.,real)'  : low impact -2%
 	- +0, *1, ^1, sum(real) : low impact ~5%
 	- optimize logpdf (over 70 % of comp time) ?
-- make a demo file, using stats data and DataFrames
-- optimize state struct : avoid deep copy ?, use immutable ?
-- make examples using stats data and DataFrames
+- make a demo file using stats data and DataFrames
+- optimize state struct in HMC and NUTS : avoid deep copy ?, use immutable ?
 - find a way to avoid creation of a function in Main  
 - correct multiple ref bug
 - add progress bar

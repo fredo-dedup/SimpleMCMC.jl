@@ -6,7 +6,6 @@
 include("../src/SimpleMCMC.jl")
 
 BENCHFILE = "benchmarks.txt"
-# TODO : improve (git hangs on my windows machine)
 LIBVERSION = try ; readchomp(`git rev-parse --verify HEAD`)[1:6]; catch e; "-none-";end
 JULVERSION = VERSION
 # TODO : improve (gethostname hangs on my windows machine)
