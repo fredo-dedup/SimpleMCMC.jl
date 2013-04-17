@@ -4,7 +4,6 @@
 
 include("../src/SimpleMCMC.jl")
 
-
 ## variables of different dimension for testing
 v0ref = 2.
 v1ref = [2., 3, 0.1, 0, -5]

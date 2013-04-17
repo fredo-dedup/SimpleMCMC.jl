@@ -4,6 +4,82 @@
 #
 ##########################################################################
 
+
+
+
+# simulate dataset
+srand(1)
+n = 1000
+nbeta = 10 # number of predictors, including intercept
+X = [ones(n) randn((n, nbeta-1))]
+beta0 = randn((nbeta,))
+Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0)))
+
+# define model
+model = quote
+	vars::real(nbeta)
+
+	vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
+	prob = 1 / (1. + exp(X * vars)) 
+	Y ~ Bernoulli(prob)
+end
+
+# run random walk metropolis (10000 steps, 1000 for burnin)
+res = SimpleMCMC.simpleRWM(model, 10000, 1000)
+sol = Base.amap(mean, res.params[:vars], 1)
+
+####
+
+ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
+
+begin
+	x0 = ones(nparams) # build the initial values
+	y0 = copy(x0)
+	lambda0 = 0.
+    f0, grad = ll_func(y0)
+	beta0 = 1.  # 
+	
+    for i in 1:100  # i=1
+    	f1, gradx = ll_func(x0)
+
+    	lambda1 = (1+sqrt(1+4*lambda0))/2.
+    	fac = (1-lambda0)/lambda1
+
+    	y1 = x0 - grad / beta0
+    	x1 = (1-fac)*y1 + fac*y0
+
+    	fy, grady = ll_func(y1)
+
+    	beta1 = abs(dot(x0-y1, grady-gradx)) > beta0*dot(x0-y1, x0-y1)/2 ? beta0 : beta0*2.
+
+ 		println(i, " : ", round(log10(abs(f1-f0)),2), ",   beta =", beta1, ",   f =", f1)
+ 		# if dot(grad, x1-x0)<0. #  restart needed
+ 		if dot(x1-y0, x1-x0)<0. #  restart needed
+ 			println("=== restart")
+    		x0, y0, f0, beta0, lambda0 = x1, x1, f1, beta1, 0.0
+ 		else
+    		x0, y0, f0, beta0, lambda0 = x1, y1, f1, beta1, lambda1
+ 		end
+    end
+end
+
+[x0 beta0]
+ll_func(beta0)
+ll_func(x0)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ##########################################################################################
 #   Nesterov accelerated gradient
 ##########################################################################################
@@ -23,10 +99,11 @@ function simpleNesterov(model::Expr, init::Any)
     q = 0.
     theta0 = 1.
 
-    x1 = x0
-    y1 = y0
     for i in 1:10
-    	x1 = y0 - tky
+    	dummy, grad = ll_func(y0)
+    	x1 = y0 - tk .* grad
+    	y1 = x1 + (i-1)/(i+2)(x1-x0)
+    	x0, y0 = x1, y1
     end
 
 	### main loop
