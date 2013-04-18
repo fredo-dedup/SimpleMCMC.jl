@@ -3,7 +3,11 @@ module SimpleMCMC
 
 import Base.show
 
+import Base.sum
+sum(x::Real) = x  # meant to avoid the annoying behaviour of sum(Inf) 
+
 export simpleRWM, simpleHMC, simpleNUTS
+export simpleAGD
 export buildFunction, buildFunctionWithGradient
 
 # naming conventions
@@ -17,6 +21,7 @@ include("parsing.jl") #  include model processing functions
 include("diff.jl") #  include derivatives definitions
 include("distribs.jl") #  include distributions definitions
 include("samplers.jl") #  include sampling functions
+include("solvers.jl") #  include solving functions
 
 
 
