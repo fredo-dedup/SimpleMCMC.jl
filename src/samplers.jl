@@ -82,6 +82,8 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	#  main loop
 	S = eye(nparams) # initial value for jump scaling matrix
  	for i in 1:steps	
+ 		progress(i, steps, burnin)
+
 		jump = randn(nparams)
 		oldbeta = copy(beta)
 		beta += S * jump
@@ -134,6 +136,8 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	#  main loop
  	for i in 1:steps  #i=1
  		local j, state
+
+ 		progress(i, steps, burnin)
 
  		state0.v = randn(nparams)
  		update!(state0)
@@ -249,6 +253,8 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
  	for i in 1:steps  # i=1
  		local alpha, nalpha, n, s, j, n1, s1
  		local dummy, state_minus, state_plus, state, state1
+
+ 		progress(i, steps, burnin)
 
  		state0.v = randn(nparams)
  		update!(state0)
@@ -374,3 +380,10 @@ function calcStats!(res::MCMCRun)
 	res.essBySec = map(x->x/res.time, res.ess)
 end	
 
+##### update progress bar
+function progress(i::Integer, steps::Integer, burnin::Integer)
+	if rem(50*i, steps) == 0    # 50 characters for full run
+		print(i > burnin ? "+" : "-")
+		i == steps ? println() : nothing
+	end
+end	

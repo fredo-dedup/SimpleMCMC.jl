@@ -19,15 +19,16 @@ function show(io::IO, x::SolverRun)
 		print("$v= $(x.params[v])  ")
 	end
 	println()
-	println("max. iter reached $(x.converged), $(x.steps) iterations, $(round(x.time,1)) sec.")
+	x.converged ? nothing : print("convergence precision not reached, ")
+	println("$(x.steps) iterations, $(round(x.time,1)) sec.")
 end
 
 ##########################################################################################
 #   Accelerated Gradient Descent solver
 ##########################################################################################
-init = [1., 0.01, 1.0]
-maxiter = 50
-precision = 1e-10
+# init = [1., 0.01, 1.0]
+# maxiter = 50
+# precision = 1e-10
 
 function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 	tic() # start timer
@@ -55,7 +56,7 @@ function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 	theta0 = 1.
 	converged = false
 	i = 0
-	while i<maxiter && !converged   #for i in 0:maxiter # i=1
+	while i<maxiter && !converged  
 		y0 = (1-theta0).*z0 + theta0.*zb0
 		fy1, grady = ll_func(y0)
 		zb1 = zb0 + grady / (theta0 * L0)
@@ -92,7 +93,7 @@ function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
  		i += 1
 	end
 
-    res = SolverRun(toq(), i, f1, i==maxiter, Dict(), Dict())
+    res = SolverRun(toq(), i, f1, i<maxiter, Dict(), Dict())
 	for p in pmap
 		res.params[p.sym] = z0[ p.map]  #[1]:p.map[2]]
 	end
