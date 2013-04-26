@@ -60,7 +60,11 @@ end
 
 
 ##########################################################################################
-#   Random Walk Metropolis function
+#
+#   Random Walk Metropolis function with robust adaptative scaling
+#
+#  ref: ROBUST ADAPTIVE METROPOLIS ALGORITHM WITH COERCED ACCEPTANCE RATE - Matti Vihola
+#
 ##########################################################################################
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
@@ -169,6 +173,9 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 
 ##########################################################################################
 #   NUTS sampler function
+#
+#   Ref : The No-U-Turn Sampler: Adaptively Setting Path Lengths in Hamiltonian Monte Carlo - Hoffman/Gelman
+#
 ##########################################################################################
 
 function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)

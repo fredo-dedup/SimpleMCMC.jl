@@ -25,6 +25,10 @@ end
 
 ##########################################################################################
 #   Accelerated Gradient Descent solver
+#
+#	Ref : Adaptive Restart for Accelerated Gradient Schemes - Donoghue/Candes
+#    
+#
 ##########################################################################################
 # init = [1., 0.01, 1.0]
 # maxiter = 50
