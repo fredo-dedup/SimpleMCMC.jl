@@ -13,4 +13,3 @@
 - optimize state struct in HMC and NUTS : avoid deep copy ?, use immutable ?
 - find a way to avoid creation of a function in Main  
 - correct multiple ref bug
-- add progress bar

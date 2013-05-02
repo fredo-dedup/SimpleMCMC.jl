@@ -132,8 +132,6 @@ function parseModel(ex::Expr)
 	(ex, index, pmap)
 end
 
-
-
 ######## unfolds expressions to prepare derivation ###################
 function unfold(ex::Expr)
 	# Assumes there is only refs or calls on rhs of equal expressions, 
@@ -214,7 +212,7 @@ function uniqueVars(el::Vector)
     used = [ACC_SYM]
     for idx in 1:length(el) 
     	ex2 = el[idx]
-        lhs = elements(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
+        lhs = collect(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
         rhs = SimpleMCMC.getSymbols(ex2.args[2])
 
         if isa(toExprH(el[idx]), Exprequal)

@@ -1,4 +1,4 @@
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 srand(1)
 duration = 1000  # 1000 time steps
@@ -15,22 +15,63 @@ end
 # model definition (note : rescaling on tau and mu)
 model = quote
     mu::real
-    # tau::real
     itau::real
     sigma::real
 
-    # tau ~ Gamma(2, 0.1)
     itau ~ Gamma(2, 0.1)
     sigma ~ Gamma(2, 1)
     mu ~ Gamma(2, 1)
 
-    # fac = exp(- 0.001 / tau)
     fac = exp(- itau)
+    dummy = 13.2
+    dummy2 = sum(x)
     resid = x[2:end] - x[1:end-1] * fac - 10 * mu * (1. - fac)
     resid ~ Normal(0, sigma)
 end
 
 
+####
+    (model2, nparams, pmap) = SimpleMCMC.parseModel(model)
+    exparray = SimpleMCMC.unfold(model2)
+    exparray, finalacc = SimpleMCMC.uniqueVars(exparray)
+    avars = SimpleMCMC.listVars(exparray, [p.sym for p in pmap])
+    dmodel = backwardSweep(exparray, avars)
+
+####
+
+    allvarsset = mapreduce()
+
+    avars = Set{Symbol}([p.sym for p in pmap]...)
+    for ex2 in exparray # ex2 = exparray[1]
+        lhs = SimpleMCMC.getSymbols(ex2.args[1])
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+
+        length(intersect(rhs, avars)) > 0 ? avars = union(avars, lhs) : nothing
+    end
+    avars
+
+    parents = Set{Symbol}(finalacc)
+    for ex2 in reverse(exparray) # ex2 = reverse(exparray)[1]
+        lhs = SimpleMCMC.getSymbols(ex2.args[1])
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+
+        # println("$ex2 : $lhs = $rhs : $(intersect(lhs, parents)) => $(union(parents, rhs))....")
+        length(intersect(lhs, parents)) > 0 ? parents = union(parents, rhs) : nothing
+    end
+    parents
+
+
+
+
+length(parents)
+length(avars)
+
+for p in parents ; println(p, " ", has(avars, p)) ; end
+for p in avars ; println(p, " ", has(parents, p)) ; end
+
+
+
+end
 
 # julia> zb1 = zb0 + grady / (theta0 * L0)
 # 3-element Float64 Array:

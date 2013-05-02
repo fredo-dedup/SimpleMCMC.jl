@@ -5,6 +5,8 @@
 
 using SimpleMCMC
 
+cd(joinpath(dirname(Base.find_in_path("SimpleMCMC")), "../test"))
+
 BENCHFILE = "benchmarks.txt"
 LIBVERSION = try ; readchomp(`git rev-parse --verify HEAD`)[1:6]; catch e; "-none-";end
 JULVERSION = VERSION
