@@ -1,6 +1,6 @@
 ######### fitting an Ornstein–Uhlenbeck process  ###########
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 # generate serie
 srand(1)
@@ -31,17 +31,17 @@ model = quote
 end
 
 # run random walk metropolis (10000 steps, 1000 for burnin, setting initial values)
-res = SimpleMCMC.simpleRWM(model, 10000, 1000, [1., 0.1, 1.])
+res = simpleRWM(model, 10000, 1000, [1., 0.1, 1.])
 
 [mean(res.params[:mu]) std(res.params[:mu]) ] * 10
 [mean(res.params[:tau]) std(res.params[:tau]) ] * 1000
 [mean(res.params[:sigma]) std(res.params[:sigma]) ]
 
 # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 5 inner steps, 0.002 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, [1., 0.1, 1.], 5, 0.002)
+res = simpleHMC(model, 10000, 1000, [1., 0.1, 1.], 5, 0.002)
 
 # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 10000, 1000, [1., 0.1, 1.])
+res = simpleNUTS(model, 10000, 1000, [1., 0.1, 1.])
 
 res.misc[:jmax] # check # of doublings in NUTS algo
 res.misc[:epsilon] # check epsilon

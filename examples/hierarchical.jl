@@ -1,7 +1,7 @@
 ######### hierarchical logistic regression  ###########
 # using example of STAN 1.0.2 manual, chapter 10.7 p. 49
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 ## generate data set
 N = 50 # number of observations
@@ -38,26 +38,18 @@ model = quote
 end
 
 # run random walk metropolis (10000 steps, 1000 for burnin)
-res = SimpleMCMC.simpleRWM(model, 10000, 1000)
+res = simpleRWM(model, 10000, 1000)
 
 sum(res.params[:mu],3) / res.samples  # mu samples mean
 sum(res.params[:sigma],3) / res.samples # sigma samples mean
 sum(res.params[:beta],3) / res.samples # beta samples mean
 
 # # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 10 inner steps, 0.03 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 1000, 10, 0.03)
+res = simpleHMC(model, 10000, 1000, 10, 0.03)
 
 # # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 10)  # very slow  (bug ?)
-
+res = simpleNUTS(model, 10)  # very slow  (bug ?)
 
 res.misc[:jmax]  
 res.misc[:epsilon]
-
-
-
-res.misc[:epsilon][1:20]
-res.misc[:epsilon][990:1010]
-res.misc[:jmax][1:20]
-res.misc[:jmax][990:1010]
 

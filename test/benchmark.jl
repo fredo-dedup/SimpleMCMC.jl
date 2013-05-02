@@ -3,7 +3,7 @@
 #     and the samplers
 ########################################################################
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 BENCHFILE = "benchmarks.txt"
 LIBVERSION = try ; readchomp(`git rev-parse --verify HEAD`)[1:6]; catch e; "-none-";end

@@ -2,12 +2,12 @@
 #    testing script for distributions and samplers
 #########################################################################
 
-include("../src/SimpleMCMC.jl")
-using Distributions # used to provide exact cdf of distributions
+using SimpleMCMC
+using Distributions # used to provide exact cdf of distributions for testing
 
 N = 10000  # number of steps in MCMC for testing
 KSTHRESHOLD = 1.358  #  5% level confidence for Kolmogorov–Smirnov test
-KSTHRESHOLD = 5  # TODO : understand why KS so bad for all samplers forcing such a high threshold to pass tests
+KSTHRESHOLD = 5  # TODO : understand why KS is so bad for all samplers forcing such a high threshold to pass tests
 
 TOLERANCE = 1e-1  # 10% tolerance due to small sampling sizes
 

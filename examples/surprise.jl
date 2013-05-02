@@ -1,6 +1,6 @@
 ######### Distribution with abs() and max()  ###########
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 # define model
 model = quote
@@ -14,16 +14,16 @@ model = quote
 end
 
 
-# run random walk metropolis (10000 steps, 5000 for burnin)
-res = SimpleMCMC.simpleRWM(model, 20000, 0)
+# run random walk metropolis 
+res = simpleRWM(model, 20000, 0)
 writedlm("c:/temp/circle.txt", [res.params[:x] res.params[:y]])
 
-# run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.05 inner step size)
-res = SimpleMCMC.simpleHMC(model, 10000, 10, 0.1)
+# run Hamiltonian Monte-Carlo
+res = simpleHMC(model, 10000, 10, 0.1)
 writedlm("c:/temp/circle.2.txt", [res.params[:x] res.params[:y]])
 
-# run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 10, 0)   # extremely slow
+# run NUTS - HMC
+res = simpleNUTS(model, 10000, 0)   # extremely slow
 writedlm("c:/temp/circle.3.txt", [res.params[:x] res.params[:y]])
 
 

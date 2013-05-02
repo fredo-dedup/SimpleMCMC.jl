@@ -2,7 +2,7 @@
 #    testing script for gradients
 #########################################################################
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 ## variables of different dimension for testing
 v0ref = 2.
