@@ -50,7 +50,7 @@ end
 ######### first pass on the model
 #  - extracts parameters definition
 #  - rewrite ~ operators  as acc += logpdf..(=)
-#  - translates x += y into x = x + y, also for -= and *=
+#  - translates x += y into x = x + y, same for -= and *=
 function parseModel(ex::Expr)
 
 	explore(ex::Expr) =       explore(toExprH(ex))
@@ -204,11 +204,12 @@ function unfold(ex::Expr)
 
 	el = {}
 	explore(ex)
+	el
+end
 
-	# before returning, rename variables set several times as this would make
-	#  the automated derivation fail
-	# ERROR : algo doesn't work when a variable sets individual elements, x = .. then x[3] = ...; 
-
+######### rename variables set several times to ease derivation  #############
+# FIXME : algo doesn't work when a variable sets individual elements, x = .. then x[3] = ...; 
+function uniqueVars(el::Vector)
     subst = Dict{Symbol, Symbol}()
     used = [ACC_SYM]
     for idx in 1:length(el) 
@@ -351,7 +352,8 @@ end
 function buildFunctionWithGradient(model::Expr)
 	
 	(model2, nparams, pmap) = parseModel(model)
-	exparray, finalacc = unfold(model2)
+	exparray = unfold(model2)
+	exparray, finalacc = uniqueVars(exparray)
 	avars = listVars(exparray, [p.sym for p in pmap])
 	dmodel = backwardSweep(exparray, avars)
 
