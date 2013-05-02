@@ -1,0 +1,40 @@
+[
+     {
+        "id": "tools",
+        "children":
+        [{
+            "caption": "SublimeREPL",
+            "mnemonic": "julia",
+            "id": "SublimeREPL",
+            "children":
+            [
+                {"command": "repl_open",
+                 "caption": "Julia",
+                 "id": "repl_julia",
+                 "mnemonic": "julia",
+                 "args": {
+                    "type": "subprocess",
+                    "external_id": "julia",
+                    "encoding": {
+//                        "windows": "$win_cmd_encoding",
+                        "windows": "utf8",
+                        "linux": "utf8",
+                        "osx": "utf8"
+                        },
+                    "soft_quit": "\rquit()\r",
+                    "cmd": {"linux": ["/home/fredo/devl/julia/julia"]},
+                    "cwd": "$file_path",
+                    "extend_env": {"osx": {"PATH": "{PATH}:/usr/local/bin"},
+                                   "linux": {"PATH": "{PATH}:/usr/local/bin"},
+                                   "windows": {}},
+                    "cmd_postfix": "\r", // postfix that will be automatically added after a line in repl
+                    "suppress_echo": {"osx": true,
+                                      "linux": true,
+                                      "windows": false}//,
+                    //"syntax": "Packages/R/R Console.tmLanguage"
+                    }
+                }
+            ]
+        }]
+    }
+]
