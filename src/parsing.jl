@@ -1,5 +1,5 @@
 ###############################################################################
-#    Parsing functions
+#    Model expression parsing
 ###############################################################################
 
 ##########  creates a parameterized type to ease AST exploration  ############
@@ -46,6 +46,21 @@ type MCMCParams
 	map::Union(Integer, Range1)  
 end
 
+######### model structure   ##############
+type MCMCModel
+	bsize::Int32             # length of beta, the parameter vector
+	pars::Vector{MCMCParams} # parameters with their mapping to the beta real vector
+	source::Expr             # model source, after first pass
+	exprs::Vector{Expr}      # vector of assigments that make the model
+	dexprs::Vector{Expr}     # vector of assigments that make the gradient
+	finalacc::Symbol         # last symbol of loglik accumulator after renaming
+	varsset::Set{Symbol}     # all the vars set in the model
+	pardesc::Set{Symbol}     # all the vars set in the model that depend on model parameters
+	accanc::Set{Symbol}      # all the vars (possibly external) that influence the accumulator
+end
+MCMCModel() = MCMCModel(0, MCMCParams[], :(), Expr[], Expr[], ACC_SYM, 
+	Set{Symbol}(), Set{Symbol}(), Set{Symbol}())
+
 
 ######### first pass on the model
 #  - extracts parameters definition
@@ -82,8 +97,8 @@ function parseModel(ex::Expr)
 		def = ex.args[2]
 
 		if def == :real  #  single param declaration
-			push!(pmap, MCMCParams(par, Integer[], index+1)) #Integer[index+1, index+1]))
-			index += 1
+			push!(m.pars, MCMCParams(par, Integer[], m.bsize+1)) 
+			m.bsize += 1
 
 		elseif isa(def, Expr) && def.head == :call
 			e2 = def.args
@@ -92,16 +107,16 @@ function parseModel(ex::Expr)
 					nb = Main.eval(e2[2])
 					assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
 
-					push!(pmap, MCMCParams(par, Integer[nb], (index+1):(index+nb)))
-					index += nb
+					push!(m.pars, MCMCParams(par, Integer[nb], (m.bsize+1):(m.bsize+nb)))
+					m.bsize += nb
 				elseif length(e2) == 3 #  matrix param declaration
 					nb1 = Main.eval(e2[2])
 					assert(isa(nb1, Integer) && nb1 > 0, "invalid vector size $(e2[2]) = $nb1")
 					nb2 = Main.eval(e2[3])
 					assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
 
-					push!(pmap, MCMCParams(par, Integer[nb1, nb2], (index+1):(index+nb1*nb2))) #Integer[index+1, index+nb1*nb2]))
-					index += nb1*nb2
+					push!(m.pars, MCMCParams(par, Integer[nb1, nb2], (m.bsize+1):(m.bsize+nb1*nb2))) 
+					m.bsize += nb1*nb2
 				else
 					error("up to 2 dim for parameters in $ex")
 				end
@@ -122,18 +137,15 @@ function parseModel(ex::Expr)
 		args = vcat(args, ex.args[3].args[2:end])
 		push!(args, ex.args[2])
 		return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
-
 	end
 
-	pmap = MCMCParams[]
-	index = 0
-
-	ex = explore(ex)
-	(ex, index, pmap)
+	m = MCMCModel()
+	m.source = explore(ex)
+	m
 end
 
 ######## unfolds expressions to prepare derivation ###################
-function unfold(ex::Expr)
+function unfold!(m::MCMCModel)
 	# Assumes there is only refs or calls on rhs of equal expressions, 
 	# TODO : generalize ? (add blocks ?)
 
@@ -148,7 +160,7 @@ function unfold(ex::Expr)
 			if isa(ex2, Expr)
 				explore(ex2)
 			else  # is that possible ??
-				push!(el, ex2)
+				push!(m.exprs, ex2)
 			end
 		end
 	end
@@ -160,12 +172,12 @@ function unfold(ex::Expr)
 
 		rhs = ex.args[2]
 		if isa(rhs, Symbol)
-			push!(el, expr(:(=), lhs, rhs))
+			push!(m.exprs, expr(:(=), lhs, rhs))
 		elseif isa(rhs, Expr) # only refs and calls will work
 				ue = explore(toExprH(rhs)) # explore will return something in this case
-				push!(el, expr(:(=), lhs, ue))
+				push!(m.exprs, expr(:(=), lhs, ue))
 		elseif isa(rhs, Real)
-			push!(el, expr(:(=), lhs, rhs))
+			push!(m.exprs, expr(:(=), lhs, rhs))
 		else  # unmanaged kind of lhs
 		 	error("[unfold] can't handle RHS of assignment $ex")
 		end
@@ -190,7 +202,7 @@ function unfold(ex::Expr)
 			if isa(e2, Expr) # only refs and calls will work
 				ue = explore(e2)
 				nv = gensym(TEMP_NAME)
-				push!(el, :($nv = $(ue)))
+				push!(m.exprs, :($nv = $(ue)))
 				push!(na, nv)
 			else
 				push!(na, e2)
@@ -200,14 +212,14 @@ function unfold(ex::Expr)
 		expr(ex.head, na)
 	end
 
-	el = {}
-	explore(ex)
-	el
+	explore(m.source)
 end
 
-######### rename variables set several times to ease derivation  #############
+######### rename set variables set several times to make them unique  #############
 # FIXME : algo doesn't work when a variable sets individual elements, x = .. then x[3] = ...; 
-function uniqueVars(el::Vector)
+# FIXME 2 : external variables redefined within model are not renamed
+function uniqueVars!(m::MCMCModel)
+	el = m.exprs
     subst = Dict{Symbol, Symbol}()
     used = [ACC_SYM]
     for idx in 1:length(el) 
@@ -257,30 +269,41 @@ function uniqueVars(el::Vector)
 
     end
 
-	(el, has(subst, ACC_SYM) ? subst[ACC_SYM] : ACC_SYM )
+	m.finalacc = has(subst, ACC_SYM) ? subst[ACC_SYM] : ACC_SYM  # keep reference of potentially renamed accumulator
 end
 
-######### identifies derivation vars (descendants of model parameters)  #############
-# TODO : further filtering to keep only those influencing the accumulator
-function listVars(ex::Vector, avars) 
-	# 'avars' : parameter names whose descendants are to be listed by this function
-	avars = Set{Symbol}(avars...)
-	for ex2 in ex # ex2 = ex[1]
-		assert(isa(ex2, Expr), "[processVars] not an expression : $ex2")
+######### identifies vars #############
+# - lists variables that depend on model parameters 
+# - lists variables that influence the accumulator
+# - lists variables defined
+# In order to 
+#   1) restrict gradient code to the strictly necessary variables 
+#   2) move parameter independant variables definition out the function (but within closure) 
+#   3) remove unnecessary variables (with warning)
 
-		lhs = getSymbols(ex2.args[1])
-		rhs = getSymbols(ex2.args[2])
+function categorizeVars!(m::MCMCModel) 
 
-		if length(intersect(rhs, avars)) > 0 
-			 avars = union(avars, lhs)
-		end
-	end
+    m.varsset = mapreduce(p->getSymbols(p.args[1]), union, m.exprs)
 
-	avars
+    m.pardesc = Set{Symbol}([p.sym for p in m.pars]...)  # start with parameter symbols
+    for ex2 in m.exprs 
+        lhs = SimpleMCMC.getSymbols(ex2.args[1])
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+
+        length(rhs & m.pardesc) > 0 ? m.pardesc = m.pardesc | lhs : nothing
+    end
+
+    m.accanc = Set{Symbol}(m.finalacc)
+    for ex2 in reverse(m.exprs) # proceed backwards
+        lhs = SimpleMCMC.getSymbols(ex2.args[1])
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+
+        length(lhs & m.accanc) > 0 ? m.accanc = m.accanc | rhs : nothing
+    end
 end
 
 ######### builds the gradient expression from unfolded expression ##############
-function backwardSweep(ex::Vector, avars::Set{Symbol})  
+function backwardSweep!(m::MCMCModel)  
 
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[backwardSweep] unmanaged expr type $(ex.head)")
@@ -299,23 +322,25 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 		end
 		
 		rhs = ex.args[2]
-		if isa(rhs,Symbol) 
+		if !isa(rhs,Symbol) && !isa(rhs,Expr) # some kind of number, nothing to do
+
+		elseif isa(rhs,Symbol) 
 			if contains(avars, rhs)
 				vsym2 = symbol("$(DERIV_PREFIX)$rhs")
-				push!(el, :( $vsym2 = $dsym2))
+				push!(m.dexprs, :( $vsym2 = $dsym2))
 			end
 
 		elseif isa(toExprH(rhs), Exprref)
 			if contains(avars, rhs.args[1])
 				vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2:end]...)
-				push!(el, :( $vsym2 = $dsym2))
+				push!(m.dexprs, :( $vsym2 = $dsym2))
 			end
 
 		elseif isa(toExprH(rhs), Exprcall)  
 			for i in 2:length(rhs.args) 
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
-					push!(el, derive(rhs, i-1, dsym))
+					push!(m.dexprs, derive(rhs, i-1, dsym))
 				end
 			end
 		else 
@@ -323,75 +348,19 @@ function backwardSweep(ex::Vector, avars::Set{Symbol})
 		end
 	end
 
-	el = {}
-	for ex2 in reverse(ex)
+	avars = m.accanc & m.pardesc
+	for ex2 in reverse(m.exprs)  # proceed backwards
 		assert(isa(ex2, Expr), "[backwardSweep] not an expression : $ex2")
 		explore(ex2)
 	end
 
-	el
 end
-
-######### builds the full functions ##############
-
-function buildFunction(model::Expr)
-	(model2, nparams, pmap) = parseModel(model)
-
-	body = [betaAssign(pmap), 
-				[:($ACC_SYM = 0.)], 
-				model2.args, 
-				[:(return($ACC_SYM))] ]
-
-	func = Main.eval(tryAndFunc(body, false))
-
-	(func, nparams, pmap)
-end
-
-function buildFunctionWithGradient(model::Expr)
-	
-	(model2, nparams, pmap) = parseModel(model)
-	exparray = unfold(model2)
-	exparray, finalacc = uniqueVars(exparray)
-	avars = listVars(exparray, [p.sym for p in pmap])
-	dmodel = backwardSweep(exparray, avars)
-
-	body = betaAssign(pmap)
-	push!(body, :($ACC_SYM = 0.)) # acc init
-	body = vcat(body, exparray)
-
-	push!(body, :($(symbol("$DERIV_PREFIX$finalacc")) = 1.0))
-	if contains(avars, finalacc) # remove accumulator, treated above
-		delete!(avars, finalacc)
-	end
-	for v in avars 
-		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
-	end
-
-	body = vcat(body, dmodel)
-
-	if length(pmap) == 1
-		dn = symbol("$DERIV_PREFIX$(pmap[1].sym)")
-		dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-	else
-		dexp = {:vcat}
-		# dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(vec([$DERIV_PREFIX$(p.sym)])) for p in pmap})
-		dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in pmap})
-		dexp = expr(:call, dexp)
-	end
-
-	push!(body, :(($finalacc, $dexp)))
-	func = Main.eval(tryAndFunc(body, true))
-
-	# println(expr(:block, body))
-	(func, nparams, pmap)
-end
-
-
 
 ######   Common functionality  ###########
 
 # returns an array of expr assigning parameters from the beta vector
-function betaAssign(pmap::Vector{MCMCParams})
+function betaAssign(m::MCMCModel)
+	pmap = m.pars
 	assigns = Expr[]
 	for p in pmap
 		if length(p.size) <= 1  # scalar or vector
@@ -406,7 +375,7 @@ end
 # encloses an array of expr in a try block to catch zero likelihoods (-Inf log likelihood)
 #  and generates function expression
 function tryAndFunc(body::Vector, grad::Bool)
-	body = expr(:try, expr(:block, body),
+	body = expr(:try, expr(:block, body...),
 					:e, 
 					expr(:block, 
 						grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
@@ -415,3 +384,59 @@ function tryAndFunc(body::Vector, grad::Bool)
 	expr(:function, expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
 					expr(:block, body) )
 end
+
+######### builds the full functions ##############
+
+function buildFunction(model::Expr)
+	m = parseModel(model)
+
+	body = [betaAssign(m), 
+			[:($ACC_SYM = 0.)], 
+			m.source.args, 
+			[:(return($ACC_SYM))] ]
+
+	func = Main.eval(tryAndFunc(body, false))
+
+	(func, m.bsize, m.pars)
+end
+
+function buildFunctionWithGradient(model::Expr)
+	
+	m = parseModel(model)
+	unfold!(m)
+	uniqueVars!(m)
+	categorizeVars!(m)
+	backwardSweep!(m)
+
+	body = betaAssign(m)
+	push!(body, :($ACC_SYM = 0.)) # acc init
+	body = vcat(body, m.exprs)
+
+	push!(body, :($(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
+
+	avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
+	for v in avars 
+		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
+	end
+
+	body = vcat(body, m.dexprs)
+
+	if length(m.pars) == 1
+		dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
+		dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
+	else
+		dexp = {:vcat}
+		# dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(vec([$DERIV_PREFIX$(p.sym)])) for p in pmap})
+		dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
+		dexp = expr(:call, dexp)
+	end
+
+	push!(body, :(($(m.finalacc), $dexp)))
+	func = Main.eval(tryAndFunc(body, true))
+
+	# println(expr(:block, body))
+	(func, m.bsize, m.pars)
+end
+
+
+

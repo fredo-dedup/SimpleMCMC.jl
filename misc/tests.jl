@@ -39,7 +39,7 @@ end
 
 ####
 
-    allvarsset = mapreduce()
+    allvarsset = mapreduce(p->SimpleMCMC.getSymbols(p.args[1]), union, exparray)
 
     avars = Set{Symbol}([p.sym for p in pmap]...)
     for ex2 in exparray # ex2 = exparray[1]
@@ -56,7 +56,7 @@ end
         rhs = SimpleMCMC.getSymbols(ex2.args[2])
 
         # println("$ex2 : $lhs = $rhs : $(intersect(lhs, parents)) => $(union(parents, rhs))....")
-        length(intersect(lhs, parents)) > 0 ? parents = union(parents, rhs) : nothing
+        length(lhs & parents) > 0 ? parents = parents | rhs : nothing
     end
     parents
 
@@ -68,10 +68,13 @@ length(avars)
 
 for p in parents ; println(p, " ", has(avars, p)) ; end
 for p in avars ; println(p, " ", has(parents, p)) ; end
+for p in allvarsset ; println(p, " ", has(parents, p)) ; end
 
+allvarsset - avars
+allvarsset - parents
+avars - parents
+parents - avars
 
-
-end
 
 # julia> zb1 = zb0 + grady / (theta0 * L0)
 # 3-element Float64 Array:
