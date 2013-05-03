@@ -375,14 +375,16 @@ end
 # encloses an array of expr in a try block to catch zero likelihoods (-Inf log likelihood)
 #  and generates function expression
 function tryAndFunc(body::Vector, grad::Bool)
-	body = expr(:try, expr(:block, body...),
+	fex = expr(:try, expr(:block, body...),
 					:e, 
 					expr(:block, 
 						grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
 									:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 
-	expr(:function, expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
-					expr(:block, body) )
+	# expr(:function, expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
+	# 				expr(:block, body) )
+	expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
+					expr(:block, fex) )
 end
 
 ######### builds the full functions ##############

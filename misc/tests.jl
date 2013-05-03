@@ -1,4 +1,5 @@
 using SimpleMCMC
+include("../src/SImpleMCMC.jl")
 
 srand(1)
 duration = 1000  # 1000 time steps
@@ -31,12 +32,91 @@ end
 
 
 ####
-    (model2, nparams, pmap) = SimpleMCMC.parseModel(model)
-    exparray = SimpleMCMC.unfold(model2)
-    exparray, finalacc = SimpleMCMC.uniqueVars(exparray)
-    avars = SimpleMCMC.listVars(exparray, [p.sym for p in pmap])
-    dmodel = backwardSweep(exparray, avars)
+include("../src/SimpleMCMC.jl")
 
+    m = SimpleMCMC.parseModel(model)
+    SimpleMCMC.unfold!(m)
+m.exprs
+    SimpleMCMC.uniqueVars!(m)
+m.exprs
+m.finalacc
+    SimpleMCMC.categorizeVars!(m)
+m.varsset
+m.accanc
+m.pardesc
+m.accanc & m.pardesc - Set(m.finalacc)
+    SimpleMCMC.backwardSweep!(m)
+
+
+
+
+body = SimpleMCMC.betaAssign(m)
+    push!(body, :($ACC_SYM = 0.)) # acc init
+    body = vcat(body, m.exprs)
+
+    push!(body, :($(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
+
+    avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
+    for v in avars 
+        push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
+    end
+
+    body = vcat(body, m.dexprs)
+
+    if length(m.pars) == 1
+        dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
+        dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
+    else
+        dexp = {:vcat}
+        # dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(vec([$DERIV_PREFIX$(p.sym)])) for p in pmap})
+        dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
+        dexp = expr(:call, dexp)
+    end
+
+    push!(body, :(($(m.finalacc), $dexp)))
+
+include("../src/SimpleMCMC.jl")
+
+    finalex = SimpleMCMC.tryAndFunc(body, true)
+    whos()
+    eval(:(module test; $finalex; end) )
+    eval(:(module loglik; function test(x); x+1;end; end) )
+    eval(:(module $LLFUNC_SYM; function test(x); x+1;end; end) )
+    @eval module loglik ; function test(x); x+5;end ; end
+    test.loglik([1.,1.,1.])
+    typeof(loglik.loglik)
+    loglik.test
+    test.loglik
+    g = loglik.test
+    g(5)
+
+    dump(:(module loglik; function test(x); x+1;end; end) ,10)
+
+
+    modexpr = expr(:module, true, LLFUNC_SYM, 
+                   expr(:block, finalex))
+    eval(modexpr)
+
+    func = Main.eval(SimpleMCMC.tryAndFunc(body, true))
+
+
+
+
+
+ll_func, nparams, pmap = SimpleMCMC.buildFunction(model)
+
+ll_func(ones(10))
+
+ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model)
+ll_func(ones(10))
+
+m = SimpleMCMC.parseModel(model)
+[SimpleMCMC.betaAssign(m),             [:(__acc = 0.)],             m.source,             [:(return(__acc))] ]
+
+SimpleMCMC.simpleRWM(model,1000,10)
+
+
+m.dexprs
 ####
 
     allvarsset = mapreduce(p->SimpleMCMC.getSymbols(p.args[1]), union, exparray)
