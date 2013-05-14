@@ -13,7 +13,6 @@ export buildFunction, buildFunctionWithGradient
 # naming conventions
 const ACC_SYM = :__acc       # name of accumulator variable
 const PARAM_SYM = :__beta    # name of parameter vector
-const LLFUNC_SYM = :loglik   # name of module and function containing log-likelihood evaluation function
 const TEMP_NAME = "tmp"      # prefix of temporary variables in log-likelihood function
 const DERIV_PREFIX = "d"     # prefix of gradient variables in log-likelihood function
 

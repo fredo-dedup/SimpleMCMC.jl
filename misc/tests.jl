@@ -1,56 +1,60 @@
-using SimpleMCMC
-include("../src/SImpleMCMC.jl")
 
-srand(1)
-duration = 1000  # 1000 time steps
-mu0 = 10.  # target value
-tau0 = 20  # convergence time
-sigma0 = 0.1  # noise term
+begin
+    srand(1)
+    duration = 1000  # 1000 time steps
+    mu0 = 10.  # target value
+    tau0 = 20  # convergence time
+    sigma0 = 0.1  # noise term
 
-x = fill(NaN, duration)
-x[1] = 1.
-for i in 2:duration
-	x[i] = x[i-1]*exp(-1/tau0) + mu0*(1-exp(-1/tau0)) +  sigma0*randn()
+    x = fill(NaN, duration)
+    x[1] = 1.
+    for i in 2:duration
+    	x[i] = x[i-1]*exp(-1/tau0) + mu0*(1-exp(-1/tau0)) +  sigma0*randn()
+    end
+    
+    # model definition (note : rescaling on tau and mu)
+    model = quote
+        mu::real
+        itau::real
+        sigma::real
+
+        itau ~ Gamma(2, 0.1)
+        sigma ~ Gamma(2, 1)
+        mu ~ Gamma(2, 1)
+
+        fac = exp(- itau)
+        dummy = 13.2
+        dummy2 = sum(x)
+        resid = x[2:end] - x[1:end-1] * fac - 10 * mu * (1. - fac)
+        resid ~ Normal(0, sigma)
+    end
 end
 
-# model definition (note : rescaling on tau and mu)
-model = quote
-    mu::real
-    itau::real
-    sigma::real
+export x
 
-    itau ~ Gamma(2, 0.1)
-    sigma ~ Gamma(2, 1)
-    mu ~ Gamma(2, 1)
-
-    fac = exp(- itau)
-    dummy = 13.2
-    dummy2 = sum(x)
-    resid = x[2:end] - x[1:end-1] * fac - 10 * mu * (1. - fac)
-    resid ~ Normal(0, sigma)
-end
+res = SimpleMCMC.simpleRWM(model, 1000)
+res = SimpleMCMC.simpleRWM(:(mu::real; mu ~ Normal(0,1)), 1000)
 
 
 ####
 include("../src/SimpleMCMC.jl")
 
-    m = SimpleMCMC.parseModel(model)
-    SimpleMCMC.unfold!(m)
+m = SimpleMCMC.parseModel(model)
+SimpleMCMC.unfold!(m)
 m.exprs
-    SimpleMCMC.uniqueVars!(m)
+SimpleMCMC.uniqueVars!(m)
 m.exprs
 m.finalacc
-    SimpleMCMC.categorizeVars!(m)
+SimpleMCMC.categorizeVars!(m)
 m.varsset
 m.accanc
 m.pardesc
 m.accanc & m.pardesc - Set(m.finalacc)
-    SimpleMCMC.backwardSweep!(m)
+SimpleMCMC.backwardSweep!(m)
+m.dexprs
 
-
-
-
-body = SimpleMCMC.betaAssign(m)
+begin
+    body = SimpleMCMC.betaAssign(m)
     push!(body, :($ACC_SYM = 0.)) # acc init
     body = vcat(body, m.exprs)
 
@@ -75,11 +79,44 @@ body = SimpleMCMC.betaAssign(m)
 
     push!(body, :(($(m.finalacc), $dexp)))
 
-include("../src/SimpleMCMC.jl")
-
     finalex = SimpleMCMC.tryAndFunc(body, true)
+end
+
+SimpleMCMC.logpdfNormal(0,1,1)
+expr
+template = :(module llmod; function ll(x); x;end; end)
+template.args[3].args[4] = finalex
+eval(template)
+llmod.ll([1.,0.1,1.])
+
+template = :(module llmod; using Main; function ll(x); x;end; end)
+template.args[3].args[5] = :(function ll(x); Main.SimpleMCMC.logpdfNormal(0,1,x);end)
+eval(template)
+llmod.ll(1.)
+
+dump(finalex)
+dump(template.args[3].args[4])
+template
+
+
+eval(:(function test(y);y;end))
+test("abcd")
+
+
+
+
+
+
+
+dump(template.args[3].args[4].args[2].args[2])
     whos()
-    eval(:(module test; $finalex; end) )
+
+    myf = :(function gr(x); Main.SimpleMCMC.logpdfGamma(2,1,x);end)
+
+    eval(:(module llmod; $myf; end) )
+llmod.ll(10)
+llmod.gr(0.9)
+
     eval(:(module loglik; function test(x); x+1;end; end) )
     eval(:(module $LLFUNC_SYM; function test(x); x+1;end; end) )
     @eval module loglik ; function test(x); x+5;end ; end

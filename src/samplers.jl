@@ -69,18 +69,19 @@ end
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	const local target_accept = 0.234
-	local ll_func, nparams, pmap
+	local nparams, pmap
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
+	# ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
+	nparams, pmap = buildFunction(model) # build function, count the number of parameters
 
 	beta = setInit(init, nparams) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
-	__lp = ll_func(beta)
+	__lp = llmod.ll(beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
@@ -92,7 +93,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		oldbeta = copy(beta)
 		beta += S * jump
 
- 		old__lp, __lp = __lp, ll_func(beta) 
+ 		old__lp, __lp = __lp, llmod.ll(beta) 
 
  		alpha = min(1, exp(__lp - old__lp))
 		if rand() > alpha # reject, go back to previous state

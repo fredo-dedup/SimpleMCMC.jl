@@ -133,9 +133,10 @@ function parseModel(ex::Expr)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
 		fn = symbol("logpdf$(ex.args[3].args[1])")
-		args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
-		args = vcat(args, ex.args[3].args[2:end])
-		push!(args, ex.args[2])
+		args = {expr(:., :SimpleMCMC, expr(:quote, fn)), ex.args[3].args[2:end]..., ex.args[2]}
+		# args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
+		# args = vcat(args, ex.args[3].args[2:end])
+		# push!(args, ex.args[2])
 		return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 	end
 
@@ -215,7 +216,7 @@ function unfold!(m::MCMCModel)
 	explore(m.source)
 end
 
-######### rename set variables set several times to make them unique  #############
+######### renames variables set several times to make them unique  #############
 # FIXME : algo doesn't work when a variable sets individual elements, x = .. then x[3] = ...; 
 # FIXME 2 : external variables redefined within model are not renamed
 function uniqueVars!(m::MCMCModel)
@@ -244,10 +245,10 @@ function uniqueVars!(m::MCMCModel)
 	        		end
 	        	end
 	        else
-	        	error("[unfold] can't subsitute var name in $ex2")
+	        	error("[uniqueVars] can't subsitute var name in $ex2")
 	        end
 	    else
-	    	error("[unfold] not an assignment ! : $ex2")
+	    	error("[uniqueVars] not an assignment ! : $ex2")
 	    end
 
         if contains(used, lhs) # var already set once
@@ -261,7 +262,7 @@ function uniqueVars!(m::MCMCModel)
         			el[idx].args[1].args[1] = subst[el[idx].args[1].args[1]]
         		end
 	        else
-	        	error("[unfold] can't subsitute var name in $lhs")
+	        	error("[uniqueVars] can't subsitute var name in $lhs")
 	        end
         else # var set for the first time
             push!(used, lhs)
@@ -280,9 +281,7 @@ end
 #   1) restrict gradient code to the strictly necessary variables 
 #   2) move parameter independant variables definition out the function (but within closure) 
 #   3) remove unnecessary variables (with warning)
-
 function categorizeVars!(m::MCMCModel) 
-
     m.varsset = mapreduce(p->getSymbols(p.args[1]), union, m.exprs)
 
     m.pardesc = Set{Symbol}([p.sym for p in m.pars]...)  # start with parameter symbols
@@ -381,9 +380,7 @@ function tryAndFunc(body::Vector, grad::Bool)
 						grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
 									:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 
-	# expr(:function, expr(:call, gensym(LLFUNC_NAME), :($PARAM_SYM::Vector{Float64})),	
-	# 				expr(:block, body) )
-	expr(:function, expr(:call, LLFUNC_SYM, :($PARAM_SYM::Vector{Float64})),	
+	expr(:function, expr(:call, :ll, :($PARAM_SYM::Vector{Float64})),	
 					expr(:block, fex) )
 end
 
@@ -397,9 +394,20 @@ function buildFunction(model::Expr)
 			m.source.args, 
 			[:(return($ACC_SYM))] ]
 
-	func = Main.eval(tryAndFunc(body, false))
+	body = tryAndFunc(body, false)
 
-	(func, m.bsize, m.pars)
+	# identify external vars and add definitions x = Main.x
+    unfold!(m)
+    categorizeVars!(m)
+	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+
+	# build and evaluate module 'llmod' containing function 
+	eval(:(module llmod; using Main; $vhooks; $body; end) )
+	# func = Main.eval(tryAndFunc(body, false))
+
+	# (func, m.bsize, m.pars)
+	(m.bsize, m.pars)
 end
 
 function buildFunctionWithGradient(model::Expr)
@@ -434,10 +442,18 @@ function buildFunctionWithGradient(model::Expr)
 	end
 
 	push!(body, :(($(m.finalacc), $dexp)))
-	func = Main.eval(tryAndFunc(body, true))
+
+	body = tryAndFunc(body, true)
+
+	# build and evaluate module 'llmod' containing function 
+	template = :(module llmod; function ll(x); x;end; end)
+	template.args[3].args[4] = body
+	eval(template)
+
+	# func = Main.eval(tryAndFunc(body, true))
 
 	# println(expr(:block, body))
-	(func, m.bsize, m.pars)
+	(m.bsize, m.pars)
 end
 
 
