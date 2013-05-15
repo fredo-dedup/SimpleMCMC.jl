@@ -132,15 +132,15 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(
 	arity = length(opex.args)-1
 
 	# strip out module name (for logpdf...) if present
-	if isa(op, Expr) && op.head==:(.) && op.args[1]==:SimpleMCMC 
-		op = op.args[2].args[1]
-	end
+	# if isa(op, Expr) && op.head==:(.) && op.args[1]==:SimpleMCMC 
+	# 	op = op.args[2].args[1]
+	# end
 
 	if has(rules, (op, index, arity))   # is operator/position defined in rules ?
 		ex, pars = rules[(op, index, arity)]
 		smap = { pars[i] => args[i] for i in 1:length(pars)}
 		smap[:ds] = ds
-		dexp = subst(ex, smap)
+		dexp = substSymbols(ex, smap)
 	else
 		error("[derive] Doesn't know how to derive operator $op on parameter $vs")
 	end

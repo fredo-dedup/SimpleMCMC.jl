@@ -26,18 +26,20 @@ typealias Exprif       ExprH{:if}
 ## variable symbol polling functions
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) =     Set{Symbol}(ex)
-getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
 getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
 getSymbols(ex::Any) =        Set{Symbol}()
-getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])
+getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])  # skip function name
 getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
+getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), symbol("end")) # ':'' and 'end' do not count
+# getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
 
-## symbol subsitution functions
-subst(ex::Expr, smap::Dict) =    expr(ex.head, map(ex -> subst(ex, smap), ex.args))
-subst(ex::Symbol, smap::Dict) =  has(smap, ex) ? smap[ex] : ex
-subst(ex::Any, smap::Dict) =     ex
-
+## variable symbol subsitution functions
+substSymbols(ex::Expr, smap::Dict) =      substSymbols(toExprH(ex), smap::Dict)
+substSymbols(ex::Exprcall, smap::Dict) =  expr(:call, {ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...})
+substSymbols(ex::ExprH, smap::Dict) =     expr(ex.head, map(ex -> substSymbols(ex, smap), ex.args))
+substSymbols(ex::Symbol, smap::Dict) =    has(smap, ex) ? smap[ex] : ex
+substSymbols(ex::Any, smap::Dict) =       ex
 
 ######### parameters structure  ############
 type MCMCParams
@@ -133,8 +135,9 @@ function parseModel(ex::Expr)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
 		fn = symbol("logpdf$(ex.args[3].args[1])")
-		args = {expr(:., :SimpleMCMC, expr(:quote, fn)), ex.args[3].args[2:end]..., ex.args[2]}
-		return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
+		return :($ACC_SYM = $ACC_SYM + $(expr(:call, {fn, ex.args[3].args[2:end]..., ex.args[2]})))
+		# args = {expr(:., :SimpleMCMC, expr(:quote, fn)), ex.args[3].args[2:end]..., ex.args[2]}
+		# return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 	end
 
 	m = MCMCModel()
@@ -219,52 +222,20 @@ end
 function uniqueVars!(m::MCMCModel)
 	el = m.exprs
     subst = Dict{Symbol, Symbol}()
-    used = [ACC_SYM]
-    for idx in 1:length(el) 
-    	ex2 = el[idx]
-        lhs = collect(getSymbols(ex2.args[1]))[1]  # there should be only one
-        rhs = getSymbols(ex2.args[2])
+    used = Set(ACC_SYM)
 
-        if isa(toExprH(el[idx]), Exprequal)
-        	if isa(el[idx].args[2], Symbol) # simple assign
-        		if has(subst, el[idx].args[2])
-        			el[idx].args[2] = subst[el[idx].args[2]]
-        		end
-        	elseif isa(el[idx].args[2], Real) # if number do nothing
-        	elseif isa(toExprH(el[idx].args[2]), Exprref) # simple assign of a ref
-        		if has(subst, el[idx].args[2].args[1])
-        			el[idx].args[2].args[1] = subst[el[idx].args[2].args[1]]
-        		end
-        	elseif isa(toExprH(el[idx].args[2]), Exprcall) # function call
-        		for i in 2:length(el[idx].args[2].args) # i=4
-	        		if !isa(el[idx].args[2].args[i], Real) && has(subst, el[idx].args[2].args[i])
-	        			el[idx].args[2].args[i] = subst[el[idx].args[2].args[i]]
-	        		end
-	        	end
-	        else
-	        	error("[uniqueVars] can't subsitute var name in $ex2")
-	        end
-	    else
-	    	error("[uniqueVars] not an assignment ! : $ex2")
-	    end
+    for idx in 1:length(el) # idx=4
+        # first, substitute in the rhs the variables names that have been renamed
+        el[idx].args[2] = substSymbols(el[idx].args[2], subst)
 
-        if contains(used, lhs) # var already set once
-            subst[lhs] = gensym("$lhs")
-        	if isa(el[idx].args[1], Symbol) # simple assign
-        		if has(subst, el[idx].args[1])
-        			el[idx].args[1] = subst[el[idx].args[1]]
-        		end
-        	elseif isa(toExprH(el[idx].args[1]), Exprref) # simple assign of a ref
-        		if has(subst, el[idx].args[1].args[1])
-        			el[idx].args[1].args[1] = subst[el[idx].args[1].args[1]]
-        		end
-	        else
-	        	error("[uniqueVars] can't subsitute var name in $lhs")
-	        end
+        # second, rename lhs symbol if set before
+        lhs = collect(getSymbols(el[idx].args[1]))[1]  # there should be only one
+        if contains(used, lhs) # if var already set once => create a new one
+            subst[lhs] = gensym("$lhs") # generate new name, add it to substitution list for following statements
+            el[idx].args[1] = substSymbols(el[idx].args[1], subst)
         else # var set for the first time
-            push!(used, lhs)
+            used |= Set(lhs) 
         end
-
     end
 
 	m.finalacc = has(subst, ACC_SYM) ? subst[ACC_SYM] : ACC_SYM  # keep reference of potentially renamed accumulator
