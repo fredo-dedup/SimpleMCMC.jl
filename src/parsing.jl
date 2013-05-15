@@ -50,7 +50,7 @@ end
 
 ######### model structure   ##############
 type MCMCModel
-	bsize::Int32             # length of beta, the parameter vector
+	bsize::Int               # length of beta, the parameter vector
 	pars::Vector{MCMCParams} # parameters with their mapping to the beta real vector
 	source::Expr             # model source, after first pass
 	exprs::Vector{Expr}      # vector of assigments that make the model
