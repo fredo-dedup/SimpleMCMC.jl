@@ -16,13 +16,11 @@ const PARAM_SYM = :__beta    # name of parameter vector
 const TEMP_NAME = "tmp"      # prefix of temporary variables in log-likelihood function
 const DERIV_PREFIX = "d"     # prefix of gradient variables in log-likelihood function
 
-include("parsing.jl") #  include model processing functions		
-include("diff.jl") #  include derivatives definitions
-include("distribs.jl") #  include distributions definitions
-include("samplers.jl") #  include sampling functions
-include("solvers.jl") #  include solving functions
-
- 
+include("parsing.jl")      #  include model processing functions		
+include("diff.jl")         #  include derivatives definitions
+include("distribs.jl")     #  include distributions definitions
+include("samplers.jl")     #  include sampling functions
+include("solvers.jl")      #  include solving functions
 
 end # module end
 

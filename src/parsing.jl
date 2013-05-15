@@ -134,9 +134,6 @@ function parseModel(ex::Expr)
 
 		fn = symbol("logpdf$(ex.args[3].args[1])")
 		args = {expr(:., :SimpleMCMC, expr(:quote, fn)), ex.args[3].args[2:end]..., ex.args[2]}
-		# args = {expr(:., :SimpleMCMC, expr(:quote, fn))}
-		# args = vcat(args, ex.args[3].args[2:end])
-		# push!(args, ex.args[2])
 		return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 	end
 
@@ -225,8 +222,8 @@ function uniqueVars!(m::MCMCModel)
     used = [ACC_SYM]
     for idx in 1:length(el) 
     	ex2 = el[idx]
-        lhs = collect(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
-        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+        lhs = collect(getSymbols(ex2.args[1]))[1]  # there should be only one
+        rhs = getSymbols(ex2.args[2])
 
         if isa(toExprH(el[idx]), Exprequal)
         	if isa(el[idx].args[2], Symbol) # simple assign
@@ -286,16 +283,16 @@ function categorizeVars!(m::MCMCModel)
 
     m.pardesc = Set{Symbol}([p.sym for p in m.pars]...)  # start with parameter symbols
     for ex2 in m.exprs 
-        lhs = SimpleMCMC.getSymbols(ex2.args[1])
-        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+        lhs = getSymbols(ex2.args[1])
+        rhs = getSymbols(ex2.args[2])
 
         length(rhs & m.pardesc) > 0 ? m.pardesc = m.pardesc | lhs : nothing
     end
 
     m.accanc = Set{Symbol}(m.finalacc)
     for ex2 in reverse(m.exprs) # proceed backwards
-        lhs = SimpleMCMC.getSymbols(ex2.args[1])
-        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+        lhs = getSymbols(ex2.args[1])
+        rhs = getSymbols(ex2.args[2])
 
         length(lhs & m.accanc) > 0 ? m.accanc = m.accanc | rhs : nothing
     end
@@ -372,16 +369,12 @@ function betaAssign(m::MCMCModel)
 end
 
 # encloses an array of expr in a try block to catch zero likelihoods (-Inf log likelihood)
-#  and generates function expression
 function tryAndFunc(body::Vector, grad::Bool)
-	fex = expr(:try, expr(:block, body...),
-					:e, 
-					expr(:block, 
-						grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
-									:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
-
-	expr(:function, expr(:call, :ll, :($PARAM_SYM::Vector{Float64})),	
-					expr(:block, fex) )
+	expr(:try, expr(:block, body...),
+				:e, 
+				expr(:block,
+					grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
+						:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 end
 
 ######### builds the full functions ##############
@@ -396,18 +389,22 @@ function buildFunction(model::Expr)
 
 	body = tryAndFunc(body, false)
 
-	# identify external vars and add definitions x = Main.x
+	# identify external vars and create definitions x = Main.x for the let block
     unfold!(m)
     categorizeVars!(m)
 	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
 	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
 
-	# build and evaluate module 'llmod' containing function 
-	eval(:(module llmod; using Main; $vhooks; $body; end) )
+	# build and evaluate the let block containing the function and external vars hooks
+	fn = gensym()
+	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
+	body = :(let; global $fn; $vhooks; $body; end)
+	# eval(Main, :(module llmod; using Main; $vhooks; $body; end) )
+	eval(body)
 	# func = Main.eval(tryAndFunc(body, false))
 
 	# (func, m.bsize, m.pars)
-	(m.bsize, m.pars)
+	(eval(fn), m.bsize, m.pars)
 end
 
 function buildFunctionWithGradient(model::Expr)
@@ -436,7 +433,6 @@ function buildFunctionWithGradient(model::Expr)
 		dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
 	else
 		dexp = {:vcat}
-		# dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(vec([$DERIV_PREFIX$(p.sym)])) for p in pmap})
 		dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
 		dexp = expr(:call, dexp)
 	end
@@ -445,15 +441,20 @@ function buildFunctionWithGradient(model::Expr)
 
 	body = tryAndFunc(body, true)
 
+	# identify external vars and add definitions x = Main.x
+	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+
+	# build and evaluate the let block containing the function and external vars hooks
+	fn = gensym()
+	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
+	body = :(let; global $fn; $vhooks; $body; end)
+	eval(body)
+
 	# build and evaluate module 'llmod' containing function 
-	template = :(module llmod; function ll(x); x;end; end)
-	template.args[3].args[4] = body
-	eval(template)
+	# eval(Main, :(module llmod; using Main; $vhooks; $body; end) )
 
-	# func = Main.eval(tryAndFunc(body, true))
-
-	# println(expr(:block, body))
-	(m.bsize, m.pars)
+	(eval(fn), m.bsize, m.pars)
 end
 
 

@@ -47,7 +47,7 @@ calc!(s::Sample, ll::Function) = ((s.llik, s.grad) = ll(s.beta))
 update!(s::Sample) = (s.H = s.llik - dot(s.v, s.v)/2)
 uturn(s1::Sample, s2::Sample) = dot(s2.beta-s1.beta, s1.v) < 0. || dot(s2.beta-s1.beta, s2.v) < 0.
 
-function leapFrog(s::Sample, ve, ll)
+function leapFrog(s::Sample, ve, ll::Function)
 	n = deepcopy(s)  # make a copy
 	n.v += n.grad * ve / 2.
 	n.beta += ve * n.v
@@ -69,19 +69,19 @@ end
 
 function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	const local target_accept = 0.234
-	local nparams, pmap
+	local ll_func, nparams, pmap
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
 	# ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
-	nparams, pmap = buildFunction(model) # build function, count the number of parameters
+	ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
 
 	beta = setInit(init, nparams) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
-	__lp = llmod.ll(beta)
+	__lp = ll_func(beta)
 	assert(__lp != -Inf, "Initial values out of model support, try other values")
 
 	#  main loop
@@ -93,7 +93,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 		oldbeta = copy(beta)
 		beta += S * jump
 
- 		old__lp, __lp = __lp, llmod.ll(beta) 
+ 		old__lp, __lp = __lp, ll_func(beta) 
 
  		alpha = min(1, exp(__lp - old__lp))
 		if rand() > alpha # reject, go back to previous state
