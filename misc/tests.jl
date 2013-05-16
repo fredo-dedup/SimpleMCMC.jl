@@ -30,11 +30,14 @@ begin
     end
 end
 
-export x
+include("../src/SimpleMCMC.jl")
 
-res = SimpleMCMC.simpleRWM(model, 1000)
-res = SimpleMCMC.simpleRWM(:(mu::real; mu ~ Normal(0,1)), 1000)
+res = SimpleMCMC.simpleRWM(model, 1000, 100, [1., 0.1, 1.])
+res = SimpleMCMC.simpleHMC(model, 500, 100, [1., 0.1, 1.], 5, 0.002)
 
+model = :(mu::real; mu ~ Normal(0,1))
+res = SimpleMCMC.simpleRWM(model, 10000, 100)
+res = SimpleMCMC.simpleHMC(model, 1000, 100, [1.], 5, 0.002)
 
 ####
 include("../src/SimpleMCMC.jl")
@@ -49,154 +52,179 @@ SimpleMCMC.categorizeVars!(m)
 m.varsset
 m.accanc
 m.pardesc
+
+m.accanc - m.varsset - Set(SimpleMCMC.ACC_SYM, [p.sym for p in m.pars]...)
+filter(e->contains([:(:), :end],e)))
+
+SimpleMCMC.getSymbols(expr(:block, m.exprs...)) - Set(:(:), symbol("end"))
+
 m.accanc & m.pardesc - Set(m.finalacc)
 SimpleMCMC.backwardSweep!(m)
 m.dexprs
 
-begin
-    body = SimpleMCMC.betaAssign(m)
-    push!(body, :($ACC_SYM = 0.)) # acc init
-    body = vcat(body, m.exprs)
 
-    push!(body, :($(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
-
-    avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
-    for v in avars 
-        push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
-    end
-
-    body = vcat(body, m.dexprs)
-
-    if length(m.pars) == 1
-        dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
-        dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-    else
-        dexp = {:vcat}
-        # dexp = vcat(dexp, { (dn = symbol("$DERIV_PREFIX$(p.sym)"); :(vec([$DERIV_PREFIX$(p.sym)])) for p in pmap})
-        dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
-        dexp = expr(:call, dexp)
-    end
-
-    push!(body, :(($(m.finalacc), $dexp)))
-
-    finalex = SimpleMCMC.tryAndFunc(body, true)
-end
-
-SimpleMCMC.logpdfNormal(0,1,1)
-expr
-template = :(module llmod; function ll(x); x;end; end)
-template.args[3].args[4] = finalex
-eval(template)
-llmod.ll([1.,0.1,1.])
-
-template = :(module llmod; using Main; function ll(x); x;end; end)
-template.args[3].args[5] = :(function ll(x); Main.SimpleMCMC.logpdfNormal(0,1,x);end)
-eval(template)
-llmod.ll(1.)
-
-dump(finalex)
-dump(template.args[3].args[4])
-template
-
-
-eval(:(function test(y);y;end))
-test("abcd")
-
-
-
-
-
-
-
-dump(template.args[3].args[4].args[2].args[2])
-    whos()
-
-    myf = :(function gr(x); Main.SimpleMCMC.logpdfGamma(2,1,x);end)
-
-    eval(:(module llmod; $myf; end) )
-llmod.ll(10)
-llmod.gr(0.9)
-
-    eval(:(module loglik; function test(x); x+1;end; end) )
-    eval(:(module $LLFUNC_SYM; function test(x); x+1;end; end) )
-    @eval module loglik ; function test(x); x+5;end ; end
-    test.loglik([1.,1.,1.])
-    typeof(loglik.loglik)
-    loglik.test
-    test.loglik
-    g = loglik.test
-    g(5)
-
-    dump(:(module loglik; function test(x); x+1;end; end) ,10)
-
-
-    modexpr = expr(:module, true, LLFUNC_SYM, 
-                   expr(:block, finalex))
-    eval(modexpr)
-
-    func = Main.eval(SimpleMCMC.tryAndFunc(body, true))
-
-
-
-
-
-ll_func, nparams, pmap = SimpleMCMC.buildFunction(model)
-
-ll_func(ones(10))
-
-ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model)
-ll_func(ones(10))
-
-m = SimpleMCMC.parseModel(model)
-[SimpleMCMC.betaAssign(m),             [:(__acc = 0.)],             m.source,             [:(return(__acc))] ]
-
-SimpleMCMC.simpleRWM(model,1000,10)
-
-
-m.dexprs
-####
-
-    allvarsset = mapreduce(p->SimpleMCMC.getSymbols(p.args[1]), union, exparray)
-
-    avars = Set{Symbol}([p.sym for p in pmap]...)
-    for ex2 in exparray # ex2 = exparray[1]
-        lhs = SimpleMCMC.getSymbols(ex2.args[1])
-        rhs = SimpleMCMC.getSymbols(ex2.args[2])
-
-        length(intersect(rhs, avars)) > 0 ? avars = union(avars, lhs) : nothing
-    end
-    avars
-
-    parents = Set{Symbol}(finalacc)
-    for ex2 in reverse(exparray) # ex2 = reverse(exparray)[1]
-        lhs = SimpleMCMC.getSymbols(ex2.args[1])
-        rhs = SimpleMCMC.getSymbols(ex2.args[2])
-
-        # println("$ex2 : $lhs = $rhs : $(intersect(lhs, parents)) => $(union(parents, rhs))....")
-        length(lhs & parents) > 0 ? parents = parents | rhs : nothing
-    end
-    parents
-
-
-
-
-length(parents)
-length(avars)
-
-for p in parents ; println(p, " ", has(avars, p)) ; end
-for p in avars ; println(p, " ", has(parents, p)) ; end
-for p in allvarsset ; println(p, " ", has(parents, p)) ; end
 
 allvarsset - avars
 allvarsset - parents
 avars - parents
 parents - avars
 
+SimpleMCMC.getSymbols(:a)
+SimpleMCMC.getSymbols(:(a))
+SimpleMCMC.getSymbols(:(a=2+b[c]))
+SimpleMCMC.getSymbols(:(a=sin(2+b[c])))
+SimpleMCMC.getSymbols(:(a[6]=sin(2+b[c])))
+SimpleMCMC.getSymbols(:(a[z]=sin(2+b[c])))
+SimpleMCMC.getSymbols(:(a[z]))
 
-# julia> zb1 = zb0 + grady / (theta0 * L0)
-# 3-element Float64 Array:
-#  0.999419 
-#  0.0248938
-#  4.1756e-9
 
+##################
+
+begin  #hierarchical
+    ## generate data set
+    N = 50 # number of observations
+    D = 4  # number of groups
+    L = 5  # number of predictors
+
+    srand(1)
+    mu0 = randn(1,L)
+    sigma0 = rand(1,L)
+    # model matrix nb group rows x nb predictors columns
+    beta0 = Float64[randn()*sigma0[j]+mu0[j] for i in 1:D, j in 1:L] 
+
+    oneD = ones(D)
+    oneL = ones(L)
+
+    ll = rand(1:D, N)  # mapping obs -> group
+    X = randn(N, L)  # predictors
+    Y = [rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * oneL )))]
+
+    ## define model
+    model = quote
+        mu::real(1,L)
+        sigma::real(1,L)
+        beta::real(D,L)
+
+        mu ~ Normal(0, 1)
+        sigma ~ Weibull(2, 1)
+
+        beta ~ Normal(oneD * mu, oneD * sigma)
+
+        effect = (beta[ll,:] .* X) * oneL
+        prob = 1. / ( 1. + exp(- effect) )
+        Y ~ Bernoulli(prob)
+    end
+end
+
+# run random walk metropolis (10000 steps, 1000 for burnin)
+res = simpleRWM(model, 1000, 100)
+
+sum(res.params[:mu],3) / res.samples  # mu samples mean
+sum(res.params[:sigma],3) / res.samples # sigma samples mean
+sum(res.params[:beta],3) / res.samples # beta samples mean
+
+# # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 10 inner steps, 0.03 inner step size)
+res = simpleHMC(model, 10000, 1000, 10, 0.03)
+
+
+###################
+
+begin # linear
+    # simulate dataset
+    srand(1)
+    n = 1000
+    nbeta = 10 # number of predictors, including intercept
+    X = [ones(n) randn((n, nbeta-1))]
+    beta0 = randn((nbeta,))
+    Y = X * beta0 + randn((n,))
+
+    # define model
+    model = quote
+        vars::real(nbeta)
+
+        vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
+        resid = Y - X * vars
+        resid += 0.
+        resid[nbeta] = 0.
+        resid ~ Normal(0, 1.0)  
+    end
+end
+
+# run random walk metropolis (10000 steps, 5000 for burnin)
+res = SimpleMCMC.simpleRWM(model, 1000)
+res.acceptRate  # acceptance rate
+[ sum(res.params[:vars],2)./res.samples beta0 ] # show calculated and original coefs side by side
+res = simpleHMC(model, 1000, 2, 0.05)
+res = simpleNUTS(model, 1000)
+
+####################
+
+begin # binomial
+    # simulate dataset
+    srand(1)
+    n = 1000
+    nbeta = 10 # number of predictors, including intercept
+    X = [ones(n) randn((n, nbeta-1))]
+    beta0 = randn((nbeta,))
+    Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0)))
+
+    # define model
+    model = quote
+        vars::real(nbeta)
+
+        vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
+        prob = 1 / (1. + exp(X * vars)) 
+        Y ~ Bernoulli(prob)
+    end
+end
+
+res = simpleRWM(model, 1000, 100)
+
+mean(res.loglik)
+[ sum(res.params[:vars],2) / res.samples beta0] # calculated vs original coefs
+res = simpleHMC(model, 1000, 100, 2, 0.1)
+res = simpleNUTS(model, 1000, 100)
+
+##################################
+
+
+ma = { :(a), :(b=3), :(c=a+5)}
+for e in ma
+for i in 1:3
+    ex2 = ma[i]
+    ex2 = expr(:(=), :a, :c)
+end
+ma
+
+
+#######################################
+include("../src/SimpleMCMC.jl")
+
+function test(el::Vector{Expr})
+    subst = Dict{Symbol, Symbol}()
+    used = Set(SimpleMCMC.ACC_SYM)
+
+    for idx in 1:length(el) # idx=4
+        ex2 = el[idx]
+
+        # first, substitute variables names that have been renamed
+        el[idx].args[2] = SimpleMCMC.substSymbols(el[idx].args[2], subst)
+
+        # second, rename lhs symbol if set before
+        lhs = collect(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
+        if contains(used, lhs) # if var already set once => create a new one
+            subst[lhs] = gensym("$lhs") # generate new name, add it to substitution list for following statements
+            el[idx].args[1] = SimpleMCMC.substSymbols(el[idx].args[1], subst)
+        else # var set for the first time
+            used |= Set(lhs) 
+        end
+
+    end
+
+    el
+    # (el, m.finalacc = has(subst, SimpleMCMC.ACC_SYM) ? subst[SimpleMCMC.ACC_SYM] : SimpleMCMC.ACC_SYM ) # keep reference of potentially renamed accumulator
+end
+
+el = [ :(a=2), :(b=a), :(c=z), :(a=c+5), :(x=2a), :(a = a +1), :(b=a)]
+test(el)
 

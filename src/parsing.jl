@@ -320,7 +320,6 @@ function backwardSweep!(m::MCMCModel)
 		assert(isa(ex2, Expr), "[backwardSweep] not an expression : $ex2")
 		explore(ex2)
 	end
-
 end
 
 ######   Common functionality  ###########
@@ -379,7 +378,6 @@ function buildFunction(model::Expr)
 end
 
 function buildFunctionWithGradient(model::Expr)
-	
 	m = parseModel(model)
 	unfold!(m)
 	uniqueVars!(m)
