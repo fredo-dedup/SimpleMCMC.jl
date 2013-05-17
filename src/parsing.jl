@@ -20,6 +20,7 @@ typealias Exprtrans    ExprH{symbol("'")}       #'
 typealias Exprcall     ExprH{:call}
 typealias Exprblock	   ExprH{:block}
 typealias Exprline     ExprH{:line}
+typealias Exprvcat     ExprH{:vcat}
 typealias Exprref      ExprH{:ref}
 typealias Exprif       ExprH{:if}
 
@@ -35,10 +36,11 @@ getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), s
 # getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
 
 ## variable symbol subsitution functions
-substSymbols(ex::Expr, smap::Dict) =      substSymbols(toExprH(ex), smap::Dict)
-substSymbols(ex::Exprcall, smap::Dict) =  expr(:call, {ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...})
-substSymbols(ex::ExprH, smap::Dict) =     expr(ex.head, map(ex -> substSymbols(ex, smap), ex.args))
-substSymbols(ex::Symbol, smap::Dict) =    has(smap, ex) ? smap[ex] : ex
+substSymbols(ex::Expr, smap::Dict) =         substSymbols(toExprH(ex), smap::Dict)
+substSymbols(ex::Exprcall, smap::Dict) =     expr(:call, {ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...})
+substSymbols(ex::ExprH, smap::Dict) =        expr(ex.head, map(e -> substSymbols(e, smap), ex.args))
+substSymbols(ex::Symbol, smap::Dict) =       has(smap, ex) ? smap[ex] : ex
+substSymbols(ex::Vector{Expr}, smap::Dict) = map(e -> substSymbols(e, smap), ex)
 substSymbols(ex::Any, smap::Dict) =       ex
 
 ######### parameters structure  ############
@@ -50,7 +52,7 @@ end
 
 ######### model structure   ##############
 type MCMCModel
-	bsize::Int32             # length of beta, the parameter vector
+	bsize::Int               # length of beta, the parameter vector
 	pars::Vector{MCMCParams} # parameters with their mapping to the beta real vector
 	source::Expr             # model source, after first pass
 	exprs::Vector{Expr}      # vector of assigments that make the model
@@ -75,6 +77,7 @@ function parseModel(ex::Expr)
 	explore(ex::Exprline) =   nothing  # remove #line statements
 	explore(ex::Exprref) =    toExpr(ex) # no processing
 	explore(ex::Exprequal) =  toExpr(ex) # no processing
+	explore(ex::Exprvcat) =   toExpr(ex) # no processing
 	
 	explore(ex::Exprpequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :+, args...)) )
 	explore(ex::Exprmequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :-, args...)) )
@@ -153,7 +156,8 @@ function unfold!(m::MCMCModel)
 	explore(ex::Expr) = explore(toExprH(ex))
 	explore(ex::ExprH) = error("[unfold] unmanaged expr type $(ex.head)")
 	explore(ex::Exprline) = nothing
-	explore(ex::Exprref) = toExpr(ex)
+	explore(ex::Exprref) = toExpr(ex)  
+	explore(ex::Exprvcat) = toExpr(ex)
 	explore(ex::Exprtrans) = explore(expr(:call, :transpose, ex.args[1]) )
 
 	function explore(ex::Exprblock)
