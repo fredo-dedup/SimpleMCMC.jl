@@ -1,5 +1,132 @@
 
-begin
+
+include("SimpleMCMC.jl")
+
+
+model = quote
+    x::real
+
+    y = x * x
+    y ~ Normal(0,1)
+end
+
+SimpleMCMC.generateModelFunction(model, 1.0, false, true)
+SimpleMCMC.generateModelFunction(model, 1.0, true, true)
+
+##############################################
+logpdfNormal(a,b,c) = SimpleMCMC.logpdfNormal(a,b,c)
+
+    ## process model parameters, rewrites ~ , ..
+    m = SimpleMCMC.parseModel(model)
+
+    ## checks initial values
+    SimpleMCMC.setInit!(m, 1.0)
+
+    ## process model expression
+    SimpleMCMC.unfold!(m)
+    SimpleMCMC.uniqueVars!(m)
+    SimpleMCMC.categorizeVars!(m)
+
+    ## build function expression
+    body = SimpleMCMC.betaAssign(m)  # assigments beta vector -> model parameter vars
+    push!(body, :($(SimpleMCMC.ACC_SYM) = 0.)) # initialize accumulator
+    
+    if gradient  # case with gradient
+
+
+        body = Expr[ SimpleMCMC.betaAssign(m)..., 
+                     :($(SimpleMCMC.ACC_SYM) = 0.), 
+                     :(global vdict), 
+                     :( vdict=Dict()),
+                     m.exprs...,
+                     :( vdict[$(expr(:quote, SimpleMCMC.ACC_SYM))] = $(SimpleMCMC.ACC_SYM) ),
+                     [ :(vdict[$(expr(:quote, v))] = $v) for v in m.varsset]...]
+
+    ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+    vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+
+        body = :(let __beta = m.init; $vhooks; $(expr(:block, body...)); end)
+        eval(body)
+        vdict
+
+
+        ###
+
+        SimpleMCMC.backwardSweep!(m)
+
+        body = vcat(body, m.exprs)
+        push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$(m.finalacc)")) = 1.0))
+
+        avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
+        for v in avars 
+            push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$v")) = zero($(symbol("$v")))))
+        end
+        body = vcat(body, m.dexprs)
+
+        if length(m.pars) == 1
+            dn = symbol("$(SimpleMCMC.DERIV_PREFIX)$(m.pars[1].sym)")
+            dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
+        else
+            dexp = {:vcat}
+            dexp = vcat(dexp, { :( vec([$(symbol("$(SimpleMCMC.DERIV_PREFIX)$(p.sym)"))]) ) for p in m.pars})
+            dexp = expr(:call, dexp)
+        end
+
+        push!(body, :(($(m.finalacc), $dexp)))
+
+        # enclose in a try block
+        body = expr(:try, expr(:block, body...),
+                          :e, 
+                          expr(:block, :(if e == "give up eval"; return(-Inf, zero($(SimpleMCMC.PARAM_SYM))); else; throw(e); end)))
+
+    else  # case without gradient
+        body = vcat(body, m.source.args)
+        body = vcat(body, :(return($ACC_SYM)) )
+
+        # enclose in a try block
+        body = expr(:try, expr(:block, body...),
+                          :e, 
+                          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+
+    end
+
+    # identify external vars and add definitions x = Main.x
+    ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+    vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+
+    # build and evaluate the let block containing the function and external vars hooks
+    fn = gensym()
+    body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})), expr(:block, body) )
+    body = :(let; global $fn; $vhooks; $body; end)
+
+
+
+###############################################
+
+let
+    global vdict
+
+    local x
+
+    vdict = Dict()
+
+    x = 12
+
+    vdict[:x] = x
+end
+
+x
+vdict[:x]
+x = 34
+vdict[:x]
+
+    probe(s::Symbol) = eval(x)
+
+
+
+#########################
+
+begin   # ornstein
     srand(1)
     duration = 1000  # 1000 time steps
     mu0 = 10.  # target value
@@ -38,44 +165,6 @@ res = SimpleMCMC.simpleHMC(model, 500, 100, [1., 0.1, 1.], 5, 0.002)
 model = :(mu::real; mu ~ Normal(0,1))
 res = SimpleMCMC.simpleRWM(model, 10000, 100)
 res = SimpleMCMC.simpleHMC(model, 1000, 100, [1.], 5, 0.002)
-
-####
-include("../src/SimpleMCMC.jl")
-
-m = SimpleMCMC.parseModel(model)
-SimpleMCMC.unfold!(m)
-m.exprs
-SimpleMCMC.uniqueVars!(m)
-m.exprs
-m.finalacc
-SimpleMCMC.categorizeVars!(m)
-m.varsset
-m.accanc
-m.pardesc
-
-m.accanc - m.varsset - Set(SimpleMCMC.ACC_SYM, [p.sym for p in m.pars]...)
-filter(e->contains([:(:), :end],e)))
-
-SimpleMCMC.getSymbols(expr(:block, m.exprs...)) - Set(:(:), symbol("end"))
-
-m.accanc & m.pardesc - Set(m.finalacc)
-SimpleMCMC.backwardSweep!(m)
-m.dexprs
-
-
-
-allvarsset - avars
-allvarsset - parents
-avars - parents
-parents - avars
-
-SimpleMCMC.getSymbols(:a)
-SimpleMCMC.getSymbols(:(a))
-SimpleMCMC.getSymbols(:(a=2+b[c]))
-SimpleMCMC.getSymbols(:(a=sin(2+b[c])))
-SimpleMCMC.getSymbols(:(a[6]=sin(2+b[c])))
-SimpleMCMC.getSymbols(:(a[z]=sin(2+b[c])))
-SimpleMCMC.getSymbols(:(a[z]))
 
 
 ##################
@@ -186,45 +275,4 @@ res = simpleHMC(model, 1000, 100, 2, 0.1)
 res = simpleNUTS(model, 1000, 100)
 
 ##################################
-
-
-ma = { :(a), :(b=3), :(c=a+5)}
-for e in ma
-for i in 1:3
-    ex2 = ma[i]
-    ex2 = expr(:(=), :a, :c)
-end
-ma
-
-
-#######################################
-include("../src/SimpleMCMC.jl")
-
-function test(el::Vector{Expr})
-    subst = Dict{Symbol, Symbol}()
-    used = Set(SimpleMCMC.ACC_SYM)
-
-    for idx in 1:length(el) # idx=4
-        ex2 = el[idx]
-
-        # first, substitute variables names that have been renamed
-        el[idx].args[2] = SimpleMCMC.substSymbols(el[idx].args[2], subst)
-
-        # second, rename lhs symbol if set before
-        lhs = collect(SimpleMCMC.getSymbols(ex2.args[1]))[1]  # there should be only one
-        if contains(used, lhs) # if var already set once => create a new one
-            subst[lhs] = gensym("$lhs") # generate new name, add it to substitution list for following statements
-            el[idx].args[1] = SimpleMCMC.substSymbols(el[idx].args[1], subst)
-        else # var set for the first time
-            used |= Set(lhs) 
-        end
-
-    end
-
-    el
-    # (el, m.finalacc = has(subst, SimpleMCMC.ACC_SYM) ? subst[SimpleMCMC.ACC_SYM] : SimpleMCMC.ACC_SYM ) # keep reference of potentially renamed accumulator
-end
-
-el = [ :(a=2), :(b=a), :(c=z), :(a=c+5), :(x=2a), :(a = a +1), :(b=a)]
-test(el)
 

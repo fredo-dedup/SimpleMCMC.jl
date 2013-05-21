@@ -16,13 +16,14 @@ typealias Exprdcolon   ExprH{:(::)}
 typealias Exprpequal   ExprH{:(+=)}
 typealias Exprmequal   ExprH{:(-=)}
 typealias Exprtequal   ExprH{:(*=)}
-typealias Exprtrans    ExprH{symbol("'")}       #'
+typealias Exprtrans    ExprH{symbol("'")} 
 typealias Exprcall     ExprH{:call}
 typealias Exprblock	   ExprH{:block}
 typealias Exprline     ExprH{:line}
 typealias Exprvcat     ExprH{:vcat}
 typealias Exprref      ExprH{:ref}
 typealias Exprif       ExprH{:if}
+typealias Exprcomp     ExprH{:comparison}
 
 ## variable symbol polling functions
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
@@ -33,15 +34,14 @@ getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])  # ski
 getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), symbol("end")) # ':'' and 'end' do not count
-# getSymbols(ex::Exprref) =    Set{Symbol}(ex.args[1])
 
 ## variable symbol subsitution functions
-substSymbols(ex::Expr, smap::Dict) =         substSymbols(toExprH(ex), smap::Dict)
-substSymbols(ex::Exprcall, smap::Dict) =     expr(:call, {ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...})
-substSymbols(ex::ExprH, smap::Dict) =        expr(ex.head, map(e -> substSymbols(e, smap), ex.args))
-substSymbols(ex::Symbol, smap::Dict) =       has(smap, ex) ? smap[ex] : ex
-substSymbols(ex::Vector{Expr}, smap::Dict) = map(e -> substSymbols(e, smap), ex)
-substSymbols(ex::Any, smap::Dict) =       ex
+substSymbols(ex::Expr, smap::Dict) =          substSymbols(toExprH(ex), smap::Dict)
+substSymbols(ex::Exprcall, smap::Dict) =      expr(:call, {ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...})
+substSymbols(ex::ExprH, smap::Dict) =         expr(ex.head, map(e -> substSymbols(e, smap), ex.args))
+substSymbols(ex::Symbol, smap::Dict) =        has(smap, ex) ? smap[ex] : ex
+substSymbols(ex::Vector{Expr}, smap::Dict) =  map(e -> substSymbols(e, smap), ex)
+substSymbols(ex::Any, smap::Dict) =           ex
 
 ######### parameters structure  ############
 type MCMCParams
@@ -54,6 +54,7 @@ end
 type MCMCModel
 	bsize::Int               # length of beta, the parameter vector
 	pars::Vector{MCMCParams} # parameters with their mapping to the beta real vector
+	init::Vector{Float64}    # initial values of beta
 	source::Expr             # model source, after first pass
 	exprs::Vector{Expr}      # vector of assigments that make the model
 	dexprs::Vector{Expr}     # vector of assigments that make the gradient
@@ -62,7 +63,7 @@ type MCMCModel
 	pardesc::Set{Symbol}     # all the vars set in the model that depend on model parameters
 	accanc::Set{Symbol}      # all the vars (possibly external) that influence the accumulator
 end
-MCMCModel() = MCMCModel(0, MCMCParams[], :(), Expr[], Expr[], ACC_SYM, 
+MCMCModel() = MCMCModel(0, MCMCParams[], Float64[], :(), Expr[], Expr[], ACC_SYM, 
 	Set{Symbol}(), Set{Symbol}(), Set{Symbol}())
 
 
@@ -139,8 +140,6 @@ function parseModel(ex::Expr)
 
 		fn = symbol("logpdf$(ex.args[3].args[1])")
 		return :($ACC_SYM = $ACC_SYM + $(expr(:call, {fn, ex.args[3].args[2:end]..., ex.args[2]})))
-		# args = {expr(:., :SimpleMCMC, expr(:quote, fn)), ex.args[3].args[2:end]..., ex.args[2]}
-		# return :($ACC_SYM = $ACC_SYM + $(expr(:call, args)))
 	end
 
 	m = MCMCModel()
@@ -150,42 +149,33 @@ end
 
 ######## unfolds expressions to prepare derivation ###################
 function unfold!(m::MCMCModel)
-	# Assumes there is only refs or calls on rhs of equal expressions, 
-	# TODO : generalize ? (add blocks ?)
 
-	explore(ex::Expr) = explore(toExprH(ex))
-	explore(ex::ExprH) = error("[unfold] unmanaged expr type $(ex.head)")
-	explore(ex::Exprline) = nothing
-	explore(ex::Exprref) = toExpr(ex)  
-	explore(ex::Exprvcat) = toExpr(ex)
-	explore(ex::Exprtrans) = explore(expr(:call, :transpose, ex.args[1]) )
+	explore(ex::Expr) =       explore(toExprH(ex))
+	explore(ex::ExprH) =      error("[unfold] unmanaged expr type $(ex.head)")
+	explore(ex::Exprline) =   nothing     # remove line info
+	explore(ex::Exprref) =    toExpr(ex)   # unchanged
+	explore(ex::Exprcomp) =   toExpr(ex)  # unchanged
+	explore(ex::Exprvcat) =   explore(expr(:call, :vcat, ex.args...) )  # translate to vcat(), and explore
+	explore(ex::Exprtrans) =  explore(expr(:call, :transpose, ex.args[1]) )  # translate to transpose() and explore
+	explore(ex::Any) =        ex
 
-	function explore(ex::Exprblock)
-		for ex2 in ex.args # ex2 = ex.args[1]
-			if isa(ex2, Expr)
-				explore(ex2)
-			else  # is that possible ??
-				push!(m.exprs, ex2)
-			end
-		end
-	end
-
+	explore(ex::Exprblock) =  mapreduce(explore, (a,b)->b, ex.args)  # process, and return last evaluated
+	
 	function explore(ex::Exprequal) 
 		lhs = ex.args[1]
 		assert(typeof(lhs) == Symbol ||  (typeof(lhs) == Expr && lhs.head == :ref),
-			"[unfold] not a symbol on LHS of assigment $(ex)")
+			"[unfold] not a symbol on LHS of assigment $ex")
 
 		rhs = ex.args[2]
-		if isa(rhs, Symbol)
+		if isa(rhs, Symbol) || isa(rhs, Real)
 			push!(m.exprs, expr(:(=), lhs, rhs))
 		elseif isa(rhs, Expr) # only refs and calls will work
 				ue = explore(toExprH(rhs)) # explore will return something in this case
 				push!(m.exprs, expr(:(=), lhs, ue))
-		elseif isa(rhs, Real)
-			push!(m.exprs, expr(:(=), lhs, rhs))
 		else  # unmanaged kind of lhs
 		 	error("[unfold] can't handle RHS of assignment $ex")
 		end
+		lhs
 	end
 
 	function explore(ex::Exprcall) 
@@ -207,7 +197,7 @@ function unfold!(m::MCMCModel)
 			if isa(e2, Expr) # only refs and calls will work
 				ue = explore(e2)
 				nv = gensym(TEMP_NAME)
-				push!(m.exprs, :($nv = $(ue)))
+				push!(m.exprs, :($nv = $ue))
 				push!(na, nv)
 			else
 				push!(na, e2)
@@ -289,7 +279,7 @@ function backwardSweep!(m::MCMCModel)
 			dsym = lhs
 			dsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(lhs.args[1])"), lhs.args[2:end]...)
 		else
-			error("[backwardSweep] not a symbol on LHS of assigment $(e)") 
+			error("[backwardSweep] not a symbol on LHS of assigment $(ex)") 
 		end
 		
 		rhs = ex.args[2]
@@ -311,7 +301,7 @@ function backwardSweep!(m::MCMCModel)
 			for i in 2:length(rhs.args) 
 				vsym = rhs.args[i]
 				if isa(vsym, Symbol) && contains(avars, vsym)
-					push!(m.dexprs, derive(rhs, i-1, dsym))
+					m.dexprs = vcat(m.dexprs, derive(rhs, i-1, dsym))
 				end
 			end
 		else 
@@ -326,9 +316,20 @@ function backwardSweep!(m::MCMCModel)
 	end
 end
 
-######   Common functionality  ###########
+######## sets inital values from 'init' given as parameter  ##########
+function setInit!(m::MCMCModel, init)
+	# build the initial values
+	if typeof(init) == Array{Float64,1}
+		assert(length(init) == m.bsize, "$(m.bsize) initial values expected, got $(length(init))")
+		m.init = init
+	elseif typeof(init) <: Real
+		m.init = ones(m.bsize) * init
+	else
+		error("cannot assign initial values (should be a Real or vector of Reals)")
+	end
+end
 
-# returns an array of expr assigning parameters from the beta vector
+######### returns an array of expr assigning parameters from the beta vector  ############
 function betaAssign(m::MCMCModel)
 	pmap = m.pars
 	assigns = Expr[]
@@ -343,13 +344,13 @@ function betaAssign(m::MCMCModel)
 end
 
 # encloses an array of expr in a try block to catch zero likelihoods (-Inf log likelihood)
-function tryAndFunc(body::Vector, grad::Bool)
-	expr(:try, expr(:block, body...),
-				:e, 
-				expr(:block,
-					grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
-						:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
-end
+# function tryAndFunc(body::Vector, grad::Bool)
+# 	expr(:try, expr(:block, body...),
+# 				:e, 
+# 				expr(:block,
+# 					grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
+# 						:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+# end
 
 ######### builds the full functions ##############
 
@@ -431,4 +432,71 @@ function buildFunctionWithGradient(model::Expr)
 end
 
 
+function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 
+	## process model parameters, rewrites ~ , ..
+	m = parseModel(model)
+
+	## checks initial values
+	setInit!(m, init)
+
+	## process model expression
+	unfold!(m)
+	uniqueVars!(m)
+	categorizeVars!(m)
+
+	## build function expression
+	body = betaAssign(m)  # assigments beta vector -> model parameter vars
+	push!(body, :($ACC_SYM = 0.)) # initialize accumulator
+
+	
+	if gradient  # case with gradient
+		backwardSweep!(m)
+
+		body = vcat(body, m.exprs)
+		push!(body, :($(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
+
+		avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
+		for v in avars 
+			push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
+		end
+		body = vcat(body, m.dexprs)
+
+		if length(m.pars) == 1
+			dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
+			dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
+		else
+			dexp = {:vcat}
+			dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
+			dexp = expr(:call, dexp)
+		end
+
+		push!(body, :(($(m.finalacc), $dexp)))
+
+		# enclose in a try block
+		body = expr(:try, expr(:block, body...),
+				          :e, 
+				          expr(:block, :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end)))
+
+	else  # case without gradient
+		body = vcat(body, m.source.args)
+		body = vcat(body, :(return($ACC_SYM)) )
+
+		# enclose in a try block
+		body = expr(:try, expr(:block, body...),
+				          :e, 
+				          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+
+	end
+
+	# identify external vars and add definitions x = Main.x
+	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+
+	# build and evaluate the let block containing the function and external vars hooks
+	fn = gensym()
+	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
+	body = :(let; global $fn; $vhooks; $body; end)
+
+	debug ? body : (eval(body) ; (eval(fn), m.bsize, m.pars) )
+end

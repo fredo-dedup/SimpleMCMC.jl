@@ -328,19 +328,6 @@ function checkSteps(steps, burnin)
 	assert(steps > burnin, "Steps ($steps) should be > to burnin ($burnin)")
 end
 
-### sets inital values from 'init' given as parameter
-function setInit(init, nparams)
-	# build the initial values
-	if typeof(init) == Array{Float64,1}
-		assert(length(init) == nparams, "$nparams initial values expected, got $(length(init))")
-		return init
-	elseif typeof(init) <: Real
-		return ones(nparams) * init
-	else
-		error("cannot assign initial values (should be a Real or vector of Reals)")
-	end
-end
-
 ### sets the result structure
 function setRes(steps, burnin, pmap)
 	res = MCMCRun(steps, burnin)
