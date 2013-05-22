@@ -180,6 +180,16 @@ end
 @dfunc logpdfTestDiff(x)    x      +ds
 
 
+## returns sample value for the given Symobl or Expr (for refs)
+hint(v::Symbol) = vhint[v]
+hint(v) = v  # should be value
+function hint(v::Expr)
+	assert(v.head == :ref, "[hint] unexpected variable $v")
+	v.args[1] = :( vhint[$(expr(:quote, v.args[1]))] )
+	eval(v)
+end
+
+
 ## Returns gradient expression of opex
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(z^x);index=2;dsym=:y
 	vs = opex.args[1+index]
@@ -187,7 +197,11 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(
 	args = opex.args[2:end]
 	
 	# val = findTypesValuesof(args)
-	val = map(e -> vdict[e], 1:length(args))
+	val = map(hint, args)
+	for i in 1:length(args)
+		println("var $(args[i]) : $(val[i])")
+	end
+
 
 	fn = symbol("d_$(opex.args[1])_x$index")
 

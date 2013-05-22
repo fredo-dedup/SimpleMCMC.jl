@@ -2,11 +2,11 @@
 
 include("SimpleMCMC.jl")
 
-
+A = [1, 2, 3]
 model = quote
     x::real
 
-    y = x * x
+    y = x * A
     y ~ Normal(0,1)
 end
 

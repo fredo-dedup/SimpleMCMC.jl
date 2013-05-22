@@ -335,15 +335,48 @@ function betaAssign(m::MCMCModel)
 	assigns = Expr[]
 	for p in pmap
 		if length(p.size) <= 1  # scalar or vector
-			push!(assigns, :($(p.sym) = $PARAM_SYM[ $(p.map) ]) )
+			push!(assigns, :(local $(p.sym) = $PARAM_SYM[ $(p.map) ]) )
 		else # matrix case  (needs a reshape)
-			push!(assigns, :($(p.sym) = reshape($PARAM_SYM[ $(p.map) ], $(p.size[1]), $(p.size[2]))) )
+			push!(assigns, :(local $(p.sym) = reshape($PARAM_SYM[ $(p.map) ], $(p.size[1]), $(p.size[2]))) )
 		end
 	end			
 	assigns
 end
 
-# encloses an array of expr in a try block to catch zero likelihoods (-Inf log likelihood)
+######### evaluates once all variables to give type hints for derivation ############
+#  most gradient calculation statements depend on dimensions of variables (Scalar or Array for example)
+#  this is where they are evaluated (with values stored in global Dict 'vhint' )
+function preCalculate(m::MCMCModel)
+    global vhint = Dict()
+
+    body = Expr[ SimpleMCMC.betaAssign(m)..., 
+                 :(local $ACC_SYM = 0.), 
+                 m.exprs...,
+                 :( vhint[$(expr(:quote, ACC_SYM))] = $ACC_SYM ),
+                 [ :(vhint[$(expr(:quote, v))] = $v) for v in m.accanc & m.pardesc]...]
+
+	# enclose in a try block to catch zero likelihoods (-Inf log likelihood)
+	body = expr(:try, expr(:block, body...),
+			          :e, 
+			          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+
+	# identify external vars and add definitions x = Main.x
+	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+	vhooks = expr(:block, [ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]...) # assigment block
+
+	# build and evaluate the let block containing the function and external vars hooks
+	fn = gensym()
+	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
+	body = :(let; global $fn; $vhooks; $body; end)
+	eval(body)
+	fn = eval(fn)
+
+	# now evaluate vhint (and throw error if model does not evaluate for given initial values)
+	assert(fn(m.init) != -Inf, "Initial values out of model support, try other values")
+end
+
+
+# encloses an array of expr in a try block 
 # function tryAndFunc(body::Vector, grad::Bool)
 # 	expr(:try, expr(:block, body...),
 # 				:e, 
@@ -451,6 +484,7 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 
 	
 	if gradient  # case with gradient
+		preCalculate(m)
 		backwardSweep!(m)
 
 		body = vcat(body, m.exprs)
