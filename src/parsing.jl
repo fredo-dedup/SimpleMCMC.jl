@@ -349,11 +349,12 @@ end
 function preCalculate(m::MCMCModel)
     global vhint = Dict()
 
-    body = Expr[ SimpleMCMC.betaAssign(m)..., 
+    body = Expr[ betaAssign(m)..., 
                  :(local $ACC_SYM = 0.), 
-                 m.exprs...,
-                 :( vhint[$(expr(:quote, ACC_SYM))] = $ACC_SYM ),
-                 [ :(vhint[$(expr(:quote, v))] = $v) for v in m.accanc & m.pardesc]...]
+                 m.exprs...]
+    
+    vl = getSymbols(body)  # list of all vars (external, parameters, set by model, and accumulator)
+    body = vcat(body, [ :(vhint[$(expr(:quote, v))] = $v) for v in vl ])
 
 	# enclose in a try block to catch zero likelihoods (-Inf log likelihood)
 	body = expr(:try, expr(:block, body...),
@@ -480,7 +481,7 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 
 	## build function expression
 	body = betaAssign(m)  # assigments beta vector -> model parameter vars
-	push!(body, :($ACC_SYM = 0.)) # initialize accumulator
+	push!(body, :(local $ACC_SYM = 0.)) # initialize accumulator
 
 	
 	if gradient  # case with gradient

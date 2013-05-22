@@ -10,10 +10,10 @@ macro dfunc(func::Expr, dv::Symbol, diff::Expr)
 
 	# change var names in signature and diff expr to x1, x2, x3, ..
 	smap = { argsn[i] => symbol("x$i") for i in 1:length(argsn) }
-	args2 = SimpleMCMC.substSymbols(func.args[2:end], smap)
-	m = SimpleMCMC.MCMCModel()
-	m.source = :(dummy = $(SimpleMCMC.substSymbols(diff, smap)) )
-	SimpleMCMC.unfold!(m)  # unfold for easier optimization later
+	args2 = substSymbols(func.args[2:end], smap)
+	m = MCMCModel()
+	m.source = :(dummy = $(substSymbols(diff, smap)) )
+	unfold!(m)  # unfold for easier optimization later
 	m.exprs[end] = m.exprs[end].args[2]
 
 	m.exprs
@@ -182,7 +182,7 @@ end
 
 ## returns sample value for the given Symobl or Expr (for refs)
 hint(v::Symbol) = vhint[v]
-hint(v) = v  # should be value
+hint(v) = v  # should be a value if not a Symbol or an Expression
 function hint(v::Expr)
 	assert(v.head == :ref, "[hint] unexpected variable $v")
 	v.args[1] = :( vhint[$(expr(:quote, v.args[1]))] )
@@ -193,7 +193,7 @@ end
 ## Returns gradient expression of opex
 function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(z^x);index=2;dsym=:y
 	vs = opex.args[1+index]
-	ds = symbol("$(SimpleMCMC.DERIV_PREFIX)$dsym")
+	ds = symbol("$DERIV_PREFIX$dsym")
 	args = opex.args[2:end]
 	
 	# val = findTypesValuesof(args)
@@ -209,8 +209,8 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(
 		dexp = eval(expr(:call, fn, val...))
 		smap = { symbol("x$i") => args[i] for i in 1:length(args)}
 		smap[:ds] = ds
-		dexp = SimpleMCMC.substSymbols(dexp, smap)
-		dexp[end] = :( $(symbol("$(SimpleMCMC.DERIV_PREFIX)$vs")) = $(symbol("$(SimpleMCMC.DERIV_PREFIX)$vs")) + $(dexp[end]) )
+		dexp = substSymbols(dexp, smap)
+		dexp[end] = :( $(symbol("$DERIV_PREFIX$vs")) = $(symbol("$DERIV_PREFIX$vs")) + $(dexp[end]) )
 		return dexp
 	catch
 		error("[derive] Doesn't know how to derive $opex by argument $vs")
