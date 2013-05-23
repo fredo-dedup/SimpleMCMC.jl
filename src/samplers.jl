@@ -74,10 +74,7 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	# ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
-	ll_func, nparams, pmap = buildFunction(model) # build function, count the number of parameters
-
-	beta = setInit(init, nparams) # build the initial values
+	ll_func, nparams, pmap, beta = generateModelFunction(model, init, false, false) # build function, count the number of parameters
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
@@ -130,8 +127,8 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap = buildFunctionWithGradient(model) # build function, count the number of parameters
-	state0 = Sample(setInit(init, nparams)) # build the initial values
+	ll_func, nparams, pmap, beta = generateModelFunction(model, init, true, false) # build function, count the number of parameters
+	state0 = Sample(beta) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
@@ -186,8 +183,8 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap = buildFunctionWithGradient(model) # build function, count the number of parameters
-	state0 = Sample(setInit(init, nparams)) # build the initial values
+	ll_func, nparams, pmap, beta = generateModelFunction(model, init, true, false) # build function, count the number of parameters
+	state0 = Sample(beta) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	# first calc

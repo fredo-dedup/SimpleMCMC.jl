@@ -96,3 +96,18 @@ Ornstein_RWM	1368650785	0.2.0-672.r5532	f8bbae	0x6c2c	0.283047574
 Ornstein_HMC	1368650810	0.2.0-672.r5532	f8bbae	0x6c2c	4.893975134
 Ornstein_NUTS	1368650838	0.2.0-672.r5532	f8bbae	0x6c2c	5.341142664
 
+binomial_function_with_gradient	1369297076	0.1.0	4f8fa9	0x5ba0	0.001109
+binomial_function_without_gradient	1369297079	0.1.0	4f8fa9	0x5ba0	0.0005
+binomial_RWM	1369297083	0.1.0	4f8fa9	0x5ba0	0.532000065
+binomial_HMC	1369297095	0.1.0	4f8fa9	0x5ba0	2.281000137
+binomial_NUTS	1369297121	0.1.0	4f8fa9	0x5ba0	5.015999794
+hierarchical_function_with_gradient	1369297122	0.1.0	4f8fa9	0x5ba0	0.000187
+hierarchical_function_without_gradient	1369297123	0.1.0	4f8fa9	0x5ba0	7.8e-5
+hierarchical_RWM	1369297125	0.1.0	4f8fa9	0x5ba0	0.32799983
+hierarchical_HMC	1369297136	0.1.0	4f8fa9	0x5ba0	2.312000036
+hierarchical_NUTS	1369297160	0.1.0	4f8fa9	0x5ba0	3.125
+Ornstein_function_with_gradient	1369297169	0.1.0	4f8fa9	0x5ba0	0.001641
+Ornstein_function_without_gradient	1369297175	0.1.0	4f8fa9	0x5ba0	0.00125
+Ornstein_RWM	1369297178	0.1.0	4f8fa9	0x5ba0	0.405999899
+Ornstein_HMC	1369297221	0.1.0	4f8fa9	0x5ba0	8.592999935
+Ornstein_NUTS	1369297270	0.1.0	4f8fa9	0x5ba0	9.562000036

@@ -17,7 +17,7 @@ const TEMP_NAME = "tmp"      # prefix of temporary variables in log-likelihood f
 const DERIV_PREFIX = "d"     # prefix of gradient variables in log-likelihood function
 
 include("parsing.jl")      #  include model processing functions		
-include("diff.exp.jl")         #  include derivatives definitions
+include("diff.jl")         #  include derivatives definitions
 include("distribs.jl")     #  include distributions definitions
 include("samplers.jl")     #  include sampling functions
 include("solvers.jl")      #  include solving functions

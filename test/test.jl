@@ -34,9 +34,9 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 
 	model = expr(:block, pexpr, :(y = $ex), :(y ~ TestDiff()))
 
-	myf, np = SimpleMCMC.buildFunctionWithGradient(model)
-
 	__beta = vec([x0])
+	myf, dummy, dummy, dummy = SimpleMCMC.generateModelFunction(model, __beta, true, false)
+
 	l0, grad0 = myf(__beta)  
 
 	gradn = zeros(nx)
@@ -50,9 +50,6 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 	assert(all(good_enough, zip([grad0], [gradn])),
 		"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
 end
-
-
-
 
 
 

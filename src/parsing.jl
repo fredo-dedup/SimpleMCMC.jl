@@ -29,11 +29,12 @@ typealias Exprcomp     ExprH{:comparison}
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) =     Set{Symbol}(ex)
 getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
-getSymbols(ex::Any) =        Set{Symbol}()
 getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])  # skip function name
 getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), symbol("end")) # ':'' and 'end' do not count
+getSymbols(ex::Array) =      mapreduce(getSymbols, union, ex)
+getSymbols(ex::Any) =        Set{Symbol}()
 
 ## variable symbol subsitution functions
 substSymbols(ex::Expr, smap::Dict) =          substSymbols(toExprH(ex), smap::Dict)
@@ -377,22 +378,13 @@ function preCalculate(m::MCMCModel)
 end
 
 
-# encloses an array of expr in a try block 
-# function tryAndFunc(body::Vector, grad::Bool)
-# 	expr(:try, expr(:block, body...),
-# 				:e, 
-# 				expr(:block,
-# 					grad ? :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end) :
-# 						:(if e == "give up eval"; return(-Inf); else; throw(e); end)))
-# end
-
 ######### builds the full functions ##############
 
 function buildFunction(model::Expr)
 	m = parseModel(model)
 
 	body = [betaAssign(m), 
-			[:($ACC_SYM = 0.)], 
+			[:(local $ACC_SYM = 0.)], 
 			m.source.args, 
 			[:(return($ACC_SYM))] ]
 
@@ -474,7 +466,7 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 	## checks initial values
 	setInit!(m, init)
 
-	## process model expression
+	## process model
 	unfold!(m)
 	uniqueVars!(m)
 	categorizeVars!(m)
@@ -482,7 +474,6 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 	## build function expression
 	body = betaAssign(m)  # assigments beta vector -> model parameter vars
 	push!(body, :(local $ACC_SYM = 0.)) # initialize accumulator
-
 	
 	if gradient  # case with gradient
 		preCalculate(m)
@@ -526,12 +517,12 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 
 	# identify external vars and add definitions x = Main.x
 	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+	vhooks = expr(:block, [ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]...) # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
 	fn = gensym()
 	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
 	body = :(let; global $fn; $vhooks; $body; end)
 
-	debug ? body : (eval(body) ; (eval(fn), m.bsize, m.pars) )
+	debug ? body : (eval(body) ; (eval(fn), m.bsize, m.pars, m.init) )
 end

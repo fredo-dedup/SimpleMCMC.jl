@@ -74,10 +74,10 @@ end
 @dfunc /(x, y::Real)          y     sum([- x ./ (y .* y) .* ds])
 @dfunc /(x::Real, y::Array)   y     (- x ./ (y .* y)) .* ds
 
-@dfunc ./(x::Real, y)          x     sum([ds ./ y])
-@dfunc ./(x::Array, y::Real)   x     ds ./ y
-@dfunc ./(x, y::Real)          y     sum([- x ./ (y .* y) .* ds])
-@dfunc ./(x::Real, y::Array)   y     (- x ./ (y .* y)) .* ds
+@dfunc ./(x::Real, y)        x     sum([ds ./ y])
+@dfunc ./(x::Array, y)       x     ds ./ y
+@dfunc ./(x, y::Real)        y     sum([- x ./ (y .* y) .* ds])
+@dfunc ./(x, y::Array)       y     (- x ./ (y .* y)) .* ds
 
 @dfunc max(x::Real, y)    x     sum([x .> y] .* ds)
 @dfunc max(x::Array, y)   x     [x .> y] .* ds
@@ -196,12 +196,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(
 	ds = symbol("$DERIV_PREFIX$dsym")
 	args = opex.args[2:end]
 	
-	# val = findTypesValuesof(args)
-	val = map(hint, args)
-	for i in 1:length(args)
-		println("var $(args[i]) : $(val[i])")
-	end
-
+	val = map(hint, args)  # get sample values of args to find correct gradient statement
 
 	fn = symbol("d_$(opex.args[1])_x$index")
 
