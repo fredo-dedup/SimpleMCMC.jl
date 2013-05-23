@@ -8,7 +8,7 @@ sum(x::Real) = x  # meant to avoid the annoying behaviour of sum(Inf)
 
 export simpleRWM, simpleHMC, simpleNUTS
 export simpleAGD
-export buildFunction, buildFunctionWithGradient
+export generateModelFunction
 
 # naming conventions
 const ACC_SYM = :__acc       # name of accumulator variable

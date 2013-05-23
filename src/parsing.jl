@@ -373,91 +373,12 @@ function preCalculate(m::MCMCModel)
 	eval(body)
 	fn = eval(fn)
 
-	# now evaluate vhint (and throw error if model does not evaluate for given initial values)
+	# now evaluate vhint (or throw error if model does not evaluate for given initial values)
 	assert(fn(m.init) != -Inf, "Initial values out of model support, try other values")
 end
 
 
-######### builds the full functions ##############
-
-function buildFunction(model::Expr)
-	m = parseModel(model)
-
-	body = [betaAssign(m), 
-			[:(local $ACC_SYM = 0.)], 
-			m.source.args, 
-			[:(return($ACC_SYM))] ]
-
-	body = tryAndFunc(body, false)
-
-	# identify external vars and create definitions x = Main.x for the let block
-    unfold!(m)
-    categorizeVars!(m)
-	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
-
-	# build and evaluate the let block containing the function and external vars hooks
-	fn = gensym()
-	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
-	body = :(let; global $fn; $vhooks; $body; end)
-	# eval(Main, :(module llmod; using Main; $vhooks; $body; end) )
-	eval(body)
-	# func = Main.eval(tryAndFunc(body, false))
-
-	# (func, m.bsize, m.pars)
-	(eval(fn), m.bsize, m.pars)
-end
-
-function buildFunctionWithGradient(model::Expr)
-	m = parseModel(model)
-	unfold!(m)
-	uniqueVars!(m)
-	categorizeVars!(m)
-	backwardSweep!(m)
-
-	body = betaAssign(m)
-	push!(body, :($ACC_SYM = 0.)) # acc init
-	body = vcat(body, m.exprs)
-
-	push!(body, :($(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
-
-	avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
-	for v in avars 
-		push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
-	end
-
-	body = vcat(body, m.dexprs)
-
-	if length(m.pars) == 1
-		dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
-		dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-	else
-		dexp = {:vcat}
-		dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
-		dexp = expr(:call, dexp)
-	end
-
-	push!(body, :(($(m.finalacc), $dexp)))
-
-	body = tryAndFunc(body, true)
-
-	# identify external vars and add definitions x = Main.x
-	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
-
-	# build and evaluate the let block containing the function and external vars hooks
-	fn = gensym()
-	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
-	body = :(let; global $fn; $vhooks; $body; end)
-	eval(body)
-
-	# build and evaluate module 'llmod' containing function 
-	# eval(Main, :(module llmod; using Main; $vhooks; $body; end) )
-
-	(eval(fn), m.bsize, m.pars)
-end
-
-
+######### builds the model function ##############
 function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 
 	## process model parameters, rewrites ~ , ..
@@ -479,12 +400,12 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 		preCalculate(m)
 		backwardSweep!(m)
 
-		body = vcat(body, m.exprs)
-		push!(body, :($(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
+		body = vcat(body, [ :(local $e) for e in m.exprs] )
+		push!(body, :(local $(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
 
 		avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
 		for v in avars 
-			push!(body, :($(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
+			push!(body, :(local $(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
 		end
 		body = vcat(body, m.dexprs)
 
