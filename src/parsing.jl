@@ -393,31 +393,41 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 	categorizeVars!(m)
 
 	## build function expression
-	body = betaAssign(m)  # assigments beta vector -> model parameter vars
-	push!(body, :(local $ACC_SYM = 0.)) # initialize accumulator
 	
 	if gradient  # case with gradient
 		preCalculate(m)
 		backwardSweep!(m)
 
-		body = vcat(body, [ :(local $e) for e in m.exprs] )
-		push!(body, :(local $(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0))
+		# initialization statements 'ie'
+		ie = [ betaAssign(m)...,        # assigments beta vector -> model parameter vars
+		       :(local $ACC_SYM = 0.),  # initialize accumulator
+		       :(local $(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0)] # initialize accumulator gradient accumulator  
 
-		avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
+		avars = m.accanc & m.pardesc - Set(m.finalacc) # active vars without accumulator, treated above  
 		for v in avars 
-			push!(body, :(local $(symbol("$DERIV_PREFIX$v")) = zero($(symbol("$v")))))
-		end
-		body = vcat(body, m.dexprs)
-
-		if length(m.pars) == 1
-			dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
-			dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-		else
-			dexp = {:vcat}
-			dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
-			dexp = expr(:call, dexp)
+			vh = vhint[v]
+			if isa(vh, Real)
+				push!(ie, :(local $(symbol("$DERIV_PREFIX$v")) = 0.))
+			else	
+				push!(ie, :(local $(symbol("$DERIV_PREFIX$v")) = zeros(Float64, $(size(vh)))) )
+			end
 		end
 
+		# model statements 'me'		
+		me = [[ :(local $e) for e in m.exprs]..., m.dexprs...]
+
+		# return statement
+		dexp = { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars}
+		dexp = length(m.pars) > 1 ? expr(:call, :vcat, dexp...) : dexp[1]
+		# 	dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
+		# 	dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
+		# else
+		# 	dexp = {:vcat}
+		# 	dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
+		# 	dexp = expr(:call, dexp)
+		# end
+
+		body = vcat(ie, me)
 		push!(body, :(($(m.finalacc), $dexp)))
 
 		# enclose in a try block
@@ -426,8 +436,10 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 				          expr(:block, :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end)))
 
 	else  # case without gradient
-		body = vcat(body, m.source.args)
-		body = vcat(body, :(return($ACC_SYM)) )
+		body = [ betaAssign(m)...,        # assigments beta vector -> model parameter vars
+		         :(local $ACC_SYM = 0.),  # initialize accumulator
+                 m.source.args...,        # model statements
+                 :(return($ACC_SYM)) ]
 
 		# enclose in a try block
 		body = expr(:try, expr(:block, body...),

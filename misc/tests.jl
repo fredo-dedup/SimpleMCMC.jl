@@ -1,10 +1,10 @@
 
 
-include("SimpleMCMC.jl")
+include("../src/SimpleMCMC.jl")
 
 A = [1, 2, 3]
 model = quote
-    x::real
+    x::real(1,3)
 
     y = x * A
     y ~ Normal(0,1)
