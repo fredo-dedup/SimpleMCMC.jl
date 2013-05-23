@@ -49,12 +49,9 @@ model = quote
 	Y ~ Bernoulli(prob)
 end
 
-# ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) 
-# init = SimpleMCMC.setInit(1.0, nparams)
 ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, true, false) 
 @timeit ll_func(init) 1000 binomial_function_with_gradient
 
-# ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) 
 ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, false, false) 
 @timeit ll_func(init) 1000 binomial_function_without_gradient
 
@@ -98,12 +95,9 @@ model = quote
 end
 
 
-# ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) 
-# init = SimpleMCMC.setInit(1.0, nparams)
 ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, true, false) 
 @timeit ll_func(init) 1000 hierarchical_function_with_gradient
 
-# ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) 
 ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, false, false) 
 @timeit ll_func(init) 1000 hierarchical_function_without_gradient
 
@@ -141,12 +135,9 @@ model = quote
 end
 
 
-# ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) 
-# init = [1., 0.05, 1.]
 ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, [1., 0.05, 1.], true, false) 
 @timeit ll_func(init) 1000 Ornstein_function_with_gradient
 
-# ll_func, nparams, pmap = SimpleMCMC.buildFunction(model) 
 ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, [1., 0.05, 1.], false, false) 
 @timeit ll_func(init) 1000 Ornstein_function_without_gradient
 

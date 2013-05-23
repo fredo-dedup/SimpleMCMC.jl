@@ -55,60 +55,60 @@ end
 
 @dfunc abs(x)       x     sign(x) .* ds
 
-@dfunc *(x::Real, y)     x     sum([ds .* y])
+@dfunc *(x::Real, y)     x     sum(ds .* y)
 @dfunc *(x::Array, y)    x     ds * transpose(y)
-@dfunc *(x, y::Real)     y     sum([ds .* x])
+@dfunc *(x, y::Real)     y     sum(ds .* x)
 @dfunc *(x, y::Array)    y     transpose(x) * ds
 
-@dfunc .*(x::Real, y)    x     sum([ds .* y])
+@dfunc .*(x::Real, y)    x     sum(ds .* y)
 @dfunc .*(x::Array, y)   x     ds .* y
-@dfunc .*(x, y::Real)    y     sum([ds .* x])
+@dfunc .*(x, y::Real)    y     sum(ds .* x)
 @dfunc .*(x, y::Array)   y     ds .* x
 
 @dfunc ^(x::Real, y::Real)  x     y * x ^ (y-1) * ds # Both args reals
 @dfunc ^(x::Real, y::Real)  y     log(x) * x ^ y * ds # Both args reals
 
-@dfunc .^(x::Real, y)    x     sum([y .* x .^ (y-1) .* ds])
+@dfunc .^(x::Real, y)    x     sum(y .* x .^ (y-1) .* ds)
 @dfunc .^(x::Array, y)   x     y .* x .^ (y-1) .* ds
-@dfunc .^(x, y::Real)    y     sum([log(x) .* x .^ y .* ds])
+@dfunc .^(x, y::Real)    y     sum(log(x) .* x .^ y .* ds)
 @dfunc .^(x, y::Array)   y     log(x) .* x .^ y .* ds
 
-@dfunc /(x::Real, y)          x     sum([ds ./ y])
+@dfunc /(x::Real, y)          x     sum(ds ./ y)
 @dfunc /(x::Array, y::Real)   x     ds ./ y
-@dfunc /(x, y::Real)          y     sum([- x ./ (y .* y) .* ds])
+@dfunc /(x, y::Real)          y     sum(- x ./ (y .* y) .* ds)
 @dfunc /(x::Real, y::Array)   y     (- x ./ (y .* y)) .* ds
 
-@dfunc ./(x::Real, y)        x     sum([ds ./ y])
+@dfunc ./(x::Real, y)        x     sum(ds ./ y)
 @dfunc ./(x::Array, y)       x     ds ./ y
-@dfunc ./(x, y::Real)        y     sum([- x ./ (y .* y) .* ds])
+@dfunc ./(x, y::Real)        y     sum(- x ./ (y .* y) .* ds)
 @dfunc ./(x, y::Array)       y     (- x ./ (y .* y)) .* ds
 
-@dfunc max(x::Real, y)    x     sum([x .> y] .* ds)
-@dfunc max(x::Array, y)   x     [x .> y] .* ds
-@dfunc max(x, y::Real)    y     sum([x .< y] .* ds)
-@dfunc max(x, y::Array)   y     [x .< y] .* ds
+@dfunc max(x::Real, y)    x     sum((x .> y) .* ds)
+@dfunc max(x::Array, y)   x     (x .> y) .* ds
+@dfunc max(x, y::Real)    y     sum((x .< y) .* ds)
+@dfunc max(x, y::Array)   y     (x .< y) .* ds
 
-@dfunc min(x::Real, y)    x     sum([x .< y] .* ds)
-@dfunc min(x::Array, y)   x     [x .< y] .* ds
-@dfunc min(x, y::Real)    y     sum([x .> y] .* ds)
-@dfunc min(x, y::Array)   y     [x .> y] .* ds
+@dfunc min(x::Real, y)    x     sum((x .< y) .* ds)
+@dfunc min(x::Array, y)   x     (x .< y) .* ds
+@dfunc min(x, y::Real)    y     sum((x .> y) .* ds)
+@dfunc min(x, y::Array)   y     (x .> y) .* ds
 
 @dfunc transpose(x::Real)   x   +ds
 @dfunc transpose(x::Array)  x   transpose(ds)
 
 ## Normal distribution
-@dfunc logpdfNormal(mu::Real, sigma, x)         mu     sum([(x - mu) ./ (sigma .^ 2)] * ds) .* ds
-@dfunc logpdfNormal(mu::Array, sigma, x)        mu     ([(x - mu) ./ (sigma .^ 2)] * ds) .* ds
+@dfunc logpdfNormal(mu::Real, sigma, x)         mu     sum(((x - mu) ./ (sigma .^ 2)) * ds) .* ds
+@dfunc logpdfNormal(mu::Array, sigma, x)        mu     (((x - mu) ./ (sigma .^ 2)) * ds) .* ds
 @dfunc logpdfNormal(mu, sigma::Real, x)         sigma  sum(((x - mu).^2 ./ sigma.^2 - 1.) ./ sigma * ds) .* ds
 @dfunc logpdfNormal(mu, sigma::Array, x)        sigma  (((x - mu).^2 ./ sigma.^2 - 1.) ./ sigma * ds) .* ds
-@dfunc logpdfNormal(mu, sigma, x::Real)         x      sum([(mu - x) ./ (sigma .^ 2)] * ds) .* ds
-@dfunc logpdfNormal(mu, sigma, x::Array)        x      ([(mu - x) ./ (sigma .^ 2)] * ds) .* ds
+@dfunc logpdfNormal(mu, sigma, x::Real)         x      sum(((mu - x) ./ (sigma .^ 2)) * ds) .* ds
+@dfunc logpdfNormal(mu, sigma, x::Array)        x      (((mu - x) ./ (sigma .^ 2)) * ds) .* ds
 
 ## Uniform distribution
-@dfunc logpdfUniform(a::Real, b, x)      a   sum([a .<= x .<= b] .* (ds ./ (b - a))) .* ds
-@dfunc logpdfUniform(a::Array, b, x)     a   ([a .<= x .<= b] .* (ds ./ (b - a))) .* ds
-@dfunc logpdfUniform(a, b::Real, x)      b   sum([a .<= x .<= b] .* -(ds ./ (b - a))) .* ds
-@dfunc logpdfUniform(a, b::Array, x)     b   ([a .<= x .<= b] .* -(ds ./ (b - a))) .* ds
+@dfunc logpdfUniform(a::Real, b, x)      a   sum((a .<= x .<= b) .* (ds ./ (b - a))) .* ds
+@dfunc logpdfUniform(a::Array, b, x)     a   ((a .<= x .<= b) .* (ds ./ (b - a))) .* ds
+@dfunc logpdfUniform(a, b::Real, x)      b   sum((a .<= x .<= b) .* -(ds ./ (b - a))) .* ds
+@dfunc logpdfUniform(a, b::Array, x)     b   ((a .<= x .<= b) .* -(ds ./ (b - a))) .* ds
 @dfunc logpdfUniform(a, b, x)            x   zero(x)
 
 ## Weibull distribution
