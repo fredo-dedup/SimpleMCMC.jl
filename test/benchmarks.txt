@@ -127,6 +127,7 @@ Ornstein_function_without_gradient	1369298351	0.1.0	46d21c	0x5ba0	0.001281
 Ornstein_RWM	1369298353	0.1.0	46d21c	0x5ba0	0.390000105
 Ornstein_HMC	1369298396	0.1.0	46d21c	0x5ba0	8.421999931
 Ornstein_NUTS	1369298445	0.1.0	46d21c	0x5ba0	9.359999895
+
 binomial_function_with_gradient	1369301729	0.1.0	46d21c	0x5ba0	0.001453
 binomial_function_without_gradient	1369301732	0.1.0	46d21c	0x5ba0	0.000641
 binomial_RWM	1369301737	0.1.0	46d21c	0x5ba0	0.671999931
@@ -142,6 +143,7 @@ Ornstein_function_without_gradient	1369301847	0.1.0	46d21c	0x5ba0	0.001375
 Ornstein_RWM	1369301850	0.1.0	46d21c	0x5ba0	0.453999996
 Ornstein_HMC	1369301899	0.1.0	46d21c	0x5ba0	9.687999964
 Ornstein_NUTS	1369301956	0.1.0	46d21c	0x5ba0	11.281000137
+
 binomial_function_with_gradient	1369302092	0.1.0	a9f341	0x5ba0	0.001078
 binomial_function_without_gradient	1369302095	0.1.0	a9f341	0x5ba0	0.000499
 binomial_RWM	1369302099	0.1.0	a9f341	0x5ba0	0.546999931
@@ -157,6 +159,7 @@ Ornstein_function_without_gradient	1369302189	0.1.0	a9f341	0x5ba0	0.001265
 Ornstein_RWM	1369302192	0.1.0	a9f341	0x5ba0	0.405999899
 Ornstein_HMC	1369302234	0.1.0	a9f341	0x5ba0	8.358999968
 Ornstein_NUTS	1369302283	0.1.0	a9f341	0x5ba0	9.578000069
+
 binomial_function_with_gradient	1369302401	0.1.0	a9f341	0x5ba0	0.001156
 binomial_function_without_gradient	1369302404	0.1.0	a9f341	0x5ba0	0.000516
 binomial_RWM	1369302407	0.1.0	a9f341	0x5ba0	0.562000036
@@ -172,3 +175,20 @@ Ornstein_function_without_gradient	1369302498	0.1.0	a9f341	0x5ba0	0.001281
 Ornstein_RWM	1369302501	0.1.0	a9f341	0x5ba0	0.389999866
 Ornstein_HMC	1369302547	0.1.0	a9f341	0x5ba0	8.687000036
 Ornstein_NUTS	1369302598	0.1.0	a9f341	0x5ba0	9.608999968
+
+binomial_function_with_gradient	1369305541	0.1.0	7d8cf4	0x5ba0	0.001078
+binomial_function_without_gradient	1369305543	0.1.0	7d8cf4	0x5ba0	0.000468
+binomial_RWM	1369305547	0.1.0	7d8cf4	0x5ba0	0.546999931
+binomial_HMC	1369305559	0.1.0	7d8cf4	0x5ba0	2.282000065
+binomial_NUTS	1369305583	0.1.0	7d8cf4	0x5ba0	4.734999895
+hierarchical_function_with_gradient	1369305585	0.1.0	7d8cf4	0x5ba0	0.000187
+hierarchical_function_without_gradient	1369305585	0.1.0	7d8cf4	0x5ba0	7.8e-5
+hierarchical_RWM	1369305587	0.1.0	7d8cf4	0x5ba0	0.328000069
+hierarchical_HMC	1369305599	0.1.0	7d8cf4	0x5ba0	2.266000032
+hierarchical_NUTS	1369305622	0.1.0	7d8cf4	0x5ba0	3.07799983
+Ornstein_function_with_gradient	1369305631	0.1.0	7d8cf4	0x5ba0	0.001609
+Ornstein_function_without_gradient	1369305637	0.1.0	7d8cf4	0x5ba0	0.001266
+Ornstein_RWM	1369305640	0.1.0	7d8cf4	0x5ba0	0.407000065
+Ornstein_HMC	1369305682	0.1.0	7d8cf4	0x5ba0	8.358999968
+Ornstein_NUTS	1369305730	0.1.0	7d8cf4	0x5ba0	9.391000032
+

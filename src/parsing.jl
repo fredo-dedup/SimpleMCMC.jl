@@ -28,11 +28,14 @@ typealias Exprcomp     ExprH{:comparison}
 ## variable symbol polling functions
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
 getSymbols(ex::Symbol) =     Set{Symbol}(ex)
-getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
+# getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
 getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])  # skip function name
-getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
-getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), symbol("end")) # ':'' and 'end' do not count
+# getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
+# getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
+getSymbols(ex::Exprcomp) =   mapreduce(getSymbols, union, ex.args) - Set(:(>), :(<), :(>=), :(<=), :(.>), :(.<), :(.<=), :(.>=))
+getSymbols(ex::ExprH) =      mapreduce(getSymbols, union, ex.args)
+
 getSymbols(ex::Array) =      mapreduce(getSymbols, union, ex)
 getSymbols(ex::Any) =        Set{Symbol}()
 
@@ -336,9 +339,9 @@ function betaAssign(m::MCMCModel)
 	assigns = Expr[]
 	for p in pmap
 		if length(p.size) <= 1  # scalar or vector
-			push!(assigns, :(local $(p.sym) = $PARAM_SYM[ $(p.map) ]) )
+			push!(assigns, :($(p.sym) = $PARAM_SYM[ $(expr(:quote,p.map)) ]) )
 		else # matrix case  (needs a reshape)
-			push!(assigns, :(local $(p.sym) = reshape($PARAM_SYM[ $(p.map) ], $(p.size[1]), $(p.size[2]))) )
+			push!(assigns, :($(p.sym) = reshape($PARAM_SYM[ $(expr(:quote,p.map)) ], $(p.size[1]), $(p.size[2]))) )
 		end
 	end			
 	assigns
@@ -380,8 +383,7 @@ end
 
 ######### builds the model function ##############
 function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
-
-	## process model parameters, rewrites ~ , ..
+	## extracts model parameters, rewrites ~ , ..
 	m = parseModel(model)
 
 	## checks initial values
@@ -393,41 +395,58 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 	categorizeVars!(m)
 
 	## build function expression
-	
 	if gradient  # case with gradient
 		preCalculate(m)
 		backwardSweep!(m)
 
-		# initialization statements 'ie'
-		ie = [ betaAssign(m)...,        # assigments beta vector -> model parameter vars
-		       :(local $ACC_SYM = 0.),  # initialize accumulator
-		       :(local $(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0)] # initialize accumulator gradient accumulator  
+		body = Expr[] # list of = expr making the model
+		dsym(v::Symbol) = symbol("$DERIV_PREFIX$(v)")
+
+		# initialization statements 
+		body = [ betaAssign(m)...,        # assigments beta vector -> model parameter vars
+		         :($ACC_SYM = 0.),        # initialize accumulator
+		         :($(dsym(m.finalacc)) = 1.0)] # initialize accumulator gradient accumulator  
 
 		avars = m.accanc & m.pardesc - Set(m.finalacc) # active vars without accumulator, treated above  
 		for v in avars 
 			vh = vhint[v]
 			if isa(vh, Real)
-				push!(ie, :(local $(symbol("$DERIV_PREFIX$v")) = 0.))
+				push!(body, :($(dsym(v)) = 0.))
 			else	
-				push!(ie, :(local $(symbol("$DERIV_PREFIX$v")) = zeros(Float64, $(size(vh)))) )
+				push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
 			end
 		end
 
-		# model statements 'me'		
-		me = [[ :(local $e) for e in m.exprs]..., m.dexprs...]
+		# build function statements, and move to let block constant statements for optimization
+		header = Expr[]  # let block statements
+		fvars = Set([e.args[1] for e in body]...) | Set(PARAM_SYM) # vars that are re-evaluated at each function call
+		for ex in [m.exprs..., m.dexprs...]
+			if length(getSymbols(ex.args[2]) & fvars) > 0
+				push!(body, ex)
+				fvars |= getSymbols(ex.args[1])
+			else
+				push!(header, ex)
+			end
+		end
+
+		# prefix statements with 'local' at first occurence
+		vars  = Set(PARAM_SYM)
+		for i in 1:length(header)
+			if length(getSymbols(header[i].args[1]) & vars) == 0
+				header[i] = :(local $(header[i]))
+				vars |= getSymbols(header[i].args[1])
+			end
+		end
+		for i in 1:length(body)
+			if length(getSymbols(body[i].args[1]) & vars) == 0
+				body[i] = :(local $(body[i]))
+				vars |= getSymbols(body[i].args[1])
+			end
+		end
 
 		# return statement
-		dexp = { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars}
+		dexp = { :( vec([$(dsym(p.sym))]) ) for p in m.pars}
 		dexp = length(m.pars) > 1 ? expr(:call, :vcat, dexp...) : dexp[1]
-		# 	dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
-		# 	dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-		# else
-		# 	dexp = {:vcat}
-		# 	dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
-		# 	dexp = expr(:call, dexp)
-		# end
-
-		body = vcat(ie, me)
 		push!(body, :(($(m.finalacc), $dexp)))
 
 		# enclose in a try block
@@ -446,16 +465,58 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 				          :e, 
 				          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 
+		header = Expr[]
 	end
 
 	# identify external vars and add definitions x = Main.x
 	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	vhooks = expr(:block, [ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]...) # assigment block
+	# vhooks = expr(:block, [ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]...) # assigment block
+	header = [[ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]..., header...] # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
 	fn = gensym()
 	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
-	body = :(let; global $fn; $vhooks; $body; end)
+	body = expr(:let, expr(:block, :(global $fn), header..., body))
 
 	debug ? body : (eval(body) ; (eval(fn), m.bsize, m.pars, m.init) )
 end
+
+
+
+
+		# # initialization statements 
+		# body = [ betaAssign(m)...,        # assigments beta vector -> model parameter vars
+		#          :(l $ACC_SYM = 0.),  # initialize accumulator
+		#        :(local $(symbol("$DERIV_PREFIX$(m.finalacc)")) = 1.0)] # initialize accumulator gradient accumulator  
+
+		# avars = m.accanc & m.pardesc - Set(m.finalacc) # active vars without accumulator, treated above  
+		# for v in avars 
+		# 	vh = vhint[v]
+		# 	if isa(vh, Real)
+		# 		push!(ie, :(local $(symbol("$DERIV_PREFIX$v")) = 0.))
+		# 	else	
+		# 		push!(ie, :(local $(symbol("$DERIV_PREFIX$v")) = zeros(Float64, $(size(vh)))) )
+		# 	end
+		# end
+
+		# # model statements 'me'		
+		# me = [[ :(local $e) for e in m.exprs]..., m.dexprs...]
+
+		# # return statement
+		# dexp = { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars}
+		# dexp = length(m.pars) > 1 ? expr(:call, :vcat, dexp...) : dexp[1]
+		# # 	dn = symbol("$DERIV_PREFIX$(m.pars[1].sym)")
+		# # 	dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
+		# # else
+		# # 	dexp = {:vcat}
+		# # 	dexp = vcat(dexp, { :( vec([$(symbol("$DERIV_PREFIX$(p.sym)"))]) ) for p in m.pars})
+		# # 	dexp = expr(:call, dexp)
+		# # end
+
+		# body = vcat(ie, me)
+		# push!(body, :(($(m.finalacc), $dexp)))
+
+		# # enclose in a try block
+		# body = expr(:try, expr(:block, body...),
+		# 		          :e, 
+			
