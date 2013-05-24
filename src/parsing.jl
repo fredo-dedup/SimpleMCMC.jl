@@ -26,18 +26,15 @@ typealias Exprif       ExprH{:if}
 typealias Exprcomp     ExprH{:comparison}
 
 ## variable symbol polling functions
-getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
+getSymbols(ex::Any) =        Set{Symbol}()
 getSymbols(ex::Symbol) =     Set{Symbol}(ex)
-# getSymbols(ex::Exprequal) =  union(getSymbols(ex.args[1]), getSymbols(ex.args[2]))
+getSymbols(ex::Array) =      mapreduce(getSymbols, union, ex)
+getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
+getSymbols(ex::ExprH) =      mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])  # skip function name
 getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), symbol("end")) # ':'' and 'end' do not count
-# getSymbols(ex::Exprif) =     mapreduce(getSymbols, union, ex.args)
-# getSymbols(ex::Exprblock) =  mapreduce(getSymbols, union, ex.args)
-getSymbols(ex::Exprcomp) =   mapreduce(getSymbols, union, ex.args) - Set(:(>), :(<), :(>=), :(<=), :(.>), :(.<), :(.<=), :(.>=))
-getSymbols(ex::ExprH) =      mapreduce(getSymbols, union, ex.args)
+getSymbols(ex::Exprcomp) =   mapreduce(getSymbols, union, ex.args) - Set(:(>), :(<), :(>=), :(<=), :(.>), :(.<), :(.<=), :(.>=), :(==))
 
-getSymbols(ex::Array) =      mapreduce(getSymbols, union, ex)
-getSymbols(ex::Any) =        Set{Symbol}()
 
 ## variable symbol subsitution functions
 substSymbols(ex::Expr, smap::Dict) =          substSymbols(toExprH(ex), smap::Dict)
@@ -262,6 +259,7 @@ function categorizeVars!(m::MCMCModel)
     for ex2 in reverse(m.exprs) # proceed backwards
         lhs = getSymbols(ex2.args[1])
         rhs = getSymbols(ex2.args[2])
+        isa(ex2.args[1], Expr) && ex2.args[1].head == :ref ? rhs |= getSymbols(ex2.args[1].args[2]) : nothing
 
         length(lhs & m.accanc) > 0 ? m.accanc = m.accanc | rhs : nothing
     end
@@ -474,7 +472,7 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 	header = [[ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]..., header...] # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
-	fn = gensym()
+	fn = gensym("ll")
 	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
 	body = expr(:let, expr(:block, :(global $fn), header..., body))
 

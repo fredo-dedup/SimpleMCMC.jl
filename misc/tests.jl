@@ -1,127 +1,63 @@
 
-
 include("../src/SimpleMCMC.jl")
 
 A = [1, 2, 3]
 model = quote
-    x::real(1,3)
+    x2::real(1,3)
+    x1::real(2)
+    x0::real
 
-    y = x * A
+    y = x2 * A
     y ~ Normal(0,1)
 end
 
 SimpleMCMC.generateModelFunction(model, 1.0, false, true)
+myf, dummy = SimpleMCMC.generateModelFunction(model, 1., false, false)
+myf(ones(10)*0.5)
 SimpleMCMC.generateModelFunction(model, 1.0, true, true)
+myf, dummy = SimpleMCMC.generateModelFunction(model, 1., true, false)
+myf(ones(10)*0.5)
+myf(zeros(30)+0.1)
 
-##############################################
-logpdfNormal(a,b,c) = SimpleMCMC.logpdfNormal(a,b,c)
+myf([1., 1., 1.])
 
-    ## process model parameters, rewrites ~ , ..
-    m = SimpleMCMC.parseModel(model)
-
-    ## checks initial values
-    SimpleMCMC.setInit!(m, 1.0)
-
-    ## process model expression
-    SimpleMCMC.unfold!(m)
-    SimpleMCMC.uniqueVars!(m)
-    SimpleMCMC.categorizeVars!(m)
-
-    ## build function expression
-    body = SimpleMCMC.betaAssign(m)  # assigments beta vector -> model parameter vars
-    push!(body, :($(SimpleMCMC.ACC_SYM) = 0.)) # initialize accumulator
-    
-    if gradient  # case with gradient
+SimpleMCMC.generateModelFunction(model, [1., 0.1, 1.], true, true)
+myf, dummy = SimpleMCMC.generateModelFunction(model, [1., 0.1, 1.], true, false)
+myf([1., 0.1, 1.])
+res = simpleHMC(model, 1000, 100, [1., 0.1, 1.], 5, 0.002)
 
 
-        body = Expr[ SimpleMCMC.betaAssign(m)..., 
-                     :($(SimpleMCMC.ACC_SYM) = 0.), 
-                     :(global vdict), 
-                     :( vdict=Dict()),
-                     m.exprs...,
-                     :( vdict[$(expr(:quote, SimpleMCMC.ACC_SYM))] = $(SimpleMCMC.ACC_SYM) ),
-                     [ :(vdict[$(expr(:quote, v))] = $v) for v in m.varsset]...]
+SimpleMCMC.generateModelFunction(expr(:block, :(x::real ; y = max(x,arg2) ; y ~ TestDiff())), [1.0], true, true)
+SimpleMCMC.getSymbols(:((x.>arg2)))
+SimpleMCMC.getSymbols(:([zz.>=x.>arg2]))
+dump(:((x.>arg2)))
+dump(:((z.>x.>arg2)))
 
-    ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-    vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
+#########################
 
-        body = :(let __beta = m.init; $vhooks; $(expr(:block, body...)); end)
-        eval(body)
-        vdict
+begin # binomial
+    srand(1)
+    n = 1000
+    nbeta = 10 # number of predictors, including intercept
+    X = [ones(n) randn((n, nbeta-1))]
+    beta0 = randn((nbeta,))
+    Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0)))
 
+    # define model
+    model = quote
+        vars::real(nbeta)
 
-        ###
-
-        SimpleMCMC.backwardSweep!(m)
-
-        body = vcat(body, m.exprs)
-        push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$(m.finalacc)")) = 1.0))
-
-        avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
-        for v in avars 
-            push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$v")) = zero($(symbol("$v")))))
-        end
-        body = vcat(body, m.dexprs)
-
-        if length(m.pars) == 1
-            dn = symbol("$(SimpleMCMC.DERIV_PREFIX)$(m.pars[1].sym)")
-            dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-        else
-            dexp = {:vcat}
-            dexp = vcat(dexp, { :( vec([$(symbol("$(SimpleMCMC.DERIV_PREFIX)$(p.sym)"))]) ) for p in m.pars})
-            dexp = expr(:call, dexp)
-        end
-
-        push!(body, :(($(m.finalacc), $dexp)))
-
-        # enclose in a try block
-        body = expr(:try, expr(:block, body...),
-                          :e, 
-                          expr(:block, :(if e == "give up eval"; return(-Inf, zero($(SimpleMCMC.PARAM_SYM))); else; throw(e); end)))
-
-    else  # case without gradient
-        body = vcat(body, m.source.args)
-        body = vcat(body, :(return($ACC_SYM)) )
-
-        # enclose in a try block
-        body = expr(:try, expr(:block, body...),
-                          :e, 
-                          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
-
+        vars ~ Normal(0, 1.0) 
+        prob = 1 / (1. + exp(X * vars)) 
+        Y ~ Bernoulli(prob)
     end
-
-    # identify external vars and add definitions x = Main.x
-    ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-    vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
-
-    # build and evaluate the let block containing the function and external vars hooks
-    fn = gensym()
-    body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})), expr(:block, body) )
-    body = :(let; global $fn; $vhooks; $body; end)
-
-
-
-###############################################
-
-let
-    global vdict
-
-    local x
-
-    vdict = Dict()
-
-    x = 12
-
-    vdict[:x] = x
 end
 
-x
-vdict[:x]
-x = 34
-vdict[:x]
+    ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, true, false) 
+    @timeit ll_func(init) 1000 binomial_function_with_gradient
 
-    probe(s::Symbol) = eval(x)
-
+    ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, false, false) 
+    @timeit ll_func(init) 1000 binomial_function_without_gradient
 
 
 #########################
@@ -234,7 +170,6 @@ begin # linear
         vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
         resid = Y - X * vars
         resid += 0.
-        resid[nbeta] = 0.
         resid ~ Normal(0, 1.0)  
     end
 end
@@ -276,3 +211,106 @@ res = simpleNUTS(model, 1000, 100)
 
 ##################################
 
+
+let 
+    global f57003
+    local x = Main.x
+    local tmp56963 = -(0.001)
+    local tmp56965 = x[2:end]
+    local tmp56966 = x[1:-(end,1)]
+    local tmp56999 = -(tmp56963)
+    function f57003(__beta::Vector{Float64})
+        try 
+            local mu = __beta[1]
+            local tau = __beta[2]
+            local sigma = __beta[3]
+            local __acc = 0.0
+            local d__acc56976 = 1.0
+            local dtmp56969 = 0.0
+            local dtmp56968 = zeros(Float64,(999,))
+            local d__acc56973 = 0.0
+            local dtmp56964 = 0.0
+            local d__acc56975 = 0.0
+            local dtmp56971 = 0.0
+            local d__acc56974 = 0.0
+            local dsigma = 0.0
+            local dtmp56972 = 0.0
+            local dfac = 0.0
+            local dtau = 0.0
+            local dmu = 0.0
+            local dtmp56967 = zeros(Float64,(999,))
+            local dtmp56962 = 0.0
+            local dtmp56970 = 0.0
+            local dresid = zeros(Float64,(999,))
+            local dtmp56961 = 0.0
+            local dtmp56960 = 0.0
+            local tmp56960 = logpdfUniform(0,0.1,tau)
+            local __acc56973 = +(__acc,tmp56960)
+            local tmp56961 = logpdfUniform(0,2,sigma)
+            local __acc56974 = +(__acc56973,tmp56961)
+            local tmp56962 = logpdfUniform(0,2,mu)
+            local __acc56975 = +(__acc56974,tmp56962)
+            local tmp56964 = /(tmp56963,tau)
+            local fac = exp(tmp56964)
+            local tmp56967 = *(tmp56966,fac)
+            local tmp56968 = -(tmp56965,tmp56967)
+            local tmp56969 = -(1.0,fac)
+            local tmp56970 = *(mu,tmp56969)
+            local tmp56971 = *(10,tmp56970)
+            local resid = -(tmp56968,tmp56971)
+            local tmp56972 = logpdfNormal(0,sigma,resid)
+            local __acc56976 = +(__acc56975,tmp56972)
+            d__acc56975 = +(d__acc56975,sum(d__acc56976))
+            dtmp56972 = +(dtmp56972,sum(d__acc56976))
+            local tmp56980 = -(resid,0)
+            local tmp56981 = .^(tmp56980,2)
+            local tmp56982 = .^(sigma,2)
+            local tmp56983 = ./(tmp56981,tmp56982)
+            local tmp56984 = -(tmp56983,1.0)
+            local tmp56985 = ./(tmp56984,sigma)
+            local tmp56986 = *(tmp56985,dtmp56972)
+            local tmp56987 = sum(tmp56986)
+            dsigma = +(dsigma,.*(tmp56987,dtmp56972))
+            local tmp56988 = -(0,resid)
+            local tmp56989 = .^(sigma,2)
+            local tmp56990 = ./(tmp56988,tmp56989)
+            local tmp56991 = *(tmp56990,dtmp56972)
+            dresid = +(dresid,.*(tmp56991,dtmp56972))
+            dtmp56968 = +(dtmp56968,+(dresid))
+            local tmp56992 = sum(dresid)
+            dtmp56971 = +(dtmp56971,-(tmp56992))
+            local tmp56993 = .*(dtmp56971,10)
+            dtmp56970 = +(dtmp56970,sum(tmp56993))
+            local tmp56994 = .*(dtmp56970,tmp56969)
+            dmu = +(dmu,sum(tmp56994))
+            local tmp56995 = .*(dtmp56970,mu)
+            dtmp56969 = +(dtmp56969,sum(tmp56995))
+            local tmp56996 = sum(dtmp56969)
+            dfac = +(dfac,-(tmp56996))
+            dtmp56967 = +(dtmp56967,-(dtmp56968))
+            local tmp56997 = .*(dtmp56967,tmp56966)
+            dfac = +(dfac,sum(tmp56997))
+            local tmp56998 = exp(tmp56964)
+            dtmp56964 = +(dtmp56964,.*(tmp56998,dfac))
+            local tmp57000 = .*(tau,tau)
+            local tmp57001 = ./(tmp56999,tmp57000)
+            local tmp57002 = .*(tmp57001,dtmp56964)
+            dtau = +(dtau,sum(tmp57002))
+            d__acc56974 = +(d__acc56974,sum(d__acc56975))
+            dtmp56962 = +(dtmp56962,sum(d__acc56975))
+            dmu = +(dmu,zero(mu))
+            d__acc56973 = +(d__acc56973,sum(d__acc56974))
+            dtmp56961 = +(dtmp56961,sum(d__acc56974))
+            dsigma = +(dsigma,zero(sigma))
+            dtmp56960 = +(dtmp56960,sum(d__acc56973))
+            dtau = +(dtau,zero(tau))
+            (__acc56976,vcat(vec([dmu]),vec([dtau]),vec([dsigma])))
+        catch e
+            if (e=="give up eval") 
+                return (-(Inf),zero(__beta))
+            else   
+                throw(e)
+            end
+        end
+    end
+end

@@ -49,15 +49,18 @@ model = quote
 	Y ~ Bernoulli(prob)
 end
 
-ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, true, false) 
+generateModelFunction(model, 1.0, true, true) 
+ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, true, false) 
+ll_func(ones(10))
+
 @timeit ll_func(init) 1000 binomial_function_with_gradient
 
-ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, false, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, false, false) 
 @timeit ll_func(init) 1000 binomial_function_without_gradient
 
-@timeit SimpleMCMC.simpleRWM(model, 1000, 100) 1 binomial_RWM
-@timeit SimpleMCMC.simpleHMC(model, 1000, 100, 2, 0.1) 1 binomial_HMC
-@timeit SimpleMCMC.simpleNUTS(model, 1000, 100) 1 binomial_NUTS
+@timeit simpleRWM(model, 1000, 100) 1 binomial_RWM
+@timeit simpleHMC(model, 1000, 100, 2, 0.1) 1 binomial_HMC
+@timeit simpleNUTS(model, 1000, 100) 1 binomial_NUTS
 
 
 ############  hierarchical reg test on 50 obs x 5 predictors  ###############
@@ -95,15 +98,15 @@ model = quote
 end
 
 
-ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, true, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, true, false) 
 @timeit ll_func(init) 1000 hierarchical_function_with_gradient
 
-ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, 1.0, false, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, false, false) 
 @timeit ll_func(init) 1000 hierarchical_function_without_gradient
 
-@timeit SimpleMCMC.simpleRWM(model, 1000, 100) 1 hierarchical_RWM
-@timeit SimpleMCMC.simpleHMC(model, 1000, 100, 10, 0.03) 1 hierarchical_HMC
-@timeit SimpleMCMC.simpleNUTS(model, 10) 1 hierarchical_NUTS   # poor perf of NUTS here, less iterations
+@timeit simpleRWM(model, 1000, 100) 1 hierarchical_RWM
+@timeit simpleHMC(model, 1000, 100, 10, 0.03) 1 hierarchical_HMC
+@timeit simpleNUTS(model, 10) 1 hierarchical_NUTS   # poor perf of NUTS here, less iterations
 
 ############  Ornstein–Uhlenbeck process  ###############
 
@@ -135,15 +138,15 @@ model = quote
 end
 
 
-ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, [1., 0.05, 1.], true, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, [1., 0.05, 1.], true, false) 
 @timeit ll_func(init) 1000 Ornstein_function_with_gradient
 
-ll_func, nparams, pmap, init = SimpleMCMC.generateModelFunction(model, [1., 0.05, 1.], false, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, [1., 0.05, 1.], false, false) 
 @timeit ll_func(init) 1000 Ornstein_function_without_gradient
 
-@timeit SimpleMCMC.simpleRWM(model, 1000, 100, init) 1 Ornstein_RWM
-@timeit SimpleMCMC.simpleHMC(model, 1000, 100, init, 5, 0.002) 1 Ornstein_HMC
-@timeit SimpleMCMC.simpleNUTS(model, 1000, 100, init) 1 Ornstein_NUTS
+@timeit simpleRWM(model, 1000, 100, init) 1 Ornstein_RWM
+@timeit simpleHMC(model, 1000, 100, init, 5, 0.002) 1 Ornstein_HMC
+@timeit simpleNUTS(model, 1000, 100, init) 1 Ornstein_NUTS
 
 ############ close benchmark file ####################
 
