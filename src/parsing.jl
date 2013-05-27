@@ -411,7 +411,9 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 			if isa(vh, Real)
 				push!(body, :($(dsym(v)) = 0.))
 			else	
-				push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
+				# push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
+				push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:tuple,size(vh)...)))) )
+				# dump( :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
 			end
 		end
 
