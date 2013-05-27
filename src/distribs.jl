@@ -35,19 +35,6 @@ for d in {#(:Normal,  	"dnorm4"),
 			end
 		end
 
-		# function ($fsym)(a::Union(Real, AbstractArray), 
-		# 	             b::Union(Real, AbstractArray), 
-		# 	             x::Union(Real, AbstractArray))
-		# 	local res, acc
-
-		# 	acc = 0.0
-		# 	for i in 1:max(length(a), length(b), length(x))
-		# 		res = ($fsym)(next(a,i)[1], next(b,i)[1], next(x,i)[1])
-		# 		acc += res
-		# 	end
-		# 	acc
-		# end
-
 	end) 
 
 end
@@ -74,18 +61,6 @@ for d in {(:Poisson,  	  "dpois"),
 			end
 		end
 
-		# function ($fsym)(a::Union(Real, AbstractArray), 
-		# 	             x::Union(Real, AbstractArray))
-		# 	local res, acc
-
-		# 	acc = 0.0
-		# 	for i in 1:max(length(a), length(x))
-		# 		res = ($fsym)(next(a,i)[1], next(x,i)[1])
-		# 		acc += res
-		# 	end
-		# 	acc
-		# end
-
 	end) 
 
 end
@@ -103,21 +78,6 @@ function logpdfBernoulli(prob::Real, x::Real)
 	 	error("calling Bernoulli with variable other than 0 or 1 (false or true)")
 	end
 end
-
-# for d in [:Bernoulli]
-# 	fsym = symbol("logpdf$d")
-
-# 	eval(quote
-# 		function ($fsym)(a::Union(Real, AbstractArray), x::Union(Real, AbstractArray))
-# 			res = 0.0
-# 			for i in 1:max(length(a), length(x))
-# 				res += ($fsym)(next(a,i)[1], next(x,i)[1])
-# 			end
-# 			res
-# 		end
-# 	end) 
-# end
-
 
 function logpdfNormal(mu::Real, sigma::Real, x::Real)
 	local const fac = -log(sqrt(2pi))
