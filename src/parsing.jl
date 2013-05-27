@@ -73,6 +73,7 @@ MCMCModel() = MCMCModel(0, MCMCParams[], Float64[], :(), Expr[], Expr[], ACC_SYM
 #  - rewrite ~ operators  as acc += logpdf..(=)
 #  - translates x += y into x = x + y, same for -= and *=
 function parseModel(ex::Expr)
+	local distribFound::Bool = false
 
 	explore(ex::Expr) =       explore(toExprH(ex))
 	explore(ex::ExprH) =      error("[parseModel] unmanaged expr type $(ex.head)")
@@ -139,12 +140,19 @@ function parseModel(ex::Expr)
 	function explore(ex::Exprcall)
 		ex.args[1] == :~ ? nothing : return toExpr(ex)
 
+		distribFound = true
 		fn = symbol("logpdf$(ex.args[3].args[1])")
 		return :($ACC_SYM = $ACC_SYM + $(expr(:call, {fn, ex.args[3].args[2:end]..., ex.args[2]})))
 	end
 
 	m = MCMCModel()
+	assert(ex.head==:block && length(ex.args)>=2, "model should contain at least to statements")
 	m.source = explore(ex)
+
+	# if no distribution expression '~' was found consider that last expr is the variable to be maximized 
+	# if !distribFound
+	# 	m.source.args[end]
+
 	m
 end
 
@@ -413,7 +421,6 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 			else	
 				# push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
 				push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:tuple,size(vh)...)))) )
-				# dump( :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
 			end
 		end
 

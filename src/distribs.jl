@@ -8,7 +8,7 @@
 _jl_libRmath = dlopen("libRmath")
 
 # TODO : factorize
-for d in {(:Normal,  	"dnorm4"),
+for d in {#(:Normal,  	"dnorm4"),
 		  (:Weibull, 	"dweibull"),
 		  (:Uniform, 	"dunif"),
 		  (:Binomial, 	"dbinom"),
@@ -117,6 +117,25 @@ for d in [:Bernoulli]
 		end
 	end) 
 end
+
+
+function logpdfNormal(mu::Real, sigma::Real, x::Real)
+	local const fac = -log(sqrt(2pi))
+	assert(sigma>0, "give up eval")
+	return -(x-mu)*(x-mu)/(2sigma*sigma)-log(sigma)-fac
+end
+
+function logpdfNormal(mu::Union(Real, AbstractArray), sigma::Union(Real, AbstractArray), x::Union(Real, AbstractArray))
+	local const fac = -log(sqrt(2pi))
+
+	res = 0.0
+	for i in 1:max(length(mu), length(sigma), length(x))
+		res += logpdfNormal(next(mu,i)[1], next(sigma,i)[1], next(x,i)[1])
+	end
+	res
+end
+
+
 
 ############# dummy distrib for testing ############
 

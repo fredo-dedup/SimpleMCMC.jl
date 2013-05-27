@@ -49,10 +49,7 @@ model = quote
 	Y ~ Bernoulli(prob)
 end
 
-generateModelFunction(model, 1.0, true, true) 
 ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, true, false) 
-ll_func(ones(10))
-
 @timeit ll_func(init) 1000 binomial_function_with_gradient
 
 ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, false, false) 
