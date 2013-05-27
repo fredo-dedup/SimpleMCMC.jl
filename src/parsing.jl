@@ -146,12 +146,14 @@ function parseModel(ex::Expr)
 	end
 
 	m = MCMCModel()
-	assert(ex.head==:block && length(ex.args)>=2, "model should contain at least to statements")
+	assert(ex.head==:block && length(ex.args)>=2, "model should contain at least 2 statements")
 	m.source = explore(ex)
+	assert(length(m.pars)>=1, "model should define at least one model parameter")
 
 	# if no distribution expression '~' was found consider that last expr is the variable to be maximized 
-	# if !distribFound
-	# 	m.source.args[end]
+	if !distribFound
+		m.source.args[end] = expr(:(=) , ACC_SYM, m.source.args[end] )
+	end
 
 	m
 end

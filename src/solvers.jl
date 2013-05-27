@@ -36,9 +36,8 @@ end
 
 function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 	tic() # start timer
-	
-	ll_func, nparams, pmap = SimpleMCMC.buildFunctionWithGradient(model) # build function, count the number of parameters
-	z0 = SimpleMCMC.setInit(init, nparams) # build the initial values
+
+	ll_func, nparams, pmap, z0 = generateModelFunction(model, init, true, false) # build function, count the number of parameters
 
 	# first calc
 	f0, grad0 = ll_func(z0)
