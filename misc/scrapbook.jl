@@ -58,46 +58,6 @@ eval(ex)
 res = SimpleMCMC.simpleNM(:(x::real ; -(x-2.6)^2))
 
 
-
-
-#  Parameters:
-#
-#    Input, real value = FN ( X ), the name of the MATLAB function which 
-#    evaluates the function to be minimized, preceded by an "@" sign.
-#
-#    Input, integer N, the number of variables.
-#
-#    Input, real START(N).  On input, a starting point
-#    for the iteration.  On output, this data may have been overwritten.
-#
-#    Input, real REQMIN, the terminating limit for the variance
-#    of function values.
-#
-#    Input, real STEP(N), determines the size and shape of the
-#    initial simplex.  The relative magnitudes of its elements should reflect
-#    the units of the variables.
-#
-#    Input, integer KONVGE, the convergence check is carried out
-#    every KONVGE iterations.
-#
-#    Input, integer KCOUNT, the maximum number of function
-#    evaluations.
-#
-#    Output, real XMIN(N), the coordinates of the point which
-#    is estimated to minimize the function.
-#
-#    Output, real YNEWLO, the minimum value of the function.
-#
-#    Output, integer ICOUNT, the number of function evaluations.
-#
-#    Output, integer NUMRES, the number of restarts.
-#
-#    Output, integer IFAULT, error indicator.
-#    0, no errors detected.
-#    1, REQMIN, N, or KONVGE has an illegal value.
-#    2, iteration terminated because KCOUNT was exceeded without convergence.
-#
-
 reqmin = 0.1
 n = length(init)
 konvge = 5
