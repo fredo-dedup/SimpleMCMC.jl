@@ -7,7 +7,7 @@ import Base.sum
 sum(x::Real) = x  # meant to avoid the annoying behaviour of sum(Inf) 
 
 export simpleRWM, simpleHMC, simpleNUTS
-export simpleAGD
+export simpleAGD, simpleNM
 export generateModelFunction
 
 # naming conventions

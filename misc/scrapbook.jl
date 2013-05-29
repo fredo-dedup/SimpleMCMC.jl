@@ -13,14 +13,6 @@ recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 3.400 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 2, 0.8)) # 6.100 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.]))  # 400 ess/s
 
-res = SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.])
-mean(res.misc[:jmax])  # 3.7
-mean(res.misc[:epsilon])  # 0.08
-
-res.misc[:epsilon][1:20]
-res.misc[:epsilon][990:1010]
-
-
 model = :(x::real ; x ~ Weibull(3, 1)) # mean 0.89, std 0.325
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 6.900 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [0.6], 2, 0.3)) # 84.000 ess/s
@@ -30,17 +22,6 @@ model = :(x::real ; x ~ Uniform(0, 2)) # mean 1.0, std 0.577
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 6.800 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 1, 0.9)) # 12.000 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 10000, 1000, [1.]))  # 400 ess/s, very slow due to gradient == 0 ?
-
-res = SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.])
-mean(res.misc[:jmax])  # 3.7
-mean(res.misc[:epsilon])  # 3.7
-
-res.misc[:epsilon][1:20]
-res.misc[:epsilon][990:1010]
-res.misc[:jmax][1:20]
-res.misc[:jmax][990:1010]
-
-
 
 model = :(x::real ; x ~ Normal(0, 1)) # mean 0.0, std 1.0
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 16.000 ess/s  7500
@@ -66,12 +47,301 @@ recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.5]))  # 6.600 ess/s, correct
 
 
 
-#############################
 
-immutable test
-    a::Float64
+###################### neldermead 
+
+
+include("../src/SimpleMCMC.jl")
+ex = expr(:., :SimpleMCMC, expr(:quote, symbol("##ll#56843")))
+eval(ex)
+
+res = SimpleMCMC.simpleNM(:(x::real ; -(x-2.6)^2))
+
+
+
+
+#  Parameters:
+#
+#    Input, real value = FN ( X ), the name of the MATLAB function which 
+#    evaluates the function to be minimized, preceded by an "@" sign.
+#
+#    Input, integer N, the number of variables.
+#
+#    Input, real START(N).  On input, a starting point
+#    for the iteration.  On output, this data may have been overwritten.
+#
+#    Input, real REQMIN, the terminating limit for the variance
+#    of function values.
+#
+#    Input, real STEP(N), determines the size and shape of the
+#    initial simplex.  The relative magnitudes of its elements should reflect
+#    the units of the variables.
+#
+#    Input, integer KONVGE, the convergence check is carried out
+#    every KONVGE iterations.
+#
+#    Input, integer KCOUNT, the maximum number of function
+#    evaluations.
+#
+#    Output, real XMIN(N), the coordinates of the point which
+#    is estimated to minimize the function.
+#
+#    Output, real YNEWLO, the minimum value of the function.
+#
+#    Output, integer ICOUNT, the number of function evaluations.
+#
+#    Output, integer NUMRES, the number of restarts.
+#
+#    Output, integer IFAULT, error indicator.
+#    0, no errors detected.
+#    1, REQMIN, N, or KONVGE has an illegal value.
+#    2, iteration terminated because KCOUNT was exceeded without convergence.
+#
+
+reqmin = 0.1
+n = length(init)
+konvge = 5
+
+
+
+######################################################
+begin
+	func(v) = ((v[2]-1)^2*5+(v[1]-2)^2)
+	init = [0.1,10]
+
+	reqmin = 0.1
+	step = ones(length(init))
+
+	##
+	assert(reqmin>0.)
+
+
+	n = length(init)
+	assert(n>=1)
+
+	ccoeff = 0.5
+	ecoeff = 2.0
+	rcoeff = 1.0
+
+
+	maxit = 100
+
+	p = [ init[i] + step[i] * (i==j) for i in 1:n, j in 1:(n+1)]
+	y = Float64[ func(p[:,j]) for j in 1:(n+1)]
+
+	#  Find highest and lowest Y values.  YNEWLO = Y(IHI) indicates
+	#  the vertex of the simplex to be replaced.
+	ilo = indmin(y); ylo = y[ilo]
+
+	it = 0
+end
+
+stop_crit() = all( [max(p[i,:])-min(p[i,:]) for i in 1:n] .< reqmin)
+
+while it < maxit && !stop_crit()
+	ihi = indmax(y)
+
+	#  Calculate PBAR, the centroid of the simplex vertices
+	#  excepting the vertex with Y value YNEWLO.
+	pbar = [sum(p[i,1:end .!= ihi]) for i in 1:n] / n 
+
+	#  Reflection through the centroid.
+	pstar = pbar + rcoeff * (pbar - p[:,ihi])
+	ystar = func(pstar)
+
+    if ystar < ylo #  Successful reflection, so extension.
+    	p2star = pbar + ecoeff * (pstar - pbar)
+    	y2star = func(p2star)
+
+		#  Check extension.
+		p[:,ihi] = ystar < y2star ? pstar : p2star
+		y[ihi] = ystar < y2star ? ystar : y2star
+
+	else #  No extension.
+		l = sum(ystar .< y)
+
+		if l > 1
+			p[:,ihi] = pstar
+			y[ihi] = ystar
+
+	    elseif l == 0 #  Contraction on the Y(IHI) side of the centroid.
+		    p2star = pbar + ccoeff * ( p[:,ihi] - pbar )
+		    y2star = func(p2star)
+
+			if y[ihi] < y2star #  Contract the whole simplex.
+				p = [ (p[i,j] + p[i, ilo]) * 0.5 for i in 1:n, j in 1:(n+1)]
+				y = [ func(p[:,j]) for j in 1:(n+1)]
+
+				ilo = indmin(y); ylo = y[ilo]
+
+				# continue
+			else #  Retain contraction.
+				p[:,ihi] = p2star
+				y[ihi] = y2star
+			end
+
+        elseif l == 1  #  Contraction on the reflection side of the centroid.
+			p2star = pbar + ccoeff * ( pstar - pbar )
+			y2star = func(p2star)
+
+			#  Retain reflection?
+			p[:,ihi] = ystar < y2star ? pstar : p2star
+			y[ihi] = ystar < y2star ? ystar : y2star
+		end
+	end
+
+	if y[ihi] < ylo #  Check if YLO improved.
+		ylo = y[ihi]
+		ilo = ihi
+	end
+
+	it += 1
+
+	println("$it : $((ylo, p[:,ilo])) ; crit = $(max([max(p[i,:])-min(p[i,:]) for i in 1:n]))")
 end
 
 
+(y[ilo], p[:,ilo])
 
+crit = max([max(p[i,:])-min(p[i,:]) for i in 1:n])
+
+
+
+###########################
+
+while true
+
+	p[:,end] = init
+	y[end] = func(init)
+	icount += 1
+
+	for j = 1 : n
+		x = init[j]
+		init[j] += step[j] * del
+		p[:,j] = init
+		y[j] = func(init)
+
+		icount = icount + 1
+		init[j] = x
+	end
+	#  Find highest and lowest Y values.  YNEWLO = Y(IHI) indicates
+	#  the vertex of the simplex to be replaced.
+	ylo = min(y)
+	ilo = findfirst(y .== ylo)
+
+	#  Inner loop.
+	while true
+
+		if kcount <= icount; break; end
+
+		ynewlo = max(y)
+		ihi = findfirst(y .== ynewlo)
+
+		#  Calculate PBAR, the centroid of the simplex vertices
+		#  excepting the vertex with Y value YNEWLO.
+		pbar = [sum(p[i,1:end .!= ihi]) / n for i in 1:n]
+
+		#  Reflection through the centroid.
+		pstar = pbar + rcoeff * (pbar - p[:,ihi])
+		ystar = func(pstar)
+		icount += 1
+
+	    if ystar < ylo #  Successful reflection, so extension.
+	    	p2star = pbar + ecoeff * (pstar - pbar)
+	    	y2star = func(p2star)
+	    	icount += 1
+
+			#  Check extension.
+			p[:,ihi] = ystar < y2star ? pstar : p2star
+			y[ihi] = ystar < y2star ? ystar : y2star
+
+		else #  No extension.
+			l = sum(ystar .< y)
+
+			if l > 1
+				p[:,ihi] = pstar
+				y[ihi] = ystar
+
+		    elseif l == 0 #  Contraction on the Y(IHI) side of the centroid.
+			    p2star = pbar + ccoeff * ( p[:,ihi] - pbar )
+			    y2star = func(p2star)
+			    icount += 1
+
+				if y[ihi] < y2star #  Contract the whole simplex.
+					for j in 1:(n+1)
+						p[:,j] = ( p[:,j] + p[:,ilo] ) * 0.5
+						xmin = p[:,j]
+						y[j] = func(xmin)
+						icount += 1
+					end
+
+					ylo = min(y)
+					ilo = findfirst(ylo .== y)
+
+					continue
+				else #  Retain contraction.
+					p[:,ihi] = p2star
+					y[ihi] = y2star
+				end
+
+	        elseif l == 1  #  Contraction on the reflection side of the centroid.
+				p2star = pbar + ccoeff * ( pstar - pbar )
+				y2star = func(p2star)
+				icount += 1
+				#  Retain reflection?
+				p[:,ihi] = ystar < y2star ? pstar : p2star
+				y[ihi] = ystar < y2star ? ystar : y2star
+			end
+		end
+
+		if y[ihi] < ylo #  Check if YLO improved.
+			ylo = y[ihi]
+			ilo = ihi
+		end
+
+		jcount -= 1
+
+		if 0 < jcount; continue; end
+
+		if icount <= kcount #  Check to see if minimum reached.
+			jcount = konvge
+			x = sum(y) / (n+1)
+			z = dot(y-x, y-x)
+
+			if z <= rq; break; end
+		end
+
+	end
+	#
+	#  Factorial tests to check that YNEWLO is a local minimum.
+	#
+	xmin = p[:,ilo]
+	ynewlo = y[ilo]
+
+	if kcount < icount; ifault = 2; break; end
+	ifault = 0
+
+	for i = 1 : n
+		del = step[i] * eps
+
+		xmin[i] += del
+		z = func(xmin)
+		icount += 1
+		if z < ynewlo; ifault = 2; break; end
+
+		xmin[i] -= 2*del
+		z = func(xmin)
+		icount += 1
+		if z < ynewlo; ifault = 2; break; end
+
+		xmin[i] = xmin[i] + del
+	end
+
+	if ifault == 0; break; end
+
+    init = xmin #  Reinit the procedure.
+    del = eps
+    numres += 1
+
+end
 

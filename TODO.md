@@ -3,11 +3,11 @@
 - add truncation and censoring
 - come back to Distributions.jl since it now uses immutable types ? => need to assess performance
 - optimize by priority : 
-	- pre-calculated calcs (transpose), 
-	- identical calcs fusion, 
+	- pre-calculated calcs (transpose), #DONE
+	- identical calcs fusion,  
 	- refold, 
 	- +0, *1, ^1, sum(real) : low impact ~5%
-	- optimize logpdf (over 70 % of comp time) ?
+	- optimize logpdf (over 70 % of comp time) ?  #DONE
 - make a demo file using stats data and DataFrames
 - optimize state struct in HMC and NUTS : avoid deep copy ?, use immutable ?
 - correct multiple ref bug
