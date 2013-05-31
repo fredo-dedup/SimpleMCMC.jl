@@ -27,7 +27,6 @@ end
 #   Accelerated Gradient Descent solver
 #
 #	Ref : Adaptive Restart for Accelerated Gradient Schemes - Donoghue/Candes
-#    
 #
 ##########################################################################################
 # init = [1., 0.01, 1.0]
@@ -109,4 +108,110 @@ simpleAGD(model::Expr, init::Any) = simpleAGD(model, init, 100, 1e-5)
 simpleAGD(model::Expr) = simpleAGD(model, 1.0, 100, 1e-5)
 
 
+##########################################################################################
+#
+#   Nelder-Mead optimization
+#
+#    translated and simplified from : http://people.sc.fsu.edu/~jburkardt/m_src/asa047/nelmin.m
+#
+#   convergence criterion = L-infinity norm of simplex < precision
+#
+##########################################################################################
+# TODO : manage function support exit (using backtracking ?)
 
+function simpleNM(model::Expr, init::Any, maxiter::Integer, precision::Float64)  
+	tic() # start timer
+
+	assert(precision>0., "precision should be > 0.")
+
+	func, n, pmap, init = generateModelFunction(model, init, false, false) # build function, count the number of parameters
+	assert(n>=1, "there should be at least one parameter")
+
+	# first calc
+	f0 = -func(init)
+	assert(isfinite(f0), "Initial values out of model support, try other values")
+
+	step = ones(length(init)) #  no scaling on parameters by default
+
+	#  Nelder-Mead coefs
+	ccoeff = 0.5
+	ecoeff = 2.0
+	rcoeff = 1.0
+
+	stop_crit() = all( [max(p[i,:])-min(p[i,:]) for i in 1:n] .< precision) # precision criterion
+
+	# loop inits
+	p = Float64[ init[i] + step[i] * (i==j) for i in 1:n, j in 1:(n+1)]
+	y = Float64[ -func(p[:,j]) for j in 1:(n+1)]
+	ilo = indmin(y); ylo = y[ilo]
+
+	it = 0
+	while it < maxiter && !stop_crit()
+ 		progress(it, maxiter, 0)
+
+		ihi = indmax(y)
+
+		#  Calculate PBAR, the centroid of the simplex vertices
+		#  excepting the vertex with Y value YNEWLO.
+		pbar = Float64[sum(p[i,1:end .!= ihi]) for i in 1:n] / n 
+
+		#  Reflection through the centroid.
+		pstar = pbar + rcoeff * (pbar - p[:,ihi])
+		ystar = -func(pstar)
+
+	    if ystar < ylo #  Successful reflection, so extension.
+	    	p2star = pbar + ecoeff * (pstar - pbar)
+	    	y2star = -func(p2star)
+
+			#  Check extension.
+			p[:,ihi] = ystar < y2star ? pstar : p2star
+			y[ihi] = ystar < y2star ? ystar : y2star
+
+		else #  No extension.
+			l = sum(ystar .< y)
+
+			if l > 1
+				p[:,ihi] = pstar
+				y[ihi] = ystar
+
+		    elseif l == 0 #  Contraction on the Y(IHI) side of the centroid.
+			    p2star = pbar + ccoeff * ( p[:,ihi] - pbar )
+			    y2star = -func(p2star)
+
+				if y[ihi] < y2star #  Contract the whole simplex.
+					p = Float64[ (p[i,j] + p[i, ilo]) * 0.5 for i in 1:n, j in 1:(n+1)]
+					y = Float64[ -func(p[:,j]) for j in 1:(n+1)]
+
+				else #  Retain contraction.
+					p[:,ihi] = p2star
+					y[ihi] = y2star
+				end
+
+	        elseif l == 1  #  Contraction on the reflection side of the centroid.
+				p2star = pbar + ccoeff * ( pstar - pbar )
+				y2star = -func(p2star)
+
+				#  Retain reflection?
+				p[:,ihi] = ystar < y2star ? pstar : p2star
+				y[ihi] = ystar < y2star ? ystar : y2star
+			end
+		end
+
+		ilo = indmin(y); ylo = y[ilo]
+		it += 1
+
+		# println("$it : $((ylo, p[:,ilo])) ; crit = $(max([max(p[i,:])-min(p[i,:]) for i in 1:n]))")
+	end
+	println()
+	
+    res = SolverRun(toq(), it, ylo, it<maxiter, Dict(), Dict())
+	for par in pmap
+		res.params[par.sym] = p[ilo, par.map]
+	end
+
+	res
+end
+
+simpleNM(model::Expr, init::Any, maxiter::Integer) = simpleNM(model, init, maxiter, 1e-3)
+simpleNM(model::Expr, init::Any) = simpleNM(model, init, 100, 1e-3)
+simpleNM(model::Expr) = simpleNM(model, 1.0, 100, 1e-3)
