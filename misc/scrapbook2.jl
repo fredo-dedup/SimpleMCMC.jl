@@ -35,3 +35,34 @@ dump(res)
 
 
 ################################################################
+
+include("../src/SimpleMCMC.jl")
+
+
+model = quote
+	t1::real
+	t2::real
+	t3::real
+
+	t1 ~ Uniform(0,1)
+	t2 ~ Uniform(0,1)
+	t3 ~ Uniform(0,1)
+end
+
+
+res = SimpleMCMC.simpleRWM(model, 100000, 0)
+
+open("c:/temp/sampnor.txt", "w") do io
+    println(io, join(keys(res.params), '\t'))
+    writedlm(io, hcat([s[2] for s in res.params]...))  #'
+end
+
+
+
+combin
+
+c = @task integer_partitions(20,3)
+for n in c; println(n);end
+
+size(res.params[:t])
+dump(res)

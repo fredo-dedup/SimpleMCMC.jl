@@ -114,7 +114,7 @@ simpleAGD(model::Expr) = simpleAGD(model, 1.0, 100, 1e-5)
 #
 #    translated and simplified from : http://people.sc.fsu.edu/~jburkardt/m_src/asa047/nelmin.m
 #
-#   convergence criterion = L1 norm of simplex < precision
+#   convergence criterion = L-infinity norm of simplex < precision
 #
 ##########################################################################################
 # TODO : manage function support exit (using backtracking ?)

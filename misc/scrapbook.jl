@@ -305,3 +305,208 @@ while true
 
 end
 
+#########################
+
+type interval
+	l::Float64
+	u::Float64
+end
+
+model = quote
+	a::real
+	b::real
+
+	z = a+ b
+	y = exp(z)
+end
+
+SimpleMCMC.generateModelFunction(model, 1., false, true)
+
+                a = __beta[1]
+                b = __beta[2]
+                local __acc = 0.0
+                z = +(a,b)
+                __acc = y = exp(z)
+
++(a::interval, b::interval) = interval(a.l+b.l, a.u+b.u)
+
+1.:5. + 6.:8.
+
+sin(1.:10)
+sin
+typeof(1.:5.)
+
+
+model = quote
+	x::real
+
+	z = exp(-x)
+	y = x*z
+end
+
+SimpleMCMC.simpleNM(:(x::real ; x*exp(-x)), 3.1, 100, 1e-5)
+SimpleMCMC.simpleNM(:(x::real ; x*exp(-x)), 3.1, 100)
+SimpleMCMC.simpleAGD(:(x::real ; x*exp(-x)), 3.1, 100)
+SimpleMCMC.simpleAGD(:(x::real ; x*exp(-x)), 10.1, 100)
+
+
+function test(x,dx)
+	t1 = -x
+	t2 = exp(t1)
+	t3 = x*t2
+
+	dt1 = -dx
+	dt2 = exp(t1+dt1)-t2
+	dt3 = (x+dx)*(t2+dt2)-t3
+	(min(t3,t3+dt3), max(t3,t3+dt3))
+end
+
+[ test(y,1) for y in 0.:10]
+x = 0
+dx = 1
+
+test(0,1.5)  # FAUX !
+test(1.5,1.5)
+
+test(0,1)
+test(1,1)
+
+model(a::Real, b::Array) = a-log(b)
+
+
+
+
+
+
+test(0.0, 0.5) 
+test(0.5, 0.5)
+
+type Inode
+	l::Float64
+	u::Float64
+	fl::Float64
+	fu::Float64
+
+
+
+[test(0,1) ; test(1,1)]
+
+
+
+
+
+
+
+SimpleMCMC.generateModelFunction(model, 1., true, true)
+
+#######################################
+
+dists = {#(:Normal,  	"dnorm4"),
+			(:Weibull, 	  "dweibull",  3),
+			# (:Uniform, 	  "dunif",     3),
+			# (:Binomial, 	  "dbinom",    3),
+			# (:Gamma,  	  "dgamma",    3),
+			# (:Cauchy,  	  "dcauchy",   3),
+			# (:logNormal,    "dlnorm",    3),
+			# (:Beta, 	      "dbeta",     3),
+			# (:Poisson,  	  "dpois",     2),
+			# (:TDist,  	  "dt",        2),
+			(:Exponential,  "dexp",      2)}
+
+for d in dists # d = dists[2]
+
+	# d = (:Binomial, 	  "dbinom",    3)
+	fsym = symbol("logpdf$(d[1])")
+
+	npars = d[3]
+	myf = quote
+		function ($fsym)($([expr(:(::), symbol("x$i"), :Real) for i in 1:npars]...))
+			local res = 0.
+
+	        res = ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64,
+	            	 	  $(expr(:tuple, [[:Float64 for i in 1:npars]..., :Int32 ]...)),
+	            	 	  $([symbol("x$i") for i in 1:npars]...), 1	)
+
+			if res == -Inf
+				throw("give up eval")
+			elseif res == NaN
+				local args = $(expr(:tuple, [[symbol("x$i") for i in 1:npars]..., 1]...))
+				error(string("calling ", $(string(fsym)), args, "returned an error"))
+			end
+			res 
+		end
+	end
+
+	eval(myf)
+end
+
+
+
+expr(:function, 
+	          expr(:call, fsym, 
+	                [expr(:(::), symbol("x$i"), :Real) for i in 1:npars]...),
+	          quote 
+	          	local res = 0.
+	            res = $(expr(:call, 
+	                	 	  :ccall, 
+	                	 	  :(dlsym(_jl_libRmath, $(string(d[2])))),
+	                	 	  expr(:quote, Float64),
+	                	 	  expr(:quote, tuple([[Float64 for i in 1:npars]..., Int32 ]...)),
+	                	 	  [symbol("x$i") for i in 1:npars]...,
+	                	 	  1) )
+				if res == -Inf
+					throw("give up eval")
+				elseif res == NaN
+	                local args = $(expr(:tuple, [[symbol("x$i") for i in 1:npars]..., 1]...))
+					error(string("calling ", $fsym, args, "returned an error"))
+			    else
+			    	return(res)
+			    end
+			    res 
+	           end)
+
+
+myf = quote
+	function ($fsym)($([expr(:(::), symbol("x$i"), :Real) for i in 1:npars]...))
+		local res = 0.
+
+        res = ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64,
+            	 	  $(expr(:tuple, [[:Float64 for i in 1:npars]..., :Int32 ]...)),
+            	 	  $([symbol("x$i") for i in 1:npars]...), 1	)
+
+		if res == -Inf
+			throw("give up eval")
+		elseif res == NaN
+			local args = $(expr(:tuple, [[symbol("x$i") for i in 1:npars]..., 1]...))
+			error(string("calling ", $fsym, args, "returned an error"))
+		end
+		res 
+	end
+end
+
+
+pars = [:Real, :AbstractArray, :Groumph]
+myf = quote
+	function ($fsym)($([pars[i]==:Real ? symbol("x$i") : expr(:ref, symbol("x$i"), :i) for i in 1:npars]...))
+		local res = 0.
+		45+x1+x2
+	end
+end
+
+
+
+eval(myf)
+
+logpdfBinomial(10,0.2,1)
+
+
+dump(:(ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64, (Float64, Float64, Float64, Int32), x1, x2, x3, 1)))
+dump(:(ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64,
+            	 	  $(expr(:tuple, [[:Float64 for i in 1:npars]..., :Int32 ]...)),
+            	 	  $([symbol("x$i") for i in 1:npars]...), 1	   ) ))
+
+myf = quote
+end
+
+
+dump
