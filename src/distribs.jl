@@ -5,9 +5,12 @@
 ##########################################################################################
 
 ########## locally defined distributions #############
+# defined within the package, either because libRmath doesn't have it (Bernoulli)
+#  or because there is a significant speed gain
+# TODO : a few other distributions should gain speed also, should be tested
 
 function logpdfBernoulli(prob::Real, x::Real)
-	prob > 1. || prob < 0. ? error("calling Bernoulli with prob > 1. or < 0.") : nothing
+	assert(0. <= prob <= 1., "calling Bernoulli with prob > 1. or < 0.")
 	if x == 0.
 		prob == 1. ? throw("give up eval") : return(log(1. - prob))
 	elseif x == 1.
@@ -19,12 +22,15 @@ end
 
 function logpdfNormal(mu::Real, sigma::Real, x::Real)
 	local const fac = -log(sqrt(2pi))
-	if sigma <= 0.
-		error(string("calling logpdfNormal with negative or null stdev"))
-	end
-	return -(x-mu)*(x-mu)/(2sigma*sigma)-log(sigma)+fac
+	assert(sigma > 0., "calling logpdfNormal with negative or null stdev")
+	local r = (x-mu)/sigma
+	return -r*r*0.5-log(sigma)+fac
 end
 
+function logpdfUniform(a::Real, b::Real, x::Real)
+	assert(a < b, "calling logpdfUniform with lower limit >= upper limit")
+	return (a <= x <= b) ? -log(b-a) : throw("give up eval")
+end
 
 ########### distributions using libRmath ######### 
 
@@ -32,7 +38,6 @@ _jl_libRmath = dlopen("libRmath")
 
 #          Name           libRmath Name    Arity       !!! empty lib name means local def
 dists = { (:Weibull, 	  "dweibull",       3),
-		  (:Uniform, 	  "dunif",          3),
 		  (:Binomial, 	  "dbinom",         3),
 		  (:Gamma,  	  "dgamma",         3),
 		  (:Cauchy,  	  "dcauchy",        3),
@@ -41,15 +46,17 @@ dists = { (:Weibull, 	  "dweibull",       3),
 		  (:Poisson,  	  "dpois",          2),
 		  (:TDist,  	  "dt",             2),
 		  (:Exponential,  "dexp",           2),
+		  (:Uniform, 	  "",               3),     #  dunif in libRmath
 	      (:Normal,  	  "",               3),     #  "dnorm4" in libRmath
 		  (:Bernoulli,    "",               2)}
 
 
-for d in dists 
-	if d[2] != "" 
+for d in dists  # d = dists[3]
+	if d[2] != "" # empty means locally defined
 		fsym = symbol("logpdf$(d[1])")
 
 		npars = d[3]
+		args = [symbol("x$i") for i in [npars, 1:(npars-1)...]] # in correct order for libRmath
 
 		fex = quote
 			function ($fsym)($([expr(:(::), symbol("x$i"), :Real) for i in 1:npars]...))
@@ -57,13 +64,13 @@ for d in dists
 
 		        res = ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64,
 		            	 	  $(expr(:tuple, [[:Float64 for i in 1:npars]..., :Int32 ]...)),
-		            	 	  $([symbol("x$i") for i in 1:npars]...), 1	)
+		            	 	  $(args...), 1	)
 
 				if res == -Inf
 					throw("give up eval")
-				elseif res == NaN
-					local args = $(expr(:tuple, [[symbol("x$i") for i in 1:npars]..., 1]...))
-					error(string("calling ", $(string(fsym)), args, "returned an error"))
+				elseif isnan(res)
+					local ar = $(expr(:tuple, [args..., 1]))
+					error(string("calling ", $(string(fsym)), ar, " returned an error"))
 				end
 				res 
 			end
@@ -73,64 +80,7 @@ for d in dists
 	end
 end
 
-# TODO : factorize
-# for d in {#(:Normal,  	"dnorm4"),
-# 		  (:Weibull, 	"dweibull"),
-# 		  (:Uniform, 	"dunif"),
-# 		  (:Binomial, 	"dbinom"),
-# 	      (:Gamma,  	"dgamma"),
-# 	      (:Cauchy,  	"dcauchy"),
-# 	      (:logNormal,  "dlnorm"),
-# 		  (:Beta, 	    "dbeta")}
-
-# 	fsym = symbol("logpdf$(d[1])")
-
-# 	eval(quote
-
-# 		function ($fsym)(a::Real, b::Real, x::Real)
-# 			local res
-# 			res = ccall(dlsym(_jl_libRmath, $(d[2])), Float64, 
-# 				(Float64, Float64, Float64, Int32), 
-# 					x, a, b, 1)
-# 			if res == -Inf
-# 				throw("give up eval")
-# 			elseif res == NaN
-# 				error(string("calling ", $fsym, "with $x, $a, $b returned an error"))
-# 			else
-# 				return(res)
-# 			end
-# 		end
-
-# 	end) 
-
-# end
-
-# for d in {(:Poisson,  	  "dpois"),
-# 	      (:TDist,  	  "dt"),
-# 	      (:Exponential,  "dexp")}
-
-# 	fsym = symbol("logpdf$(d[1])")
-
-# 	eval(quote
-
-# 		function ($fsym)(a::Real, x::Real)
-# 			local res
-# 			res = ccall(dlsym(_jl_libRmath, $(d[2])), Float64, 
-# 				(Float64, Float64, Int32), 
-# 					x, a, 1)
-# 			if res == -Inf
-# 				throw("give up eval")
-# 			elseif res == NaN
-# 				error(string("calling ", $fsym, "with $x, $a returned an error"))
-# 			else
-# 				return(res)
-# 			end
-# 		end
-
-# 	end) 
-
-# end
-
+####### all possible vectorized versions  ##########
 
 for d in dists # d = dists[1]
 	fsym = symbol("logpdf$(d[1])")
@@ -143,25 +93,6 @@ for d in dists # d = dists[1]
 
 		rv = symbol("x$(findfirst(pars .== :AbstractArray))")
 		npars = length(pars)
-
-		# mf = expr(:function, 
-		#           expr(:call, fsym, 
-		#                 [expr(:(::), symbol("x$i"), pars[i]) for i in 1:npars]...),
-		#           expr(:block, 
-		#                 :(local res = 0.),
-		#                 expr(:for, 
-		#                      expr(:(=), :i, expr(:(:), 1, :(length($rv)))),
-		#                      expr(:block, 
-		#                           expr(:(+=), 
-		#                           	   :res, 
-		#                                expr(:call, 
-		#                                	    fsym, 
-		#                                     [pars[i]==:Real ? symbol("x$i") : expr(:ref, symbol("x$i"), :i) for i in 1:npars]...))
-		#                          )
-		#                     ), 
-		#                  :(res) 
-		#                 ) 
-		#            )
 
 		fex = quote
 			function ($fsym)($([expr(:(::), symbol("x$i"), pars[i]) for i in 1:npars]...)) 
@@ -179,8 +110,7 @@ for d in dists # d = dists[1]
 end
 
 
-
 ############# dummy distrib for testing ############
 
-logpdfTestDiff(x) = sum([x]) 
+logpdfTestDiff(x) = sum(x) 
 

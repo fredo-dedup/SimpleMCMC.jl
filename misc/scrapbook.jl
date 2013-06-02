@@ -508,5 +508,15 @@ dump(:(ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64,
 myf = quote
 end
 
+const Rmath = :libRmath
 
-dump
+ccall(("dunif", Rmath), Float64,
+                  (Float64, Float64, Float64, Int32),
+                  x, d.($p1), d.($p2), d.($p3), 1)
+
+
+ccall(dlsym(_jl_libRmath, "dunif"), Float64, (Float64, Float64, Float64, Int64), 0.5,0.,2.,1)
+
+typeof(1.)
+typeof(1)
+

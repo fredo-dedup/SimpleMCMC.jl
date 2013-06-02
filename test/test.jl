@@ -182,7 +182,6 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 
 ## continuous distributions
 @mtest testpattern1 logpdfNormal(mu,sigma,x)  sigma->sigma<=0?0.1:sigma
-@mtest testpattern1 logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 @mtest testpattern1 logpdfUniform(a,b,x)      a->a-10 b->b+10
 @mtest testpattern1 logpdfBeta(a,b,x)         x->clamp(x, 0.01, 0.99) a->a<=0?0.1:a b->b<=0?0.1:b
 @mtest testpattern1 logpdfTDist(df,x)         df->df<=0?0.1:df
@@ -190,6 +189,7 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 @mtest testpattern1 logpdfGamma(sh,sc,x)      sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 @mtest testpattern1 logpdfCauchy(mu,sc,x)      sc->sc<=0?0.1:sc
 @mtest testpattern1 logpdflogNormal(lmu,lsc,x)  lsc->lsc<=0?0.1:lsc x->x<=0?0.1:x
+@mtest testpattern1 logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 
 ## discrete distributions
 @mtest testpattern1 logpdfBernoulli(prob,x)   exceptLast prob->clamp(prob, 0.01, 0.99) x->(x>0)+0. 
