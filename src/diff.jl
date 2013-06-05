@@ -6,28 +6,6 @@
 ##########################################################################################
 # TODO : add operators : hcat, vcat, ? : , map, mapreduce, if else 
 
-
-## macro to simplify derivation rules creation
-# macro dfunc(func::Expr, dv::Symbol, diff::Expr) 
-# 	argsn = map(e-> isa(e, Symbol) ? e : e.args[1], func.args[2:end])
-# 	index = find(dv .== argsn)[1]
-
-# 	# change var names in signature and diff expr to x1, x2, x3, ..
-# 	smap = { argsn[i] => symbol("x$i") for i in 1:length(argsn) }
-# 	args2 = substSymbols(func.args[2:end], smap)
-# 	m = MCMCModel()
-# 	m.source = :(dummy = $(substSymbols(diff, smap)) )
-# 	unfold!(m)  # unfold for easier optimization later
-# 	m.exprs[end] = m.exprs[end].args[2]
-
-# 	m.exprs
-# 	# diff function name
-# 	fn = symbol("d_$(func.args[1])_x$index")
-
-# 	fullf = expr(:(=), expr(:call, fn, args2...), expr(:call, :vcat, map(e->expr(:quote, e), m.exprs)...))
-# 	eval(fullf)
-# end
-
 macro dfunc(func::Expr, dv::Symbol, diff::Expr) 
 	argsn = map(e-> isa(e, Symbol) ? e : e.args[1], func.args[2:end])
 	index = find(dv .== argsn)[1]
@@ -39,7 +17,7 @@ macro dfunc(func::Expr, dv::Symbol, diff::Expr)
 	# diff function name
 	fn = symbol("d_$(func.args[1])_x$index")
 
-	fullf = expr(:(=), expr(:call, fn, args2...), expr(:quote, substSymbols(diff, smap)) )
+	fullf = Expr(:(=), Expr(:call, fn, args2...), Expr(:quote, substSymbols(diff, smap)) )
 	eval(fullf)
 end
 
@@ -204,7 +182,7 @@ hint(v::Symbol) = vhint[v]
 hint(v) = v  # should be a value if not a Symbol or an Expression
 function hint(v::Expr)
 	assert(v.head == :ref, "[hint] unexpected variable $v")
-	v.args[1] = :( vhint[$(expr(:quote, v.args[1]))] )
+	v.args[1] = :( vhint[$(Expr(:quote, v.args[1]))] )
 	eval(v)
 end
 
@@ -220,7 +198,7 @@ function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(
 	fn = symbol("d_$(opex.args[1])_x$index")
 
 	try
-		dexp = eval(expr(:call, fn, val...))
+		dexp = eval(Expr(:call, fn, val...))
 
 		smap = { symbol("x$i") => args[i] for i in 1:length(args)}
 		smap[:ds] = ds

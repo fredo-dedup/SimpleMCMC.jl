@@ -36,7 +36,8 @@ end
 function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 	tic() # start timer
 
-	ll_func, nparams, pmap, z0 = generateModelFunction(model, init, true, false) # build function, count the number of parameters
+	# build function, count the number of parameters
+	ll_func, nparams, pmap, z0 = generateModelFunction(model, gradient=true, init...) 
 
 	# first calc
 	f0, grad0 = ll_func(z0)
