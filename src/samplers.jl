@@ -67,14 +67,18 @@ end
 #
 ##########################################################################################
 
-function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
+function simpleRWM(model::Expr; steps=1000, burnin=100, init...)
 	const local target_accept = 0.234
 	local ll_func, nparams, pmap
+
+	steps = iround(steps) # in case a Float is supplied
+	burnin = iround(burnin) # in case a Float is supplied
 
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap, beta = generateModelFunction(model, init, false, false) # build function, count the number of parameters
+	# build function, count the number of parameters
+	ll_func, nparams, pmap, beta = generateModelFunction(model; init...) 
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
 	#  first calc
@@ -113,21 +117,23 @@ function simpleRWM(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	res
 end
 
-simpleRWM(model::Expr, steps::Integer) = simpleRWM(model, steps, min(steps-1, div(steps,2)))
-simpleRWM(model::Expr, steps::Integer, burnin::Integer) = simpleRWM(model, steps, burnin, 1.0)
-
 ##########################################################################################
 #   Canonical HMC function
 ##########################################################################################
 
-function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, isteps::Integer, stepsize::Float64)
+function simpleHMC(model::Expr; steps=1000, burnin=100, isteps=2, stepsize=1e-3, init...)
 	local ll_func, nparams, pmap
 	local state0
 
+	steps = iround(steps) # in case a Float is supplied
+	isteps = iround(isteps) # in case a Float is supplied
+	burnin = iround(burnin) # in case a Float is supplied
+	
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap, beta = generateModelFunction(model, init, true, false) # build function, count the number of parameters
+	# build function, count the number of parameters
+	ll_func, nparams, pmap, beta = generateModelFunction(model, gradient=true; init...) 
 	state0 = Sample(beta) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
@@ -163,12 +169,6 @@ function simpleHMC(model::Expr, steps::Integer, burnin::Integer, init::Any, iste
 	res
 end
 
-simpleHMC(model::Expr, steps::Integer, isteps::Integer, stepsize::Float64) = 
-simpleHMC(model, steps, min(steps-1, div(steps,2)), isteps, stepsize)
-simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsize::Float64) = 
-	simpleHMC(model, steps, burnin, 1.0, isteps, stepsize)
-
-
 ##########################################################################################
 #   NUTS sampler function
 #
@@ -176,14 +176,18 @@ simpleHMC(model::Expr, steps::Integer, burnin::Integer, isteps::Integer, stepsiz
 #
 ##########################################################################################
 
-function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
+function simpleNUTS(model::Expr; steps=1000, burnin=100, init...)
     local epsilon, u_slice
     local state0  # starting state of each loop
+	
+	steps = iround(steps) # in case a Float is supplied
+	burnin = iround(burnin) # in case a Float is supplied
 	
 	tic() # start timer
 	checkSteps(steps, burnin) # check burnin steps consistency
 	
-	ll_func, nparams, pmap, beta = generateModelFunction(model, init, true, false) # build function, count the number of parameters
+	# build function, count the number of parameters
+	ll_func, nparams, pmap, beta = generateModelFunction(model, gradient=true; init...) 
 	state0 = Sample(beta) # build the initial values
 	res = setRes(steps, burnin, pmap) #  result structure setup
 
@@ -308,10 +312,6 @@ function simpleNUTS(model::Expr, steps::Integer, burnin::Integer, init::Any)
 	calcStats!(res)
 	res
 end
-
-simpleNUTS(model::Expr, steps::Integer) = simpleNUTS(model, steps, min(steps-1, div(steps,2)))
-simpleNUTS(model::Expr, steps::Integer, burnin::Integer) = simpleNUTS(model, steps, burnin, 1.0)
-
 
 
 ##########################################################################################

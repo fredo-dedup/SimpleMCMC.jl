@@ -28,16 +28,15 @@ end
 #
 #	Ref : Adaptive Restart for Accelerated Gradient Schemes - Donoghue/Candes
 #
+#   Convergence criterion = 2 successive model value < precision
+#
 ##########################################################################################
-# init = [1., 0.01, 1.0]
-# maxiter = 50
-# precision = 1e-10
 
-function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
+function simpleAGD(model::Expr; maxiter=100, precision=1e-5, init...)
 	tic() # start timer
 
 	# build function, count the number of parameters
-	ll_func, nparams, pmap, z0 = generateModelFunction(model, gradient=true, init...) 
+	ll_func, nparams, pmap, z0 = generateModelFunction(model, gradient=true; init...) 
 
 	# first calc
 	f0, grad0 = ll_func(z0)
@@ -60,6 +59,8 @@ function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 	converged = false
 	i = 0
 	while i<maxiter && !converged  
+ 		progress(i, maxiter, 0)
+
 		y0 = (1-theta0).*z0 + theta0.*zb0
 		fy1, grady = ll_func(y0)
 		zb1 = zb0 + grady / (theta0 * L0)
@@ -83,18 +84,19 @@ function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 		L1 = 2*abs(dot(y0-z1, grady-gradz))/dot(y0-z1, y0-z1) > L0 ? L0*2. : L0*0.9
 
 		theta1 = 2 / (1+sqrt(1+4*L1/(L0*theta0*theta0)))
-	 	print(i, " : ", round(log10(abs(f1-f0)),2), " theta =", round(theta0,3), ", L =", L1, " f =", round(fy1,3))
+	 	# print(i, " : ", round(log10(abs(f1-f0)),2), " theta =", round(theta0,3), ", L =", L1, " f =", round(fy1,3))
 	 	converged = abs(f1-f0) < precision
 
  		if dot(grady, z1-z0) < 0. #  restart needed
- 			println(" === restart")
+ 			# println(" === restart")
 			z0, zb0, theta0, L0, f0 = z1, z1, 1., L1, f1
  		else
- 			println("")
+ 			# println("")
 			z0, zb0, theta0, L0, f0 = z1, zb1, theta1, L1, f1
  		end
  		i += 1
 	end
+	println()
 
     res = SolverRun(toq(), i, f1, i<maxiter, Dict(), Dict())
 	for p in pmap
@@ -104,28 +106,23 @@ function simpleAGD(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 	res
 end
 
-simpleAGD(model::Expr, init::Any, maxiter::Integer) = simpleAGD(model, init, maxiter, 1e-5)
-simpleAGD(model::Expr, init::Any) = simpleAGD(model, init, 100, 1e-5)
-simpleAGD(model::Expr) = simpleAGD(model, 1.0, 100, 1e-5)
-
-
 ##########################################################################################
 #
 #   Nelder-Mead optimization
 #
-#    translated and simplified from : http://people.sc.fsu.edu/~jburkardt/m_src/asa047/nelmin.m
+#   Translated and simplified from : http://people.sc.fsu.edu/~jburkardt/m_src/asa047/nelmin.m
 #
-#   convergence criterion = L-infinity norm of simplex < precision
+#   Convergence criterion = L-infinity norm of simplex < precision
 #
 ##########################################################################################
 # TODO : manage function support exit (using backtracking ?)
 
-function simpleNM(model::Expr, init::Any, maxiter::Integer, precision::Float64)  
+function simpleNM(model::Expr; maxiter=100, precision=1e-3, init...)  
 	tic() # start timer
 
 	assert(precision>0., "precision should be > 0.")
 
-	func, n, pmap, init = generateModelFunction(model, init, false, false) # build function, count the number of parameters
+	func, n, pmap, init = generateModelFunction(model; init...) # build function, count the number of parameters
 	assert(n>=1, "there should be at least one parameter")
 
 	# first calc
@@ -212,7 +209,3 @@ function simpleNM(model::Expr, init::Any, maxiter::Integer, precision::Float64)
 
 	res
 end
-
-simpleNM(model::Expr, init::Any, maxiter::Integer) = simpleNM(model, init, maxiter, 1e-3)
-simpleNM(model::Expr, init::Any) = simpleNM(model, init, 100, 1e-3)
-simpleNM(model::Expr) = simpleNM(model, 1.0, 100, 1e-3)

@@ -22,113 +22,6 @@ myf(init)
 ##############################################
 logpdfNormal(a,b,c) = SimpleMCMC.logpdfNormal(a,b,c)
 
-    ## process model parameters, rewrites ~ , ..
-    m = SimpleMCMC.parseModel(model)
-
-    ## checks initial values
-    SimpleMCMC.setInit!(m, 1.0)
-
-    ## process model expression
-    SimpleMCMC.unfold!(m)
-    SimpleMCMC.uniqueVars!(m)
-    SimpleMCMC.categorizeVars!(m)
-
-    ## build function expression
-    body = SimpleMCMC.betaAssign(m)  # assigments beta vector -> model parameter vars
-    push!(body, :($(SimpleMCMC.ACC_SYM) = 0.)) # initialize accumulator
-    
-    if gradient  # case with gradient
-
-
-        body = Expr[ SimpleMCMC.betaAssign(m)..., 
-                     :($(SimpleMCMC.ACC_SYM) = 0.), 
-                     :(global vdict), 
-                     :( vdict=Dict()),
-                     m.exprs...,
-                     :( vdict[$(expr(:quote, SimpleMCMC.ACC_SYM))] = $(SimpleMCMC.ACC_SYM) ),
-                     [ :(vdict[$(expr(:quote, v))] = $v) for v in m.varsset]...]
-
-    ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-    vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
-
-        body = :(let __beta = m.init; $vhooks; $(expr(:block, body...)); end)
-        eval(body)
-        vdict
-
-
-        ###
-
-        SimpleMCMC.backwardSweep!(m)
-
-        body = vcat(body, m.exprs)
-        push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$(m.finalacc)")) = 1.0))
-
-        avars = m.accanc & m.pardesc - Set(m.finalacc) # remove accumulator, treated above  
-        for v in avars 
-            push!(body, :($(symbol("$(SimpleMCMC.DERIV_PREFIX)$v")) = zero($(symbol("$v")))))
-        end
-        body = vcat(body, m.dexprs)
-
-        if length(m.pars) == 1
-            dn = symbol("$(SimpleMCMC.DERIV_PREFIX)$(m.pars[1].sym)")
-            dexp = :(vec([$dn]))  # reshape to transform potential matrices into vectors
-        else
-            dexp = {:vcat}
-            dexp = vcat(dexp, { :( vec([$(symbol("$(SimpleMCMC.DERIV_PREFIX)$(p.sym)"))]) ) for p in m.pars})
-            dexp = expr(:call, dexp)
-        end
-
-        push!(body, :(($(m.finalacc), $dexp)))
-
-        # enclose in a try block
-        body = expr(:try, expr(:block, body...),
-                          :e, 
-                          expr(:block, :(if e == "give up eval"; return(-Inf, zero($(SimpleMCMC.PARAM_SYM))); else; throw(e); end)))
-
-    else  # case without gradient
-        body = vcat(body, m.source.args)
-        body = vcat(body, :(return($ACC_SYM)) )
-
-        # enclose in a try block
-        body = expr(:try, expr(:block, body...),
-                          :e, 
-                          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
-
-    end
-
-    # identify external vars and add definitions x = Main.x
-    ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-    vhooks = expr(:block, [expr(:(=), v, expr(:., :Main, expr(:quote, v))) for v in ev]...) # assigment block
-
-    # build and evaluate the let block containing the function and external vars hooks
-    fn = gensym()
-    body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})), expr(:block, body) )
-    body = :(let; global $fn; $vhooks; $body; end)
-
-
-
-###############################################
-
-let
-    global vdict
-
-    local x
-
-    vdict = Dict()
-
-    x = 12
-
-    vdict[:x] = x
-end
-
-x
-vdict[:x]
-x = 34
-vdict[:x]
-
-    probe(s::Symbol) = eval(x)
-
-
 
 #########################
 
@@ -173,55 +66,6 @@ res = SimpleMCMC.simpleRWM(model, 10000, 100)
 res = SimpleMCMC.simpleHMC(model, 1000, 100, [1.], 5, 0.002)
 
 
-##################
-
-begin  #hierarchical
-    ## generate data set
-    N = 50 # number of observations
-    D = 4  # number of groups
-    L = 5  # number of predictors
-
-    srand(1)
-    mu0 = randn(1,L)
-    sigma0 = rand(1,L)
-    # model matrix nb group rows x nb predictors columns
-    beta0 = Float64[randn()*sigma0[j]+mu0[j] for i in 1:D, j in 1:L] 
-
-    oneD = ones(D)
-    oneL = ones(L)
-
-    ll = rand(1:D, N)  # mapping obs -> group
-    X = randn(N, L)  # predictors
-    Y = [rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * oneL )))]
-
-    ## define model
-    model = quote
-        mu::real(1,L)
-        sigma::real(1,L)
-        beta::real(D,L)
-
-        mu ~ Normal(0, 1)
-        sigma ~ Weibull(2, 1)
-
-        beta ~ Normal(oneD * mu, oneD * sigma)
-
-        effect = (beta[ll,:] .* X) * oneL
-        prob = 1. / ( 1. + exp(- effect) )
-        Y ~ Bernoulli(prob)
-    end
-end
-
-# run random walk metropolis (10000 steps, 1000 for burnin)
-res = simpleRWM(model, 1000, 100)
-
-sum(res.params[:mu],3) / res.samples  # mu samples mean
-sum(res.params[:sigma],3) / res.samples # sigma samples mean
-sum(res.params[:beta],3) / res.samples # beta samples mean
-
-# # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 10 inner steps, 0.03 inner step size)
-res = simpleHMC(model, 10000, 1000, 10, 0.03)
-
-
 ###################
 
 begin # linear
@@ -238,36 +82,55 @@ begin # linear
         vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
         resid = Y - X * vars
         resid += 0.
-        resid[nbeta] = 0.
+        # resid[nbeta] = 0.
         resid ~ Normal(0, 1.0)  
     end
 end
 
 include("../src/SimpleMCMC.jl")
 
-m = SimpleMCMC.MCMCModel()
-init = {:vars=> 1.0}
-SimpleMCMC.setInit!(m, init)
-   m
-
-SimpleMCMC.parseModel!(m, model)
-typeof(m.source)
-m.source.head
-m.source.args
-
- ## process model
+    m = SimpleMCMC.MCMCModel()
+    init = {:vars=> 1.0}
+    init = {:x=> 1.0}
+    SimpleMCMC.setInit!(m, init)
+    SimpleMCMC.parseModel!(m, model)
+    SimpleMCMC.parseModel!(m, :(a=3+x;2a))
     SimpleMCMC.unfold!(m)
     m.exprs
     SimpleMCMC.uniqueVars!(m)
     m.exprs
     SimpleMCMC.categorizeVars!(m)
 
+    m.finalacc
+    m.varsset
+    m.pardesc
+    m.accanc
+
+
+
+SimpleMCMC.generateModelFunction(:(a=3+x;2a), debug=true, x=2.0, g=3)
+
+
 SimpleMCMC.generateModelFunction(model, debug=true, vars=1.0)
 SimpleMCMC.generateModelFunction(model, debug=true, vars=[1.0, 2])
 SimpleMCMC.generateModelFunction(model, debug=true, vars=[1.0 2; 3 4], X=12)
 
 SimpleMCMC.generateModelFunction(model, gradient=true, debug=true, vars=ones(nbeta))
-SimpleMCMC.generateModelFunction(model, debug=true, vars=[1.0, 2])
+myf, dummy = SimpleMCMC.generateModelFunction(model, vars=ones(nbeta))
+myf(zeros(nbeta))
+myf, dummy = SimpleMCMC.generateModelFunction(model, gradient =true, vars=ones(nbeta))
+myf(zeros(nbeta))
+
+include("../src/SimpleMCMC.jl")
+
+SimpleMCMC.simpleAGD(model, vars=ones(nbeta))
+SimpleMCMC.simpleRWM(model, steps=1e4, burnin=1e2, vars=ones(nbeta))
+
+SimpleMCMC.simpleHMC(model, steps=1e4, burnin=1e2, vars=ones(nbeta), x=1, y=5)
+SimpleMCMC.simpleNUTS(model, steps=500, burnin=1e2, vars=ones(nbeta))
+
+
+SimpleMCMC.generateModelFunction(model, debug=true, gradient=true, vars=[1.0, 2], g=45)
 SimpleMCMC.generateModelFunction(model, debug=true, vars=[1.0 2; 3 4], X=12)
 
 
@@ -291,13 +154,22 @@ begin # binomial
 
     # define model
     model = quote
-        vars::real(nbeta)
+        # vars::real(nbeta)
 
         vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
         prob = 1 / (1. + exp(X * vars)) 
         Y ~ Bernoulli(prob)
     end
 end
+
+SimpleMCMC.generateModelFunction(model, gradient=true, debug=true, vars=ones(nbeta))
+myf, dummy = SimpleMCMC.generateModelFunction(model, gradient=true, vars=ones(nbeta))
+myf(zeros(nbeta))
+
+SimpleMCMC.generateModelFunction(model, debug=true, vars=ones(nbeta))
+
+SimpleMCMC.simpleAGD(model, vars=ones(nbeta))
+
 
 res = simpleRWM(model, 1000, 100)
 

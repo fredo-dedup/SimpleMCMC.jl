@@ -4,6 +4,10 @@
 
 using SimpleMCMC
 
+#########################################################################
+#       testing functions and definitions 
+#########################################################################
+
 ## variables of different dimension for testing
 v0ref = 2.
 v1ref = [2., 3, 0.1, 0, -5]
@@ -17,28 +21,16 @@ good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(ERROR_THRESHOLD, abs(x))) < ERR
 good_enough(t::Tuple) = good_enough(t[1], t[2])
 
 ##  gradient check by comparing numerical gradient to automated gradient
-function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(-x) ; x0 = 1.0
+function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(log(x)) ; x0 = [1.0, 2,3]
 	println("testing gradient of $ex at x = $x0")
 
-	nx = length(x0)  # nx=3
-	dx = length(size(x0))
-	if dx == 0
-		pexpr = :( x::real )
-	elseif dx == 1  # vector
-		pexpr = :( x::real($nx) )
-	elseif dx == 2  # matrix
-		pexpr = :( x::real($(size(x0,1)), $(size(x0, 2))) )
-	else
-		error("x0 should have up to 2 dimensions")
-	end
+	nx = length(x0)  
+	model = Expr(:block, :(sum($ex)) )  # sum is there to ensure that model produces a scalar
+	myf, dummy = generateModelFunction(model, gradient=true, x=x0)
 
-	model = expr(:block, pexpr, :(y = $ex), :(y ~ TestDiff()))
 
 	__beta = vec([x0])
-	myf, dummy, dummy, dummy = SimpleMCMC.generateModelFunction(model, __beta, true, false)
-
 	l0, grad0 = myf(__beta)  
-
 	gradn = zeros(nx)
 	for i in 1:nx 
 		__beta = vec([x0])

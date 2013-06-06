@@ -5,6 +5,10 @@
 using SimpleMCMC
 using Distributions # used to provide exact cdf of distributions for testing
 
+#########################################################################
+#       testing functions and definitions 
+#########################################################################
+
 N = 10000  # number of steps in MCMC for testing
 KSTHRESHOLD = 1.358  #  5% level confidence for Kolmogorov–Smirnov test
 KSTHRESHOLD = 5  # TODO : understand why KS is so bad for all samplers forcing such a high threshold to pass tests
@@ -19,7 +23,7 @@ function ksValue(x, distrib)
 end
 
 function ksTest(ex::Expr) 
-	model = :(x::real ; x ~ $ex)
+	model = Expr(:block, :(x ~ $ex))
 	distrib = expr(:call, 
 					expr(:., :Distributions, expr(:quote, ex.args[1])), 
 					ex.args[2:end]...) 
@@ -30,26 +34,29 @@ function ksTest(ex::Expr)
 
 	print("testing simpleRWM on $ex   -")
 	srand(1)
-	res = SimpleMCMC.simpleRWM(model, N, 1000, [exactMean])
+	res = simpleRWM(model, steps=N, burnin=1000, x=exactMean)
 	ksv = ksValue(res.params[:x], distrib)
 	println(" KS measure = $ksv")
 	assert(ksv < KSTHRESHOLD, "correct distrib hyp. rejected")
 
 	print("testing simpleHMC on $ex   -")
 	srand(1)
-	res = SimpleMCMC.simpleHMC(model, N, 1000, [exactMean], 2, exactStd/5)
+	res = simpleHMC(model, steps=N, burnin=1000, isteps=2, stepsize=exactStd/5, x=exactMean)
 	ksv = ksValue(res.params[:x], distrib)
 	println(" KS measure = $ksv")
 	assert(ksv < KSTHRESHOLD, "correct distrib hyp. rejected")
 
 	print("testing simpleNUTS on $ex  -")
 	srand(1)
-	res = SimpleMCMC.simpleNUTS(model, N, 1000, [exactMean])
+	res = simpleNUTS(model, steps=N, burnin=1000, x=exactMean)
 	ksv = ksValue(res.params[:x], distrib)
 	println(" KS measure = $ksv")
 	assert(ksv < KSTHRESHOLD, "correct distrib hyp. rejected")
 end
 
+#########################################################################
+#  Tests 
+#########################################################################
 
 ksTest(:(Normal(1, 1)))
 ksTest(:(Normal(3, 12)))

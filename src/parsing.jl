@@ -238,7 +238,7 @@ function uniqueVars!(m::MCMCModel)
             subst[lhs] = gensym("$lhs") # generate new name, add it to substitution list for following statements
             el[idx].args[1] = substSymbols(el[idx].args[1], subst)
         else # var set for the first time
-            used = union(used, Set(lhs)) 
+            union!(used, Set(lhs)) 
         end
     end
 
@@ -253,25 +253,35 @@ end
 #   1) restrict gradient code to the strictly necessary variables 
 #   2) move parameter independant variables definition out the function (but within closure) 
 #   3) TODO : remove unnecessary variables (with warning)
+#   4) identify external vars
 function categorizeVars!(m::MCMCModel) 
-    m.varsset = mapreduce(p->getSymbols(p.args[1]), union, m.exprs)
+	lhsSymbol(ex) = Set(isa(ex.args[1], Symbol) ? ex.args[1] : ex.args[1].args[1])
 
-    m.pardesc = Set{Symbol}([p.sym for p in m.pars]...)  # start with parameter symbols
+    m.varsset = mapreduce(lhsSymbol, union, m.exprs)
+
+    local parset = Set{Symbol}([p.sym for p in m.pars]...)
+    m.pardesc = copy(parset)  # start with parameter symbols
     for ex2 in m.exprs 
-        lhs = getSymbols(ex2.args[1])
-        rhs = getSymbols(ex2.args[2])
+        lhs = lhsSymbol(ex2)
+        rhs = SimpleMCMC.getSymbols(ex2.args[2])
 
-        length(intersect(rhs, m.pardesc)) > 0 ? m.pardesc = union(m.pardesc, lhs) : nothing
+        !isempty(intersect(rhs, m.pardesc)) && union!(m.pardesc, lhs)
     end
 
     m.accanc = Set{Symbol}(m.finalacc)
-    for ex2 in reverse(m.exprs) # proceed backwards
-        lhs = getSymbols(ex2.args[1])
-        rhs = getSymbols(ex2.args[2])
-        isa(ex2.args[1], Expr) && ex2.args[1].head == :ref ? rhs |= getSymbols(ex2.args[1].args[2]) : nothing
+    for ex2 in reverse(m.exprs) # proceed backwards ex2 = reverse(m.exprs)[3]
+        lhs = lhsSymbol(ex2)
+        rhs = setdiff(SimpleMCMC.getSymbols(ex2), lhs) # to pickup potential index on lhs as an ancestor
+        # isa(ex2.args[1], Expr) && ex2.args[1].head == :ref && union!(rhs, getSymbols(ex2.args[1].args[2]))
 
-        length(lhs & m.accanc) > 0 ? m.accanc = m.accanc | rhs : nothing
+        !isempty(intersect(lhs, m.accanc)) && union!(m.accanc, rhs)
     end
+
+    assert(contains(m.pardesc, m.finalacc), "Model parameters do not seem to influence model outcome")
+
+    local parset2 = setdiff(parset, m.accanc)
+    assert(isempty(parset2), "Model parameter(s) $(collect(parset2)) do not seem to influence model outcome")
+
 end
 
 ######### builds the gradient expression from unfolded expression ##############
@@ -377,7 +387,7 @@ function betaAssign(m::MCMCModel)
 end
 
 ######### evaluates once all variables to give type hints for derivation ############
-#  most gradient calculation statements depend on dimensions of variables (Scalar or Array for example)
+#  most gradient calculation statements depend on the type of variables (Scalar or Array)
 #  this is where they are evaluated (with values stored in global Dict 'vhint' )
 function preCalculate(m::MCMCModel)
     global vhint = Dict()
@@ -406,7 +416,9 @@ function preCalculate(m::MCMCModel)
 	fn = eval(fn)
 
 	# now evaluate vhint (or throw error if model does not evaluate for given initial values)
-	assert(fn(m.init) != -Inf, "Initial values out of model support, try other values")
+	res = fn(m.init)
+	assert(isa(res, Real) , "Model outcome should be a scalar, $(typeof(res)) found")
+	assert(res != -Inf, "Initial values out of model support, try other values")
 end
 
 
@@ -510,7 +522,6 @@ function generateModelFunction(model::Expr; gradient=false, debug=false, init...
 
 	# identify external vars and add definitions x = Main.x
 	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	# vhooks = Expr(:block, [ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]...) # assigment block
 	header = [[ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]..., header...] # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
