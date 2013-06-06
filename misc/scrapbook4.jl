@@ -1,101 +1,94 @@
+## Normal distribution
 
 
-######################################################
-begin
-	func(v) = ((v[2]-1)^2*5+(v[1]-2)^2)
-	init = [0.1,5]
+d( log(1/sqrt(2sigma^2*pi)*exp(-(mu-x)^2/(2sigma^2))))/dx   dmu dsigma
 
-	reqmin = 0.1
-	step = ones(length(init))
+@dfunc logpdfNormal(mu::Real, sigma, x)    mu     sum((x - mu) ./ (sigma .* sigma)) * ds
+@dfunc logpdfNormal(mu::Array, sigma, x)   mu     (x - mu) ./ (sigma .* sigma) * ds
+@dfunc logpdfNormal(mu, sigma::Real, x)    sigma  sum(((x - mu).*(x - mu) ./ (sigma.*sigma) - 1.) ./ sigma) * ds
+@dfunc logpdfNormal(mu, sigma::Array, x)   sigma  ((x - mu).*(x - mu) ./ (sigma.*sigma) - 1.) ./ sigma * ds
+@dfunc logpdfNormal(mu, sigma, x::Real)    x      sum((mu - x) ./ (sigma .* sigma)) * ds
+@dfunc logpdfNormal(mu, sigma, x::Array)   x      (mu - x) ./ (sigma .* sigma) * ds
 
-	##
-	assert(reqmin>0.)
+d( log(  1/2 * [ 1+ erf((x-mu)/(sqrt(2)*sigma))]) )/dx
 
+@dfunc logcdfNormal(mu, sigma, x::Array)   x      exp( logpdfNormal(mu, sigma, x) ) ./ logcdfNormal(mu, sigma, x) * ds
 
-	n = length(init)
-	assert(n>=1)
+## Uniform distribution
+@dfunc logpdfUniform(a::Real, b, x)      a   sum((a .<= x .<= b) ./ (b - a)) * ds
+@dfunc logpdfUniform(a::Array, b, x)     a   ((a .<= x .<= b) ./ (b - a)) * ds
+@dfunc logpdfUniform(a, b::Real, x)      b   sum((a .<= x .<= b) ./ (a - b)) * ds
+@dfunc logpdfUniform(a, b::Array, x)     b   ((a .<= x .<= b) ./ (a - b)) * ds
+@dfunc logpdfUniform(a, b, x)            x   zero(x)
 
-	ccoeff = 0.5
-	ecoeff = 2.0
-	rcoeff = 1.0
+## Weibull distribution
+@dfunc logpdfWeibull(sh::Real, sc, x)    sh  (r = x./sc ; sum(((1. - r.^sh) .* log(r) + 1./sh)) * ds)
+@dfunc logpdfWeibull(sh::Array, sc, x)   sh  (r = x./sc ; ((1. - r.^sh) .* log(r) + 1./sh) * ds)
+@dfunc logpdfWeibull(sh, sc::Real, x)    sc  sum(((x./sc).^sh - 1.) .* sh./sc) * ds
+@dfunc logpdfWeibull(sh, sc::Array, x)   sc  ((x./sc).^sh - 1.) .* sh./sc * ds
+@dfunc logpdfWeibull(sh, sc, x::Real)    x   sum(((1. - (x./sc).^sh) .* sh - 1.) ./ x) * ds
+@dfunc logpdfWeibull(sh, sc, x::Array)   x   ((1. - (x./sc).^sh) .* sh - 1.) ./ x * ds
 
+## Beta distribution
+@dfunc logpdfBeta(a, b, x::Real)      x     sum((a-1) ./ x - (b-1) ./ (1-x)) * ds
+@dfunc logpdfBeta(a, b, x::Array)     x     ((a-1) ./ x - (b-1) ./ (1-x)) * ds
+@dfunc logpdfBeta(a::Real, b, x)      a     sum(digamma(a+b) - digamma(a) + log(x)) * ds
+@dfunc logpdfBeta(a::Array, b, x)     a     (digamma(a+b) - digamma(a) + log(x)) * ds
+@dfunc logpdfBeta(a, b::Real, x)      b     sum(digamma(a+b) - digamma(b) + log(1-x)) * ds
+@dfunc logpdfBeta(a, b::Array, x)     b     (digamma(a+b) - digamma(b) + log(1-x)) * ds
 
-	maxit = 10
+## TDist distribution
+@dfunc logpdfTDist(df, x::Real)     x     sum(-(df+1).*x ./ (df+x.*x)) .* ds
+@dfunc logpdfTDist(df, x::Array)    x     (-(df+1).*x ./ (df+x.*x)) .* ds
+@dfunc logpdfTDist(df::Real, x)     df    (tmp2 = (x.*x + df) ; sum( (x.*x-1)./tmp2 + log(df./tmp2) + digamma((df+1)/2) - digamma(df/2) ) / 2 .* ds )
+@dfunc logpdfTDist(df::Array, x)    df    (tmp2 = (x.*x + df) ; ( (x.*x-1)./tmp2 + log(df./tmp2) + digamma((df+1)/2) - digamma(df/2) ) / 2 .* ds )
 
-	p = [ init[i] + step[i] * (i==j) for i in 1:n, j in 1:(n+1)]
-	y = Float64[ func(p[:,j]) for j in 1:(n+1)]
+## Exponential distribution
+@dfunc logpdfExponential(sc, x::Real)    x   sum(-1/sc) .* ds
+@dfunc logpdfExponential(sc, x::Array)   x   (- ds ./ sc)
+@dfunc logpdfExponential(sc::Real, x)    sc  sum((x-sc)./(sc.*sc)) .* ds
+@dfunc logpdfExponential(sc::Array, x)   sc  (x-sc) ./ (sc.*sc) .* ds
 
-	#  Find highest and lowest Y values.  YNEWLO = Y(IHI) indicates
-	#  the vertex of the simplex to be replaced.
-	ilo = indmin(y); ylo = y[ilo]
+## Gamma distribution
+@dfunc logpdfGamma(sh, sc, x::Real)    x   sum(-( sc + x - sh.*sc)./(sc.*x)) .* ds
+@dfunc logpdfGamma(sh, sc, x::Array)   x   (-( sc + x - sh.*sc)./(sc.*x)) .* ds
+@dfunc logpdfGamma(sh::Real, sc, x)    sh  sum(log(x) - log(sc) - digamma(sh)) .* ds
+@dfunc logpdfGamma(sh::Array, sc, x)   sh  (log(x) - log(sc) - digamma(sh)) .* ds
+@dfunc logpdfGamma(sh, sc::Real, x)    sc  sum((x - sc.*sh) ./ (sc.*sc)) .* ds
+@dfunc logpdfGamma(sh, sc::Array, x)   sc  ((x - sc.*sh) ./ (sc.*sc)) .* ds
 
+## Cauchy distribution
+@dfunc logpdfCauchy(mu, sc, x::Real)    x   sum(2(mu-x) ./ (sc.*sc + (x-mu).*(x-mu))) .* ds
+@dfunc logpdfCauchy(mu, sc, x::Array)   x   (2(mu-x) ./ (sc.*sc + (x-mu).*(x-mu))) .* ds
+@dfunc logpdfCauchy(mu::Real, sc, x)    mu  sum(2(x-mu) ./ (sc.*sc + (x-mu).*(x-mu))) .* ds
+@dfunc logpdfCauchy(mu::Array, sc, x)   mu  (2(x-mu) ./ (sc.*sc + (x-mu).*(x-mu))) .* ds
+@dfunc logpdfCauchy(mu, sc::Real, x)    sc  sum(((x-mu).*(x-mu) - sc.*sc) ./ (sc.*(sc.*sc + (x-mu).*(x-mu)))) .* ds
+@dfunc logpdfCauchy(mu, sc::Array, x)   sc  (((x-mu).*(x-mu) - sc.*sc) ./ (sc.*(sc.*sc + (x-mu).*(x-mu)))) .* ds
 
-	it = 0
-end
+## Log-normal distribution
+@dfunc logpdflogNormal(lmu, lsc, x::Real)   x    ( tmp2=lsc.*lsc ; sum( (lmu - tmp2 - log(x)) ./ (tmp2.*x) ) .* ds )
+@dfunc logpdflogNormal(lmu, lsc, x::Array)  x    ( tmp2=lsc.*lsc ; ( (lmu - tmp2 - log(x)) ./ (tmp2.*x) ) .* ds )
+@dfunc logpdflogNormal(lmu::Real, lsc, x)   lmu  sum((log(x) - lmu) ./ (lsc .* lsc)) .* ds
+@dfunc logpdflogNormal(lmu::Array, lsc, x)  lmu  ((log(x) - lmu) ./ (lsc .* lsc)) .* ds
+@dfunc logpdflogNormal(lmu, lsc::Real, x)   lsc  ( tmp2=lsc.*lsc ; sum( (lmu.*lmu - tmp2 - log(x).*(2lmu-log(x))) ./ (lsc.*tmp2) ) .* ds )
+@dfunc logpdflogNormal(lmu, lsc::Array, x)  lsc  ( tmp2=lsc.*lsc ; ( (lmu.*lmu - tmp2 - log(x).*(2lmu-log(x))) ./ (lsc.*tmp2) ) .* ds )
 
-	it = 0
+# TODO : find a way to implement multi variate distribs that goes along well with vectorization (Dirichlet, Categorical)
+# TODO : other continuous distribs ? : Pareto, Rayleigh, Logistic, Levy, Laplace, Dirichlet, FDist
+# TODO : other discrete distribs ? : NegativeBinomial, DiscreteUniform, HyperGeometric, Geometric, Categorical
 
-while (it < maxit) && ((max([max(p[i,:])-min(p[i,:]) for i in 1:n])) > reqmin) #var(y) > reqmin
-# 	ihi = indmax(y)
+## Bernoulli distribution (Note : no derivation on x parameter as it is an integer)
+@dfunc logpdfBernoulli(p::Real, x)     p     sum(1. ./ (p - (1. - x))) * ds
+@dfunc logpdfBernoulli(p::Array, x)    p     (1. ./ (p - (1. - x))) * ds
 
-# 	#  Calculate PBAR, the centroid of the simplex vertices
-# 	#  excepting the vertex with Y value YNEWLO.
-# 	pbar = [sum(p[i,1:end .!= ihi]) for i in 1:n] / n 
+## Binomial distribution (Note : no derivation on x and n parameters as they are integers)
+@dfunc logpdfBinomial(n, p::Real, x)   p    sum(x ./ p - (n-x) ./ (1 - p)) * ds
+@dfunc logpdfBinomial(n, p::Array, x)  p    (x ./ p - (n-x) ./ (1 - p)) * ds
 
-# 	#  Reflection through the centroid.
-# 	pstar = pbar + rcoeff * (pbar - p[:,ihi])
-# 	ystar = func(pstar)
-
-#     if ystar < ylo #  Successful reflection, so extension.
-#     	p2star = pbar + ecoeff * (pstar - pbar)
-#     	y2star = func(p2star)
-
-# 		#  Check extension.
-# 		p[:,ihi] = ystar < y2star ? pstar : p2star
-# 		y[ihi] = ystar < y2star ? ystar : y2star
-
-# 	else #  No extension.
-# 		l = sum(ystar .< y)
-
-# 		if l > 1
-# 			p[:,ihi] = pstar
-# 			y[ihi] = ystar
-
-# 	    elseif l == 0 #  Contraction on the Y(IHI) side of the centroid.
-# 		    p2star = pbar + ccoeff * ( p[:,ihi] - pbar )
-# 		    y2star = func(p2star)
-
-# 			if y[ihi] < y2star #  Contract the whole simplex.
-# 				p = [ (p[i,j] + p[i, ilo]) * 0.5 for i in 1:n, j in 1:(n+1)]
-# 				y = [ func(p[:,j]) for j in 1:(n+1)]
-
-# 				ilo = indmin(y); ylo = y[ilo]
-
-# 				# continue
-# 			else #  Retain contraction.
-# 				p[:,ihi] = p2star
-# 				y[ihi] = y2star
-# 			end
-
-#         elseif l == 1  #  Contraction on the reflection side of the centroid.
-# 			p2star = pbar + ccoeff * ( pstar - pbar )
-# 			y2star = func(p2star)
-
-# 			#  Retain reflection?
-# 			p[:,ihi] = ystar < y2star ? pstar : p2star
-# 			y[ihi] = ystar < y2star ? ystar : y2star
-# 		end
-# 	end
-
-# 	if y[ihi] < ylo #  Check if YLO improved.
-# 		ylo = y[ihi]
-# 		ilo = ihi
-# 	end
-
-	it += 1
-
-	println("$it : $((ylo, p[:,ilo])) ; crit = $(max([max(p[i,:])-min(p[i,:]) for i in 1:n]))")
-end
+## Poisson distribution (Note : no derivation on x parameter as it is an integer)
+@dfunc logpdfPoisson(lambda::Real, x)   lambda   sum(x ./ lambda - 1) * ds
+@dfunc logpdfPoisson(lambda::Array, x)  lambda   (x ./ lambda - 1) * ds
 
 
-(y[ilo], p[:,ilo])
+
+

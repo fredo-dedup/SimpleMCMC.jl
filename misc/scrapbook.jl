@@ -520,3 +520,15 @@ ccall(dlsym(_jl_libRmath, "dunif"), Float64, (Float64, Float64, Float64, Int64),
 typeof(1.)
 typeof(1)
 
+
+model = quote
+	(alpha::Real, beta::Array) ->
+
+simpleRMW(model, alpha=1.0, beta=[1.0, ])
+
+
+init
+
+function(a; b=12) = a+b
+
+	

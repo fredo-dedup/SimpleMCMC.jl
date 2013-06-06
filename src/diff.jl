@@ -8,26 +8,6 @@
 
 
 ## macro to simplify derivation rules creation
-# macro dfunc(func::Expr, dv::Symbol, diff::Expr) 
-# 	argsn = map(e-> isa(e, Symbol) ? e : e.args[1], func.args[2:end])
-# 	index = find(dv .== argsn)[1]
-
-# 	# change var names in signature and diff expr to x1, x2, x3, ..
-# 	smap = { argsn[i] => symbol("x$i") for i in 1:length(argsn) }
-# 	args2 = substSymbols(func.args[2:end], smap)
-# 	m = MCMCModel()
-# 	m.source = :(dummy = $(substSymbols(diff, smap)) )
-# 	unfold!(m)  # unfold for easier optimization later
-# 	m.exprs[end] = m.exprs[end].args[2]
-
-# 	m.exprs
-# 	# diff function name
-# 	fn = symbol("d_$(func.args[1])_x$index")
-
-# 	fullf = expr(:(=), expr(:call, fn, args2...), expr(:call, :vcat, map(e->expr(:quote, e), m.exprs)...))
-# 	eval(fullf)
-# end
-
 macro dfunc(func::Expr, dv::Symbol, diff::Expr) 
 	argsn = map(e-> isa(e, Symbol) ? e : e.args[1], func.args[2:end])
 	index = find(dv .== argsn)[1]
