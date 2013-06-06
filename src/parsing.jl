@@ -9,7 +9,7 @@ type ExprH{H}
 	typ::Any
 end
 toExprH(ex::Expr) = ExprH{ex.head}(ex.head, ex.args, ex.typ)
-toExpr(ex::ExprH) = expr(ex.head, ex.args)
+toExpr(ex::ExprH) = Expr(ex.head, ex.args...)
 
 typealias Exprequal    ExprH{:(=)}
 typealias Exprdcolon   ExprH{:(::)}
@@ -32,15 +32,16 @@ getSymbols(ex::Array) =      mapreduce(getSymbols, union, ex)
 getSymbols(ex::Expr) =       getSymbols(toExprH(ex))
 getSymbols(ex::ExprH) =      mapreduce(getSymbols, union, ex.args)
 getSymbols(ex::Exprcall) =   mapreduce(getSymbols, union, ex.args[2:end])  # skip function name
-getSymbols(ex::Exprref) =    mapreduce(getSymbols, union, ex.args) - Set(:(:), symbol("end")) # ':'' and 'end' do not count
-getSymbols(ex::Exprcomp) =   mapreduce(getSymbols, union, ex.args) - Set(:(>), :(<), :(>=), :(<=), :(.>), :(.<), :(.<=), :(.>=), :(==))
+getSymbols(ex::Exprref) =    setdiff(mapreduce(getSymbols, union, ex.args), Set(:(:), symbol("end")) )# ':'' and 'end' do not count
+getSymbols(ex::Exprcomp) =   setdiff(mapreduce(getSymbols, union, ex.args), 
+	Set(:(>), :(<), :(>=), :(<=), :(.>), :(.<), :(.<=), :(.>=), :(==)) )
 
 
 ## variable symbol subsitution functions
 substSymbols(ex::Expr, smap::Dict) =          substSymbols(toExprH(ex), smap::Dict)
-substSymbols(ex::Exprcall, smap::Dict) =      expr(:call, {ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...})
-substSymbols(ex::ExprH, smap::Dict) =         expr(ex.head, map(e -> substSymbols(e, smap), ex.args))
-substSymbols(ex::Symbol, smap::Dict) =        has(smap, ex) ? smap[ex] : ex
+substSymbols(ex::Exprcall, smap::Dict) =      Expr(:call, ex.args[1], map(e -> substSymbols(e, smap), ex.args[2:end])...)
+substSymbols(ex::ExprH, smap::Dict) =         Expr(ex.head, map(e -> substSymbols(e, smap), ex.args)...)
+substSymbols(ex::Symbol, smap::Dict) =        haskey(smap, ex) ? smap[ex] : ex
 substSymbols(ex::Vector{Expr}, smap::Dict) =  map(e -> substSymbols(e, smap), ex)
 substSymbols(ex::Any, smap::Dict) =           ex
 
@@ -72,7 +73,7 @@ MCMCModel() = MCMCModel(0, MCMCParams[], Float64[], :(), Expr[], Expr[], ACC_SYM
 #  - extracts parameters definition
 #  - rewrite ~ operators  as acc += logpdf..(=)
 #  - translates x += y into x = x + y, same for -= and *=
-function parseModel(ex::Expr)
+function parseModel!(m::MCMCModel, source::Expr)
 	local distribFound::Bool = false
 
 	explore(ex::Expr) =       explore(toExprH(ex))
@@ -82,9 +83,9 @@ function parseModel(ex::Expr)
 	explore(ex::Exprequal) =  toExpr(ex) # no processing
 	explore(ex::Exprvcat) =   toExpr(ex) # no processing
 	
-	explore(ex::Exprpequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :+, args...)) )
-	explore(ex::Exprmequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :-, args...)) )
-	explore(ex::Exprtequal) = (args = ex.args ; expr(:(=), args[1], expr(:call, :*, args...)) )
+	explore(ex::Exprpequal) = (args = ex.args ; Expr(:(=), args[1], Expr(:call, :+, args...)) )
+	explore(ex::Exprmequal) = (args = ex.args ; Expr(:(=), args[1], Expr(:call, :-, args...)) )
+	explore(ex::Exprtequal) = (args = ex.args ; Expr(:(=), args[1], Expr(:call, :*, args...)) )
 
 	function explore(ex::Exprblock)
 		al = {}
@@ -96,66 +97,64 @@ function parseModel(ex::Expr)
 				push!(al, ex2)
 			end
 		end
-		expr(ex.head, al)
+		Expr(ex.head, al...)
 	end
 
-	function explore(ex::Exprdcolon)
-		assert(typeof(ex.args[1]) == Symbol, "not a symbol on LHS of :: $(ex.args[1])")
-		par = ex.args[1]  # param symbol defined here
-		def = ex.args[2]
+	# function explore(ex::Exprdcolon)
+	# 	assert(typeof(ex.args[1]) == Symbol, "not a symbol on LHS of :: $(ex.args[1])")
+	# 	par = ex.args[1]  # param symbol defined here
+	# 	def = ex.args[2]
 
-		if def == :real  #  single param declaration
-			push!(m.pars, MCMCParams(par, Integer[], m.bsize+1)) 
-			m.bsize += 1
+	# 	if def == :real  #  single param declaration
+	# 		push!(m.pars, MCMCParams(par, Integer[], m.bsize+1)) 
+	# 		m.bsize += 1
 
-		elseif isa(def, Expr) && def.head == :call
-			e2 = def.args
-			if e2[1] == :real 
-				if length(e2) == 2 #  vector param declaration
-					nb = Main.eval(e2[2])
-					assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
+	# 	elseif isa(def, Expr) && def.head == :call
+	# 		e2 = def.args
+	# 		if e2[1] == :real 
+	# 			if length(e2) == 2 #  vector param declaration
+	# 				nb = Main.eval(e2[2])
+	# 				assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
 
-					push!(m.pars, MCMCParams(par, Integer[nb], (m.bsize+1):(m.bsize+nb)))
-					m.bsize += nb
-				elseif length(e2) == 3 #  matrix param declaration
-					nb1 = Main.eval(e2[2])
-					assert(isa(nb1, Integer) && nb1 > 0, "invalid vector size $(e2[2]) = $nb1")
-					nb2 = Main.eval(e2[3])
-					assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
+	# 				push!(m.pars, MCMCParams(par, Integer[nb], (m.bsize+1):(m.bsize+nb)))
+	# 				m.bsize += nb
+	# 			elseif length(e2) == 3 #  matrix param declaration
+	# 				nb1 = Main.eval(e2[2])
+	# 				assert(isa(nb1, Integer) && nb1 > 0, "invalid vector size $(e2[2]) = $nb1")
+	# 				nb2 = Main.eval(e2[3])
+	# 				assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
 
-					push!(m.pars, MCMCParams(par, Integer[nb1, nb2], (m.bsize+1):(m.bsize+nb1*nb2))) 
-					m.bsize += nb1*nb2
-				else
-					error("up to 2 dim for parameters in $ex")
-				end
-			else
-				error("unknown parameter type $(e2[1])")
-			end
-		else
-			error("unknown parameter expression $(ex)")
-		end
-		nothing
-	end
+	# 				push!(m.pars, MCMCParams(par, Integer[nb1, nb2], (m.bsize+1):(m.bsize+nb1*nb2))) 
+	# 				m.bsize += nb1*nb2
+	# 			else
+	# 				error("up to 2 dim for parameters in $ex")
+	# 			end
+	# 		else
+	# 			error("unknown parameter type $(e2[1])")
+	# 		end
+	# 	else
+	# 		error("unknown parameter expression $(ex)")
+	# 	end
+	# 	nothing
+	# end
 
 	function explore(ex::Exprcall)
-		ex.args[1] == :~ ? nothing : return toExpr(ex)
+		ex.args[1] != :~ && return toExpr(ex)
 
 		distribFound = true
 		fn = symbol("logpdf$(ex.args[3].args[1])")
-		return :($ACC_SYM = $ACC_SYM + $(expr(:call, {fn, ex.args[3].args[2:end]..., ex.args[2]})))
+		return :($ACC_SYM = $ACC_SYM + $(Expr(:call, fn, ex.args[3].args[2:end]..., ex.args[2])))
 	end
 
-	m = MCMCModel()
-	assert(ex.head==:block && length(ex.args)>=2, "model should contain at least 2 statements")
-	m.source = explore(ex)
-	assert(length(m.pars)>=1, "model should define at least one model parameter")
+	assert(source.head==:block && length(source.args)>=1, 
+		"model should contain be a block with at least 1 statement")
+
+	m.source = explore(source)
 
 	# if no distribution expression '~' was found consider that last expr is the variable to be maximized 
 	if !distribFound
-		m.source.args[end] = expr(:(=) , ACC_SYM, m.source.args[end] )
+		m.source.args[end] = Expr(:(=) , ACC_SYM, m.source.args[end] )
 	end
-
-	m
 end
 
 ######## unfolds expressions to prepare derivation ###################
@@ -166,8 +165,8 @@ function unfold!(m::MCMCModel)
 	explore(ex::Exprline) =   nothing     # remove line info
 	explore(ex::Exprref) =    toExpr(ex)   # unchanged
 	explore(ex::Exprcomp) =   toExpr(ex)  # unchanged
-	explore(ex::Exprvcat) =   explore(expr(:call, :vcat, ex.args...) )  # translate to vcat(), and explore
-	explore(ex::Exprtrans) =  explore(expr(:call, :transpose, ex.args[1]) )  # translate to transpose() and explore
+	explore(ex::Exprvcat) =   explore(Expr(:call, :vcat, ex.args...) )  # translate to vcat(), and explore
+	explore(ex::Exprtrans) =  explore(Expr(:call, :transpose, ex.args[1]) )  # translate to transpose() and explore
 	explore(ex::Any) =        ex
 
 	explore(ex::Exprblock) =  mapreduce(explore, (a,b)->b, ex.args)  # process, and return last evaluated
@@ -179,10 +178,10 @@ function unfold!(m::MCMCModel)
 
 		rhs = ex.args[2]
 		if isa(rhs, Symbol) || isa(rhs, Real)
-			push!(m.exprs, expr(:(=), lhs, rhs))
+			push!(m.exprs, Expr(:(=), lhs, rhs))
 		elseif isa(rhs, Expr) # only refs and calls will work
 				ue = explore(toExprH(rhs)) # explore will return something in this case
-				push!(m.exprs, expr(:(=), lhs, ue))
+				push!(m.exprs, Expr(:(=), lhs, ue))
 		else  # unmanaged kind of lhs
 		 	error("[unfold] can't handle RHS of assignment $ex")
 		end
@@ -200,7 +199,7 @@ function unfold!(m::MCMCModel)
 			while length(args) > 2
 				a2 = pop!(args)
 				a1 = pop!(args)
-				push!(args, expr(:call, ex.args[1], a1, a2))
+				push!(args, Expr(:call, ex.args[1], a1, a2))
 			end
 		end
 
@@ -215,7 +214,7 @@ function unfold!(m::MCMCModel)
 			end
 		end
 
-		expr(ex.head, na)
+		Expr(ex.head, na...)
 	end
 
 	explore(m.source)
@@ -239,11 +238,11 @@ function uniqueVars!(m::MCMCModel)
             subst[lhs] = gensym("$lhs") # generate new name, add it to substitution list for following statements
             el[idx].args[1] = substSymbols(el[idx].args[1], subst)
         else # var set for the first time
-            used |= Set(lhs) 
+            used = union(used, Set(lhs)) 
         end
     end
 
-	m.finalacc = has(subst, ACC_SYM) ? subst[ACC_SYM] : ACC_SYM  # keep reference of potentially renamed accumulator
+	m.finalacc = haskey(subst, ACC_SYM) ? subst[ACC_SYM] : ACC_SYM  # keep reference of potentially renamed accumulator
 end
 
 ######### identifies vars #############
@@ -253,7 +252,7 @@ end
 # In order to 
 #   1) restrict gradient code to the strictly necessary variables 
 #   2) move parameter independant variables definition out the function (but within closure) 
-#   3) remove unnecessary variables (with warning)
+#   3) TODO : remove unnecessary variables (with warning)
 function categorizeVars!(m::MCMCModel) 
     m.varsset = mapreduce(p->getSymbols(p.args[1]), union, m.exprs)
 
@@ -262,7 +261,7 @@ function categorizeVars!(m::MCMCModel)
         lhs = getSymbols(ex2.args[1])
         rhs = getSymbols(ex2.args[2])
 
-        length(rhs & m.pardesc) > 0 ? m.pardesc = m.pardesc | lhs : nothing
+        length(intersect(rhs, m.pardesc)) > 0 ? m.pardesc = union(m.pardesc, lhs) : nothing
     end
 
     m.accanc = Set{Symbol}(m.finalacc)
@@ -289,7 +288,7 @@ function backwardSweep!(m::MCMCModel)
 			dsym2 = symbol("$(DERIV_PREFIX)$lhs")
 		elseif isa(lhs,Expr) && lhs.head == :ref  # vars with []
 			dsym = lhs
-			dsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(lhs.args[1])"), lhs.args[2:end]...)
+			dsym2 = Expr(:ref, symbol("$(DERIV_PREFIX)$(lhs.args[1])"), lhs.args[2:end]...)
 		else
 			error("[backwardSweep] not a symbol on LHS of assigment $(ex)") 
 		end
@@ -305,7 +304,7 @@ function backwardSweep!(m::MCMCModel)
 
 		elseif isa(toExprH(rhs), Exprref)
 			if contains(avars, rhs.args[1])
-				vsym2 = expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2:end]...)
+				vsym2 = Expr(:ref, symbol("$(DERIV_PREFIX)$(rhs.args[1])"), rhs.args[2:end]...)
 				push!(m.dexprs, :( $vsym2 = $dsym2))
 			end
 
@@ -330,16 +329,38 @@ end
 
 ######## sets inital values from 'init' given as parameter  ##########
 function setInit!(m::MCMCModel, init)
-	# build the initial values
-	if typeof(init) == Array{Float64,1}
-		assert(length(init) == m.bsize, "$(m.bsize) initial values expected, got $(length(init))")
-		m.init = init
-	elseif typeof(init) <: Real
-		m.init = ones(m.bsize) * init
-	else
-		error("cannot assign initial values (should be a Real or vector of Reals)")
-	end
+    assert(length(init)>=1, "There should be at leat one parameter specified, none found")
+
+    for p in init  # p = collect(init)[1]
+        par = p[1]  # param symbol defined here
+        def = p[2]
+
+        assert(typeof(par) == Symbol, "[setInit] not a symbol in init param : $(par)")
+
+        if isa(def, Real)  #  single param declaration
+            push!(m.pars, MCMCParams(par, Integer[], m.bsize+1)) 
+            m.bsize += 1
+            push!(m.init, def)
+
+        elseif isa(def, Array) && ndims(def) == 1
+            nb = size(def,1)
+            push!(m.pars, MCMCParams(par, Integer[nb], (m.bsize+1):(m.bsize+nb)))
+            m.bsize += nb
+            m.init = [m.init, def...]
+
+        elseif isa(def, Array) && ndims(def) == 2
+            nb1, nb2 = size(def)
+            push!(m.pars, MCMCParams(par, Integer[nb1, nb2], (m.bsize+1):(m.bsize+nb1*nb2))) 
+            m.bsize += nb1*nb2
+            m.init = [m.init, vec(def)...]
+
+        else
+            error("[setInit] forbidden parameter type for $(par)")
+        end
+    end
+
 end
+
 
 ######### returns an array of expr assigning parameters from the beta vector  ############
 function betaAssign(m::MCMCModel)
@@ -347,9 +368,9 @@ function betaAssign(m::MCMCModel)
 	assigns = Expr[]
 	for p in pmap
 		if length(p.size) <= 1  # scalar or vector
-			push!(assigns, :($(p.sym) = $PARAM_SYM[ $(expr(:quote,p.map)) ]) )
+			push!(assigns, :($(p.sym) = $PARAM_SYM[ $(Expr(:quote,p.map)) ]) )
 		else # matrix case  (needs a reshape)
-			push!(assigns, :($(p.sym) = reshape($PARAM_SYM[ $(expr(:quote,p.map)) ], $(p.size[1]), $(p.size[2]))) )
+			push!(assigns, :($(p.sym) = reshape($PARAM_SYM[ $(Expr(:quote,p.map)) ], $(p.size[1]), $(p.size[2]))) )
 		end
 	end			
 	assigns
@@ -366,20 +387,20 @@ function preCalculate(m::MCMCModel)
                  m.exprs...]
     
     vl = getSymbols(body)  # list of all vars (external, parameters, set by model, and accumulator)
-    body = vcat(body, [ :(vhint[$(expr(:quote, v))] = $v) for v in vl ])
+    body = vcat(body, [ :(vhint[$(Expr(:quote, v))] = $v) for v in vl ])
 
 	# enclose in a try block to catch zero likelihoods (-Inf log likelihood)
-	body = expr(:try, expr(:block, body...),
+	body = Expr(:try, Expr(:block, body...),
 			          :e, 
-			          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+			          Expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 
 	# identify external vars and add definitions x = Main.x
 	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	vhooks = expr(:block, [ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]...) # assigment block
+	vhooks = Expr(:block, [ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]...) # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
 	fn = gensym()
-	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
+	body = Expr(:function, Expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	Expr(:block, body) )
 	body = :(let; global $fn; $vhooks; $body; end)
 	eval(body)
 	fn = eval(fn)
@@ -390,17 +411,27 @@ end
 
 
 ######### builds the model function ##############
-function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
-	## extracts model parameters, rewrites ~ , ..
-	m = parseModel(model)
+# 'init' contains the dictionary of model params and their initial value
+#    initial values are used for the precalculate run that will allow 
+#    to know all variables types.
+# If 'debug' is set to true, the function prints out the model function 
+#  that would have been created
+#
+function generateModelFunction(model::Expr; gradient=false, debug=false, init...)
+	m = MCMCModel()
 
 	## checks initial values
 	setInit!(m, init)
+	
+	## rewrites ~ , do some formatting ... on the model expression
+	parseModel!(m, model)
 
 	## process model
 	unfold!(m)
 	uniqueVars!(m)
 	categorizeVars!(m)
+
+
 
 	## build function expression
 	if gradient  # case with gradient
@@ -421,8 +452,8 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 			if isa(vh, Real)
 				push!(body, :($(dsym(v)) = 0.))
 			else	
-				# push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:quote,size(vh))))) )
-				push!(body, :($(dsym(v)) = zeros(Float64, $(expr(:tuple,size(vh)...)))) )
+				# push!(body, :($(dsym(v)) = zeros(Float64, $(Expr(:quote,size(vh))))) )
+				push!(body, :($(dsym(v)) = zeros(Float64, $(Expr(:tuple,size(vh)...)))) )
 			end
 		end
 
@@ -455,13 +486,13 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
 
 		# return statement
 		dexp = { :( vec([$(dsym(p.sym))]) ) for p in m.pars}
-		dexp = length(m.pars) > 1 ? expr(:call, :vcat, dexp...) : dexp[1]
+		dexp = length(m.pars) > 1 ? Expr(:call, :vcat, dexp...) : dexp[1]
 		push!(body, :(($(m.finalacc), $dexp)))
 
 		# enclose in a try block
-		body = expr(:try, expr(:block, body...),
+		body = Expr(:try, Expr(:block, body...),
 				          :e, 
-				          expr(:block, :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end)))
+				          Expr(:block, :(if e == "give up eval"; return(-Inf, zero($PARAM_SYM)); else; throw(e); end)))
 
 	else  # case without gradient
 		body = [ betaAssign(m)...,        # assigments beta vector -> model parameter vars
@@ -470,22 +501,22 @@ function generateModelFunction(model::Expr, init, gradient::Bool, debug::Bool)
                  :(return($ACC_SYM)) ]
 
 		# enclose in a try block
-		body = expr(:try, expr(:block, body...),
+		body = Expr(:try, Expr(:block, body...),
 				          :e, 
-				          expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
+				          Expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 
 		header = Expr[]
 	end
 
 	# identify external vars and add definitions x = Main.x
 	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
-	# vhooks = expr(:block, [ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]...) # assigment block
-	header = [[ :( local $v = $(expr(:., :Main, expr(:quote, v))) ) for v in ev]..., header...] # assigment block
+	# vhooks = Expr(:block, [ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]...) # assigment block
+	header = [[ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]..., header...] # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
 	fn = gensym("ll")
-	body = expr(:function, expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	expr(:block, body) )
-	body = expr(:let, expr(:block, :(global $fn), header..., body))
+	body = Expr(:function, Expr(:call, fn, :($PARAM_SYM::Vector{Float64})),	Expr(:block, body) )
+	body = Expr(:let, Expr(:block, :(global $fn), header..., body))
 
 	debug ? body : (eval(body) ; (eval(fn), m.bsize, m.pars, m.init) )
 end

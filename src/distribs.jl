@@ -59,17 +59,17 @@ for d in dists  # d = dists[3]
 		args = [symbol("x$i") for i in [npars, 1:(npars-1)...]] # in correct order for libRmath
 
 		fex = quote
-			function ($fsym)($([expr(:(::), symbol("x$i"), :Real) for i in 1:npars]...))
+			function ($fsym)($([Expr(:(::), symbol("x$i"), :Real) for i in 1:npars]...))
 				local res = 0.
 
 		        res = ccall(dlsym(_jl_libRmath, $(string(d[2]))), Float64,
-		            	 	  $(expr(:tuple, [[:Float64 for i in 1:npars]..., :Int32 ]...)),
+		            	 	  $(Expr(:tuple, [[:Float64 for i in 1:npars]..., :Int32 ]...)),
 		            	 	  $(args...), 1	)
 
 				if res == -Inf
 					throw("give up eval")
 				elseif isnan(res)
-					local ar = $(expr(:tuple, [args..., 1]))
+					local ar = $(Expr(:tuple, [args..., 1]))
 					error(string("calling ", $(string(fsym)), ar, " returned an error"))
 				end
 				res 
@@ -95,10 +95,10 @@ for d in dists # d = dists[1]
 		npars = length(pars)
 
 		fex = quote
-			function ($fsym)($([expr(:(::), symbol("x$i"), pars[i]) for i in 1:npars]...)) 
+			function ($fsym)($([Expr(:(::), symbol("x$i"), pars[i]) for i in 1:npars]...)) 
 		        local res = 0.
 		        for i in 1:length($rv)
-		        	res += ($fsym)($([pars[i]==:Real ? symbol("x$i") : expr(:ref, symbol("x$i"), :i) for i in 1:npars]...))
+		        	res += ($fsym)($([pars[i]==:Real ? symbol("x$i") : Expr(:ref, symbol("x$i"), :i) for i in 1:npars]...))
 		        end
 		        res
 		    end
