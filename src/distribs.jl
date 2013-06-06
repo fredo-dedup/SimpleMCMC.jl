@@ -5,7 +5,7 @@
 ##########################################################################################
 
 ########## locally defined distributions #############
-# defined within the package, either because libRmath doesn't have it (Bernoulli)
+# defined within the library, either because libRmath doesn't have it (Bernoulli)
 #  or because there is a significant speed gain
 # TODO : a few other distributions should gain speed also, should be tested
 
@@ -109,8 +109,4 @@ for d in dists # d = dists[1]
 
 end
 
-
-############# dummy distrib for testing ############
-
-logpdfTestDiff(x) = sum(x) 
 

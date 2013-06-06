@@ -100,44 +100,6 @@ function parseModel!(m::MCMCModel, source::Expr)
 		Expr(ex.head, al...)
 	end
 
-	# function explore(ex::Exprdcolon)
-	# 	assert(typeof(ex.args[1]) == Symbol, "not a symbol on LHS of :: $(ex.args[1])")
-	# 	par = ex.args[1]  # param symbol defined here
-	# 	def = ex.args[2]
-
-	# 	if def == :real  #  single param declaration
-	# 		push!(m.pars, MCMCParams(par, Integer[], m.bsize+1)) 
-	# 		m.bsize += 1
-
-	# 	elseif isa(def, Expr) && def.head == :call
-	# 		e2 = def.args
-	# 		if e2[1] == :real 
-	# 			if length(e2) == 2 #  vector param declaration
-	# 				nb = Main.eval(e2[2])
-	# 				assert(isa(nb, Integer) && nb > 0, "invalid vector size $(e2[2]) = $(nb)")
-
-	# 				push!(m.pars, MCMCParams(par, Integer[nb], (m.bsize+1):(m.bsize+nb)))
-	# 				m.bsize += nb
-	# 			elseif length(e2) == 3 #  matrix param declaration
-	# 				nb1 = Main.eval(e2[2])
-	# 				assert(isa(nb1, Integer) && nb1 > 0, "invalid vector size $(e2[2]) = $nb1")
-	# 				nb2 = Main.eval(e2[3])
-	# 				assert(isa(nb2, Integer) && nb2 > 0, "invalid vector size $(e2[3]) = $nb2")
-
-	# 				push!(m.pars, MCMCParams(par, Integer[nb1, nb2], (m.bsize+1):(m.bsize+nb1*nb2))) 
-	# 				m.bsize += nb1*nb2
-	# 			else
-	# 				error("up to 2 dim for parameters in $ex")
-	# 			end
-	# 		else
-	# 			error("unknown parameter type $(e2[1])")
-	# 		end
-	# 	else
-	# 		error("unknown parameter expression $(ex)")
-	# 	end
-	# 	nothing
-	# end
-
 	function explore(ex::Exprcall)
 		ex.args[1] != :~ && return toExpr(ex)
 
@@ -416,9 +378,9 @@ function preCalculate(m::MCMCModel)
 	fn = eval(fn)
 
 	# now evaluate vhint (or throw error if model does not evaluate for given initial values)
-	res = fn(m.init)
-	assert(isa(res, Real) , "Model outcome should be a scalar, $(typeof(res)) found")
-	assert(res != -Inf, "Initial values out of model support, try other values")
+	res, dummy = fn(m.init)
+	!isa(res, Real) && error("Model outcome should be a scalar, $(typeof(res)) found")
+	res == -Inf && error("Initial values out of model support, try other values")
 end
 
 
@@ -521,7 +483,7 @@ function generateModelFunction(model::Expr; gradient=false, debug=false, init...
 	end
 
 	# identify external vars and add definitions x = Main.x
-	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+	ev = setdiff(m.accanc, union(m.varsset, Set(ACC_SYM), Set([p.sym for p in m.pars]...))) # vars that are external to the model
 	header = [[ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]..., header...] # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
