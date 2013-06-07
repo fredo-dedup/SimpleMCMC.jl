@@ -1,12 +1,13 @@
 ###### random effects example  #######
 
 using RDatasets
-sleep = data("lme4", "sleepstudy")
-
 using SimpleMCMC
 
-## step 1 : without random effects
 
+sleep = data("lme4", "sleepstudy")  # load data
+
+
+## step 1 : without random effects
 days = vector(sleep[:Days])
 reaction = vector(sleep[:Reaction])
 

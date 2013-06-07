@@ -20,7 +20,7 @@ end
 res = simpleRWM(model, steps=10000, burnin=1000, vars=zeros(nbeta))
 
 mean(res.loglik)
-[ sum(res.params[:vars],2) / res.samples beta0] # calculated vs original coefs
+[ mapslices(mean, res.params[:vars], 2) beta0] # samples mean vs original coefs
 
 # run Hamiltonian Monte-Carlo (1000 steps, 100 for burnin, 2 inner steps, 0.1 inner step size)
 res = simpleHMC(model, isteps=2, stepsize=0.1, vars=zeros(nbeta))

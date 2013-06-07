@@ -1,13 +1,13 @@
-- add other samplers (JAGS, Stan) to benchmark.jl file to have timing comparisons
+- compare timings with other samplers (JAGS, Stan)
 - add missing functions : hcat, vcat, comprehensions, map, mapreduce,  ? ...
 - add truncation and censoring
-- come back to Distributions.jl since it now uses immutable types ? => need to assess performance
 - optimize by priority : 
-	- pre-calculated calcs (transpose), #DONE
+	- pre-calculated statements (transpose), #DONE
 	- identical calcs fusion,  
 	- refold, 
 	- +0, *1, ^1, sum(real) : low impact ~5%
 	- optimize logpdf (over 70 % of comp time) ?  #DONE
-- make a demo file using stats data and DataFrames
 - optimize state struct in HMC and NUTS : avoid deep copy ?, use immutable ?
 - correct multiple ref bug
+- simplify generateModelFunction return values (using types ?) to make it more user-friendly
+- add conjugate gradient solver
