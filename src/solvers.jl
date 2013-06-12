@@ -204,7 +204,7 @@ function simpleNM(model::Expr; maxiter=100, precision=1e-3, init...)
 	
     res = SolverRun(toq(), it, ylo, it<maxiter, Dict(), Dict())
 	for par in pmap
-		res.params[par.sym] = p[ilo, par.map]
+		res.params[par.sym] = p[par.map, ilo]
 	end
 
 	res
