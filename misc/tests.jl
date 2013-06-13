@@ -237,3 +237,32 @@ function setInit!(m::MCMCModel, init)
     end
 
 end
+
+
+using SimpleMCMC
+
+
+A = rand(10,10)
+
+testf, dummy = generateModelFunction(:(y=A*x;y), x=zeros(10))
+testf, dummy = generateModelFunction(:(y=A*x;dot(y,y)), x=zeros(10), gradient=true)
+
+testf(ones(10))
+
+testf, dummy = generateModelFunction(:(y=A*x;dot(y,y)+myfunc(x)), x=zeros(10), gradient=true)
+
+myfunc(x::Vector) = sum(x)
+
+SimpleMCMC.myfunc = myfunc
+
+A = rand(10,10) # external variable
+model = :( y=A*x; -dot(y,y)) # model
+# generate function, with gradient, x being the model parameter (a vector of length 10)
+testf, n, map, init = generateModelFunction(model, gradient=true, x=zeros(10))
+testf(rand(10)) # value and gradient for a random value of x
+
+
+simpleAGD(model, x=zeros(10))
+
+
+
