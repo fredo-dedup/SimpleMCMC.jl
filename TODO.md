@@ -12,3 +12,4 @@
 - simplify generateModelFunction return values (using types ?) to make it more user-friendly
 - add conjugate gradient solver
 - switch Real -> Float64 for speed improvements ?
+- update deprecated function calls

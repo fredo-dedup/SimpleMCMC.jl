@@ -292,7 +292,7 @@ function backwardSweep!(m::MCMCModel)
 		end
 	end
 
-	avars = m.accanc & m.pardesc
+	avars = intersect(m.accanc, m.pardesc)
 	for ex2 in reverse(m.exprs)  # proceed backwards
 		assert(isa(ex2, Expr), "[backwardSweep] not an expression : $ex2")
 		explore(ex2)
@@ -367,7 +367,7 @@ function preCalculate(m::MCMCModel)
 			          Expr(:block, :(if e == "give up eval"; return(-Inf); else; throw(e); end)))
 
 	# identify external vars and add definitions x = Main.x
-	ev = m.accanc - m.varsset - Set(ACC_SYM, [p.sym for p in m.pars]...) # vars that are external to the model
+	ev = setdiff(m.accanc, union(m.varsset, Set(ACC_SYM, [p.sym for p in m.pars]...))) # vars that are external to the model
 	vhooks = Expr(:block, [ :( local $v = $(Expr(:., :Main, Expr(:quote, v))) ) for v in ev]...) # assigment block
 
 	# build and evaluate the let block containing the function and external vars hooks
@@ -418,7 +418,7 @@ function generateModelFunction(model::Expr; gradient=false, debug=false, init...
 		         :($ACC_SYM = 0.),        # initialize accumulator
 		         :($(dsym(m.finalacc)) = 1.0)] # initialize accumulator gradient accumulator  
 
-		avars = m.accanc & m.pardesc - Set(m.finalacc) # active vars without accumulator, treated above  
+		avars = setdiff(intersect(m.accanc, m.pardesc), Set(m.finalacc)) # active vars without accumulator, treated above  
 		for v in avars 
 			vh = vhint[v]
 			if isa(vh, Real)
@@ -431,7 +431,7 @@ function generateModelFunction(model::Expr; gradient=false, debug=false, init...
 
 		# build function statements, and move to let block constant statements for optimization
 		header = Expr[]  # let block statements
-		fvars = Set([e.args[1] for e in body]...) | Set(PARAM_SYM) # vars that are re-evaluated at each function call
+		fvars = union(Set([e.args[1] for e in body]...), Set(PARAM_SYM)) # vars that are re-evaluated at each function call
 		for ex in [m.exprs..., m.dexprs...]
 			if length(getSymbols(ex.args[2]) & fvars) > 0
 				push!(body, ex)

@@ -8,8 +8,8 @@ function recap(res)
     println("std : $(round(std(res.params[:x]),3))")
 end
 
-model = :(x::real ; x ~ Weibull(1, 1))  # mean 1.0, std 1.0
-recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 3.400 ess/s
+model = :(a=0 ;x ~ Weibull(1, 1))  # mean 1.0, std 1.0
+recap(SimpleMCMC.simpleRWM(model, steps=100000, burnin=1000, x=1.))  # 3.400 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 2, 0.8)) # 6.100 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.]))  # 400 ess/s
 
