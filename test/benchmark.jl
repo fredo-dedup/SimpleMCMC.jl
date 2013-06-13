@@ -42,22 +42,21 @@ Y = rand(n) .< ( 1 ./ (1. + exp(X * beta0)))
 
 # define model
 model = quote
-	vars::real(nbeta)
-
 	vars ~ Normal(0, 1.0) 
 	prob = 1 / (1. + exp(X * vars)) 
 	Y ~ Bernoulli(prob)
 end
 
-ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, true, false) 
-@timeit ll_func(init) 1000 binomial_function_with_gradient
+init = {:vars => ones(nbeta)}
 
-ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, false, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, gradient=true; init...) 
+@timeit ll_func(init) 1000 binomial_function_with_gradient
+ll_func, nparams, pmap, init = generateModelFunction(model; init...) 
 @timeit ll_func(init) 1000 binomial_function_without_gradient
 
-@timeit simpleRWM(model, 1000, 100) 1 binomial_RWM
-@timeit simpleHMC(model, 1000, 100, 2, 0.1) 1 binomial_HMC
-@timeit simpleNUTS(model, 1000, 100) 1 binomial_NUTS
+@timeit simpleRWM(model, steps=1000, burnin=100; init...) 1 binomial_RWM
+@timeit simpleHMC(model, steps=1000, burnin=100, isteps=2, stepsize=0.1; init...) 1 binomial_HMC
+@timeit simpleNUTS(model, steps=1000, burnin=100; init...) 1 binomial_NUTS
 
 
 ############  hierarchical reg test on 50 obs x 5 predictors  ###############
@@ -80,10 +79,6 @@ Y = [rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * oneL )))]
 
 ## define model
 model = quote
-    mu::real(1,L)
-    sigma::real(1,L)
-    beta::real(D,L)
-
     mu ~ Normal(0, 1)
     sigma ~ Weibull(2, 1)
 
@@ -94,16 +89,18 @@ model = quote
     Y ~ Bernoulli(prob)
 end
 
+init = {:mu=> ones(1,L),
+        :sigma=> ones(1,L),
+        :beta=> ones(D,L)}
 
-ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, true, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, gradient=true; init...) 
 @timeit ll_func(init) 1000 hierarchical_function_with_gradient
-
-ll_func, nparams, pmap, init = generateModelFunction(model, 1.0, false, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model; init...) 
 @timeit ll_func(init) 1000 hierarchical_function_without_gradient
 
-@timeit simpleRWM(model, 1000, 100) 1 hierarchical_RWM
-@timeit simpleHMC(model, 1000, 100, 10, 0.03) 1 hierarchical_HMC
-@timeit simpleNUTS(model, 10) 1 hierarchical_NUTS   # poor perf of NUTS here, less iterations
+@timeit simpleRWM(model, steps=1000, burnin=100;init...) 1 hierarchical_RWM
+@timeit simpleHMC(model, steps=1000, burnin=100, isteps=10, stepsize=0.03; init...) 1 hierarchical_HMC
+@timeit simpleNUTS(model, steps=10, burnin=5; init...) 1 hierarchical_NUTS   # poor perf of NUTS here, less iterations
 
 ############  Ornstein–Uhlenbeck process  ###############
 
@@ -134,16 +131,19 @@ model = quote
     resid ~ Normal(0, sigma)
 end
 
+init = {:mu=> 1.,
+        :tau=> 0.05,
+        :sigma=> 1.}
 
-ll_func, nparams, pmap, init = generateModelFunction(model, [1., 0.05, 1.], true, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model, gradient=true; init...) 
 @timeit ll_func(init) 1000 Ornstein_function_with_gradient
 
-ll_func, nparams, pmap, init = generateModelFunction(model, [1., 0.05, 1.], false, false) 
+ll_func, nparams, pmap, init = generateModelFunction(model; init...)
 @timeit ll_func(init) 1000 Ornstein_function_without_gradient
 
-@timeit simpleRWM(model, 1000, 100, init) 1 Ornstein_RWM
-@timeit simpleHMC(model, 1000, 100, init, 5, 0.002) 1 Ornstein_HMC
-@timeit simpleNUTS(model, 1000, 100, init) 1 Ornstein_NUTS
+@timeit simpleRWM(model, steps=1000, burnin=100; init...) 1 Ornstein_RWM
+@timeit simpleHMC(model, steps=1000, burnin=100, isteps=5, stepsize=0.002; init...) 1 Ornstein_HMC
+@timeit simpleNUTS(model, steps=1000, burnin=100; init...) 1 Ornstein_NUTS
 
 ############ close benchmark file ####################
 

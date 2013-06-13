@@ -225,7 +225,7 @@ function categorizeVars!(m::MCMCModel)
     m.pardesc = copy(parset)  # start with parameter symbols
     for ex2 in m.exprs 
         lhs = lhsSymbol(ex2)
-        rhs = SimpleMCMC.getSymbols(ex2.args[2])
+        rhs = getSymbols(ex2.args[2])
 
         !isempty(intersect(rhs, m.pardesc)) && union!(m.pardesc, lhs)
     end
@@ -233,7 +233,7 @@ function categorizeVars!(m::MCMCModel)
     m.accanc = Set{Symbol}(m.finalacc)
     for ex2 in reverse(m.exprs) # proceed backwards ex2 = reverse(m.exprs)[3]
         lhs = lhsSymbol(ex2)
-        rhs = setdiff(SimpleMCMC.getSymbols(ex2), lhs) # to pickup potential index on lhs as an ancestor
+        rhs = setdiff(getSymbols(ex2), lhs) # to pickup potential index on lhs as an ancestor
         # isa(ex2.args[1], Expr) && ex2.args[1].head == :ref && union!(rhs, getSymbols(ex2.args[1].args[2]))
 
         !isempty(intersect(lhs, m.accanc)) && union!(m.accanc, rhs)
@@ -359,7 +359,7 @@ function preCalculate(m::MCMCModel)
                  m.exprs...]
     
     vl = getSymbols(body)  # list of all vars (external, parameters, set by model, and accumulator)
-    body = vcat(body, [ :(vhint[$(Expr(:quote, v))] = $v) for v in vl ])
+    body = vcat(body, [ :(vhint[$(Expr(:quote, v))] = $v) for v in vl ], :(return $(m.finalacc)))
 
 	# enclose in a try block to catch zero likelihoods (-Inf log likelihood)
 	body = Expr(:try, Expr(:block, body...),
@@ -378,7 +378,7 @@ function preCalculate(m::MCMCModel)
 	fn = eval(fn)
 
 	# now evaluate vhint (or throw error if model does not evaluate for given initial values)
-	res, dummy = fn(m.init)
+	res = fn(m.init)
 	!isa(res, Real) && error("Model outcome should be a scalar, $(typeof(res)) found")
 	res == -Inf && error("Initial values out of model support, try other values")
 end
@@ -404,8 +404,6 @@ function generateModelFunction(model::Expr; gradient=false, debug=false, init...
 	unfold!(m)
 	uniqueVars!(m)
 	categorizeVars!(m)
-
-
 
 	## build function expression
 	if gradient  # case with gradient

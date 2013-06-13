@@ -23,10 +23,6 @@ Y = [rand(N) .< ( 1 ./ (1. + exp(- (beta0[ll,:] .* X) * oneL )))]
 
 ## define model
 model = quote
-	mu::real(1,L)
-	sigma::real(1,L)
-	beta::real(D,L)
-
 	mu ~ Normal(0, 1)
 	sigma ~ Weibull(2, 1)
 
@@ -37,19 +33,24 @@ model = quote
 	Y ~ Bernoulli(prob)
 end
 
+# intial values for parameters
+init = {:mu=> zeros(1,L),
+		:sigma=> ones(1,L),
+		:beta=> zeros(D,L)}
+
 # run random walk metropolis (10000 steps, 1000 for burnin)
-res = simpleRWM(model, 10000, 1000)
+res = simpleRWM(model, steps=10000, burnin=1000; init...)
 
-sum(res.params[:mu],3) / res.samples  # mu samples mean
-sum(res.params[:sigma],3) / res.samples # sigma samples mean
-sum(res.params[:beta],3) / res.samples # beta samples mean
+mapslices(mean, res.params[:beta], 3)
+mapslices(mean, res.params[:sigma], 3) ; sigma0
+mapslices(mean, res.params[:mu], 3) ; mu0
 
-# # run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 10 inner steps, 0.03 inner step size)
-res = simpleHMC(model, 10000, 1000, 10, 0.03)
+# run Hamiltonian Monte-Carlo (10000 steps, 1000 for burnin, 10 inner steps, 0.03 inner step size)
+res = simpleHMC(model, steps=10000, burnin=1000, isteps=5, stepsize=0.03; init...)
 
 # # run NUTS - HMC (1000 steps, 500 for burnin)
-res = simpleNUTS(model, 10)  # very slow  (bug ?)
+res = simpleNUTS(model, steps=10, burnin=1; init...)  # very slow  (bug ?)
 
-res.misc[:jmax]  
-res.misc[:epsilon]
+res.misc[:jmax]  # number of splittings at each step
+res.misc[:epsilon] # size of inner steps
 

@@ -22,7 +22,7 @@ res = simpleRWM(model, steps=10000, burnin=1000, beta=zeros(nbeta))
 
 res.acceptRate  # acceptance rate
 [ mapslices(mean, res.params[:beta], 2) beta0 ] # show samples mean and original values of beta side by side
-[mapslices(x->round(quantile(x, [0.025, 0.975]),2),res.params[:beta], 2)] # 95% confidence interval
+[ mapslices(x->round(quantile(x, [0.025, 0.975]),2),res.params[:beta], 2) ] # 95% confidence interval
 
 
 # run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.05 inner step size)

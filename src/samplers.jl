@@ -122,6 +122,7 @@ end
 ##########################################################################################
 
 function simpleHMC(model::Expr; steps=1000, burnin=100, isteps=2, stepsize=1e-3, init...)
+
 	local ll_func, nparams, pmap
 	local state0
 
@@ -275,7 +276,7 @@ function simpleNUTS(model::Expr; steps=1000, burnin=100, init...)
  		# inner loop
  		j, n = 0, 1
  		s = true
- 		while s && j < 12
+ 		while s && j < 8  # limit subdivision to 8
  			dir = (rand() > 0.5) * 2. - 1.
  			if dir == -1
  				state_minus, dummy, state1, n1, s1, alpha, nalpha = buildTree(state_minus, dir, j, ll_func)

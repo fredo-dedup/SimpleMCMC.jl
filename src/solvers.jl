@@ -116,6 +116,7 @@ end
 #
 ##########################################################################################
 # TODO : manage function support exit (using backtracking ?)
+# TODO : add scaling, as a parameter or estimated automatically
 
 function simpleNM(model::Expr; maxiter=100, precision=1e-3, init...)  
 	tic() # start timer
