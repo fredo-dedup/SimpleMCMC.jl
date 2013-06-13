@@ -2,6 +2,7 @@
 #    Benchmarking script for the log-likelihood function
 #     and the samplers
 ########################################################################
+# FIXME : this script now hangs julia
 
 using SimpleMCMC
 

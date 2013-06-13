@@ -1,12 +1,26 @@
-simple-mcmc
-===========
+SimpleMCMC.jl
+=============
 
-Basic mcmc samplers written in Julia
+Small framework for MCMC sampling and maximization on user-defined models
 
 Implements :
 - a DSL for specifying models
-- a set of sampling methods : Randow Walk Metropolis, Hamiltonian Monte-Carlo and NUTS Hamiltonian Monte-Carlo
-- an automatic derivation (reverse mode) to generate gradient code for Hamiltonian MC methods
+- an automatic derivation of models (using reverse accumulation), producing a stand-alone function
+- a set of sampling methods : Randow Walk Metropolis, Hamiltonian Monte-Carlo and NUTS Hamiltonian Monte-Carlo (the last two using automatic derivation)
+- a set of solving methods : Nelder-Mead and accelerated gradient descent (this last one using automatic derivation)
+
+## History
+
+Date         |   Changes
+-------------|----------
+june 14th	 | removed model parameters definition from model DSL, they are now within the methods arguments, thanks to keyword args
+			 | optimized generated function, for a x2-x3 speedup
+			 | added solving functions (for maximization to be consistent with log-likelihood functions) using Nelder-Mead and Accelerated Gradient Methods
+			 | changed derivation rules format (in diff.jl) for simplicity
+-------------|----------
+april 11th   | added major missing distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) 
+             | added some functions that can be derived (min, max, abs, transpose, +=, *=)
+             | simplified unit testing of derivation and distributions that will make future improvements much easier to test
 
 ______________________________________________
 __Update (april 11th) :__
