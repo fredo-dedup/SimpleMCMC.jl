@@ -1,28 +1,7 @@
 
-type test{H} <: Array
-end
-
-type ExprH{H} <: Array
-end
-ExprH(ex::Expr) = ExprH{ex.head}(ex)
-
-ExprH(:(sin(x)))
-
-
-svg(el::Function) = evstring("svg.$el")
-
-sin | cos
-
-svg | sin(4)
-
 
 macro d3(ex::Expr)
 	println(ex)
-end
-
-macro q_str(s)
-    s2 = copy(s)
-    for c in s2; c=='\'' ? 
 end
 
 macro test(s)
@@ -173,6 +152,12 @@ begin
     q | browse
 end
 
+
+
+dump(:(`ab"c <d >`))
+
+
+stmt = 'ab"c <d >'
 
 
 
