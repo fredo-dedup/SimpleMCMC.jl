@@ -10,6 +10,25 @@ Implements :
 - a set of solving methods : Nelder-Mead and accelerated gradient descent (this last one using automatic derivation)
 
 
+In a nutshell this allows quickly specifying a model and launch MCMC sampling and/or optimizing, letting the library take care of gradient code generation :
+
+```jl
+# Y is a vector of N outcomes
+# X is a N x M matrix of predictors
+
+# the model
+model = quote
+	resid = Y - X * coefs    # linear model to explain Y (vectorwith predictors X
+	resid ~ Normal(0, 1.0)   # Normal prior, zero mean and unit standard deviation on residuals
+end
+
+simpleAGD(model, coefs=zeros(nbeta))           # find MLE by accelerated gradient descent
+
+simpleRMW(model, steps=10000, coefs=zeros(M))  # Random Walk Metropolis
+
+```
+
+
 ## The model DSL
 It simply is a Julia Expression enclosed `:(...)` or `quote .. end` that fully follows the language syntax except for the `~` operator used here to associate a variable with a distribution (following in this regard the BUGS/JAGS/STAN syntax). The model expression may completely omit `~` operator in which case the last evaluated statement will be considered the variable to be sampled or optimized.
 
@@ -181,11 +200,10 @@ _______________________________________________________________
 
 Date         |   Changes
 -------------|----------
-june 14th	 | removed model parameters definition from model DSL, they are now within the methods arguments, thanks to keyword args
-			 | optimized generated function, for a x2-x3 speedup
-			 | added solving functions (for maximization to be consistent with log-likelihood functions) using Nelder-Mead and Accelerated Gradient Methods
-			 | changed derivation rules format (in diff.jl) allowing different formulas depending on parameter type
--------------|----------
+june 14th | removed model parameters definition from model DSL, they are now within the methods arguments, thanks to keyword args
+	  | optimized generated function, for a x2-x3 speedup
+	  | added solving functions (for maximization to be consistent with log-likelihood functions) using Nelder-Mead and Accelerated Gradient Methods
+	  | changed derivation rules format (in diff.jl) allowing different formulas depending on parameter type
 april 11th   | added major missing distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) 
              | added some functions that can be derived (min, max, abs, transpose, +=, *=)
              | simplified unit testing of derivation and distributions that will make future improvements much easier to test
