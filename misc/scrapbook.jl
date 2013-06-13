@@ -8,18 +8,10 @@ function recap(res)
     println("std : $(round(std(res.params[:x]),3))")
 end
 
-model = :(x::real ; x ~ Weibull(1, 1))  # mean 1.0, std 1.0
-recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 3.400 ess/s
+model = :(a=0 ;x ~ Weibull(1, 1))  # mean 1.0, std 1.0
+recap(SimpleMCMC.simpleRWM(model, steps=100000, burnin=1000, x=1.))  # 3.400 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 2, 0.8)) # 6.100 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.]))  # 400 ess/s
-
-res = SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.])
-mean(res.misc[:jmax])  # 3.7
-mean(res.misc[:epsilon])  # 0.08
-
-res.misc[:epsilon][1:20]
-res.misc[:epsilon][990:1010]
-
 
 model = :(x::real ; x ~ Weibull(3, 1)) # mean 0.89, std 0.325
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 6.900 ess/s
@@ -30,17 +22,6 @@ model = :(x::real ; x ~ Uniform(0, 2)) # mean 1.0, std 0.577
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [1.]))  # 6.800 ess/s
 recap(SimpleMCMC.simpleHMC(model, 100000, 1000, [1.], 1, 0.9)) # 12.000 ess/s
 recap(SimpleMCMC.simpleNUTS(model, 10000, 1000, [1.]))  # 400 ess/s, very slow due to gradient == 0 ?
-
-res = SimpleMCMC.simpleNUTS(model, 100000, 1000, [1.])
-mean(res.misc[:jmax])  # 3.7
-mean(res.misc[:epsilon])  # 3.7
-
-res.misc[:epsilon][1:20]
-res.misc[:epsilon][990:1010]
-res.misc[:jmax][1:20]
-res.misc[:jmax][990:1010]
-
-
 
 model = :(x::real ; x ~ Normal(0, 1)) # mean 0.0, std 1.0
 recap(SimpleMCMC.simpleRWM(model, 100000, 1000, [0.]))  # 16.000 ess/s  7500
@@ -66,12 +47,4 @@ recap(SimpleMCMC.simpleNUTS(model, 100000, 1000, [0.5]))  # 6.600 ess/s, correct
 
 
 
-#############################
-
-immutable test
-    a::Float64
-end
-
-
-
-
+	

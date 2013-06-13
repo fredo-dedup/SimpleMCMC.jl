@@ -1,102 +1,18 @@
-##########################################################################################
-#
-#    function 'derive' returning the expr of gradient
-#
-#
-##########################################################################################
-# TODO : add operators : hcat, vcat, ? : , map, mapreduce, if else 
-
-## macro to simplify derivation rules creation
-macro dfunc(func::Expr, dv::Symbol, diff::Expr) 
-	argsn = map(e-> isa(e, Symbol) ? e : e.args[1], func.args[2:end])
-	index = find(dv .== argsn)[1]
-
-	# change var names in signature and diff expr to x1, x2, x3, ..
-	smap = { argsn[i] => symbol("x$i") for i in 1:length(argsn) }
-	args2 = substSymbols(func.args[2:end], smap)
-
-	# diff function name
-	fn = symbol("d_$(func.args[1])_x$index")
-
-	fullf = Expr(:(=), Expr(:call, fn, args2...), Expr(:quote, substSymbols(diff, smap)) )
-	eval(fullf)
-end
-
-
-## common operators
-# TODO : check if ds can be removed for clarity
-
-@dfunc +(x::Real, y)     x     sum(ds)
-@dfunc +(x::Array, y)    x     +ds
-@dfunc +(x, y::Real)     y     sum(ds)
-@dfunc +(x, y::Array)    y     +ds
-
-@dfunc -x                x     -ds
-@dfunc -(x::Real, y)     x     sum(ds)
-@dfunc -(x::Array, y)    x     +ds
-@dfunc -(x, y::Real)     y     -sum(ds)
-@dfunc -(x, y::Array)    y     -ds
-
-@dfunc sum(x)       x     +ds
-@dfunc dot(x, y)    x     y .* ds
-@dfunc dot(x, y)    y     x .* ds
-
-@dfunc log(x)       x     ds ./ x
-@dfunc exp(x)       x     exp(x) .* ds
-
-@dfunc sin(x)       x     cos(x) .* ds
-@dfunc cos(x)       x     -sin(x) .* ds
-
-@dfunc abs(x)       x     sign(x) .* ds
-
-@dfunc *(x::Real, y)     x     sum(ds .* y)
-@dfunc *(x::Array, y)    x     ds * transpose(y)
-@dfunc *(x, y::Real)     y     sum(ds .* x)
-@dfunc *(x, y::Array)    y     transpose(x) * ds
-
-@dfunc .*(x::Real, y)    x     sum(ds .* y)
-@dfunc .*(x::Array, y)   x     ds .* y
-@dfunc .*(x, y::Real)    y     sum(ds .* x)
-@dfunc .*(x, y::Array)   y     ds .* x
-
-@dfunc ^(x::Real, y::Real)  x     y * x ^ (y-1) * ds # Both args reals
-@dfunc ^(x::Real, y::Real)  y     log(x) * x ^ y * ds # Both args reals
-
-@dfunc .^(x::Real, y)    x     sum(y .* x .^ (y-1) .* ds)
-@dfunc .^(x::Array, y)   x     y .* x .^ (y-1) .* ds
-@dfunc .^(x, y::Real)    y     sum(log(x) .* x .^ y .* ds)
-@dfunc .^(x, y::Array)   y     log(x) .* x .^ y .* ds
-
-@dfunc /(x::Real, y)          x     sum(ds ./ y)
-@dfunc /(x::Array, y::Real)   x     ds ./ y
-@dfunc /(x, y::Real)          y     sum(- x ./ (y .* y) .* ds)
-@dfunc /(x::Real, y::Array)   y     (- x ./ (y .* y)) .* ds
-
-@dfunc ./(x::Real, y)        x     sum(ds ./ y)
-@dfunc ./(x::Array, y)       x     ds ./ y
-@dfunc ./(x, y::Real)        y     sum(- x ./ (y .* y) .* ds)
-@dfunc ./(x, y::Array)       y     (- x ./ (y .* y)) .* ds
-
-@dfunc max(x::Real, y)    x     sum((x .> y) .* ds)
-@dfunc max(x::Array, y)   x     (x .> y) .* ds
-@dfunc max(x, y::Real)    y     sum((x .< y) .* ds)
-@dfunc max(x, y::Array)   y     (x .< y) .* ds
-
-@dfunc min(x::Real, y)    x     sum((x .< y) .* ds)
-@dfunc min(x::Array, y)   x     (x .< y) .* ds
-@dfunc min(x, y::Real)    y     sum((x .> y) .* ds)
-@dfunc min(x, y::Array)   y     (x .> y) .* ds
-
-@dfunc transpose(x::Real)   x   +ds
-@dfunc transpose(x::Array)  x   transpose(ds)
-
 ## Normal distribution
+
+
+d( log(1/sqrt(2sigma^2*pi)*exp(-(mu-x)^2/(2sigma^2))))/dx   dmu dsigma
+
 @dfunc logpdfNormal(mu::Real, sigma, x)    mu     sum((x - mu) ./ (sigma .* sigma)) * ds
 @dfunc logpdfNormal(mu::Array, sigma, x)   mu     (x - mu) ./ (sigma .* sigma) * ds
 @dfunc logpdfNormal(mu, sigma::Real, x)    sigma  sum(((x - mu).*(x - mu) ./ (sigma.*sigma) - 1.) ./ sigma) * ds
 @dfunc logpdfNormal(mu, sigma::Array, x)   sigma  ((x - mu).*(x - mu) ./ (sigma.*sigma) - 1.) ./ sigma * ds
 @dfunc logpdfNormal(mu, sigma, x::Real)    x      sum((mu - x) ./ (sigma .* sigma)) * ds
 @dfunc logpdfNormal(mu, sigma, x::Array)   x      (mu - x) ./ (sigma .* sigma) * ds
+
+d( log(  1/2 * [ 1+ erf((x-mu)/(sqrt(2)*sigma))]) )/dx
+
+@dfunc logcdfNormal(mu, sigma, x::Array)   x      exp( logpdfNormal(mu, sigma, x) ) ./ logcdfNormal(mu, sigma, x) * ds
 
 ## Uniform distribution
 @dfunc logpdfUniform(a::Real, b, x)      a   sum((a .<= x .<= b) ./ (b - a)) * ds
@@ -174,47 +90,5 @@ end
 @dfunc logpdfPoisson(lambda::Array, x)  lambda   (x ./ lambda - 1) * ds
 
 
-#  fake distribution to test gradient code
-@dfunc logpdfTestDiff(x)    x      +ds
 
 
-## returns sample value for the given Symobl or Expr (for refs)
-hint(v::Symbol) = vhint[v]
-hint(v) = v  # should be a value if not a Symbol or an Expression
-function hint(v::Expr)
-	assert(v.head == :ref, "[hint] unexpected variable $v")
-	v.args[1] = :( vhint[$(Expr(:quote, v.args[1]))] )
-	eval(v)
-end
-
-
-## Returns gradient expression of opex
-function derive(opex::Expr, index::Integer, dsym::Union(Expr,Symbol))  # opex=:(z^x);index=2;dsym=:y
-	vs = opex.args[1+index]
-	ds = symbol("$DERIV_PREFIX$dsym")
-	args = opex.args[2:end]
-	
-	val = map(hint, args)  # get sample values of args to find correct gradient statement
-
-	fn = symbol("d_$(opex.args[1])_x$index")
-
-	try
-		dexp = eval(Expr(:call, fn, val...))
-
-		smap = { symbol("x$i") => args[i] for i in 1:length(args)}
-		smap[:ds] = ds
-		dexp = substSymbols(dexp, smap)
-
-		# unfold for easier optimization later
-	    m = MCMCModel()
-	    m.source = :(dummy = $dexp )
-		unfold!(m)  
-		m.exprs[end] = m.exprs[end].args[2] # remove last assignment
-
-		m.exprs[end] = :( $(symbol("$DERIV_PREFIX$vs")) = $(symbol("$DERIV_PREFIX$vs")) + $(m.exprs[end]) )
-		return m.exprs
-	catch e 
-		error("[derive] Doesn't know how to derive $opex by argument $vs")
-	end
-
-end

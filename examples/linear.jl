@@ -1,6 +1,6 @@
 ######### linear regression 1000 obs x 10 var  ###########
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
 # simulate dataset
 srand(1)
@@ -12,23 +12,23 @@ Y = X * beta0 + randn((n,))
 
 # define model
 model = quote
-	vars::real(nbeta)
-
-	vars ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
-	resid = Y - X * vars
+	beta ~ Normal(0, 1.0)  # Normal prior, std 1.0 for predictors
+	resid = Y - X * beta
 	resid ~ Normal(0, 1.0)  
 end
 
 # run random walk metropolis (10000 steps, 5000 for burnin)
-res = SimpleMCMC.simpleRWM(model, 10000)
+res = simpleRWM(model, steps=10000, burnin=1000, beta=zeros(nbeta))
 
 res.acceptRate  # acceptance rate
-[ sum(res.params[:vars],2)./res.samples beta0 ] # show calculated and original coefs side by side
+[ mapslices(mean, res.params[:beta], 2) beta0 ] # show samples mean and original values of beta side by side
+[ mapslices(x->round(quantile(x, [0.025, 0.975]),2),res.params[:beta], 2) ] # 95% confidence interval
+
 
 # run Hamiltonian Monte-Carlo (1000 steps, 500 for burnin, 2 inner steps, 0.05 inner step size)
-res = SimpleMCMC.simpleHMC(model, 1000, 2, 0.05)
+res = simpleHMC(model, steps=1000, isteps=2, stepsize=0.05, beta=zeros(nbeta))
 
 # run NUTS - HMC (1000 steps, 500 for burnin)
-res = SimpleMCMC.simpleNUTS(model, 1000)
+res = simpleNUTS(model, steps=1000, beta=zeros(nbeta))
 
 

@@ -2,8 +2,11 @@
 #    testing script for gradients
 #########################################################################
 
-include("../src/SimpleMCMC.jl")
+using SimpleMCMC
 
+#########################################################################
+#       testing functions and definitions 
+#########################################################################
 
 ## variables of different dimension for testing
 v0ref = 2.
@@ -18,28 +21,16 @@ good_enough(x,y) = isfinite(x) ? (abs(x-y) / max(ERROR_THRESHOLD, abs(x))) < ERR
 good_enough(t::Tuple) = good_enough(t[1], t[2])
 
 ##  gradient check by comparing numerical gradient to automated gradient
-function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(-x) ; x0 = 1.0
+function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) #  ex= :(log(x)) ; x0 = [1.0, 2,3]
 	println("testing gradient of $ex at x = $x0")
 
-	nx = length(x0)  # nx=3
-	dx = length(size(x0))
-	if dx == 0
-		pexpr = :( x::real )
-	elseif dx == 1  # vector
-		pexpr = :( x::real($nx) )
-	elseif dx == 2  # matrix
-		pexpr = :( x::real($(size(x0,1)), $(size(x0, 2))) )
-	else
-		error("x0 should have up to 2 dimensions")
-	end
+	nx = length(x0)  
+	model = Expr(:block, :(sum($ex)) )  # sum is there to ensure that model produces a scalar
+	myf, dummy = generateModelFunction(model, gradient=true, x=x0)
 
-	model = expr(:block, pexpr, :(y = $ex), :(y ~ TestDiff()))
-
-	myf, np = SimpleMCMC.buildFunctionWithGradient(model)
 
 	__beta = vec([x0])
 	l0, grad0 = myf(__beta)  
-
 	gradn = zeros(nx)
 	for i in 1:nx 
 		__beta = vec([x0])
@@ -51,9 +42,6 @@ function deriv1(ex::Expr, x0::Union(Float64, Vector{Float64}, Matrix{Float64})) 
 	assert(all(good_enough, zip([grad0], [gradn])),
 		"Gradient false for $ex at x=$x0, expected $(round(gradn,5)), got $(round(grad0,5))")
 end
-
-
-
 
 
 
@@ -185,22 +173,22 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 @mtest testpattern3 dot(x,y) 
 
 ## continuous distributions
-@mtest testpattern1 SimpleMCMC.logpdfNormal(mu,sigma,x)  sigma->sigma<=0?0.1:sigma
-@mtest testpattern1 SimpleMCMC.logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
-@mtest testpattern1 SimpleMCMC.logpdfUniform(a,b,x)      a->a-10 b->b+10
-@mtest testpattern1 SimpleMCMC.logpdfBeta(a,b,x)         x->clamp(x, 0.01, 0.99) a->a<=0?0.1:a b->b<=0?0.1:b
-@mtest testpattern1 SimpleMCMC.logpdfTDist(df,x)         df->df<=0?0.1:df
-@mtest testpattern1 SimpleMCMC.logpdfExponential(sc,x)   sc->sc<=0?0.1:sc  x->x<=0?0.1:x
-@mtest testpattern1 SimpleMCMC.logpdfGamma(sh,sc,x)      sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
-@mtest testpattern1 SimpleMCMC.logpdfCauchy(mu,sc,x)      sc->sc<=0?0.1:sc
-@mtest testpattern1 SimpleMCMC.logpdflogNormal(lmu,lsc,x)  lsc->lsc<=0?0.1:lsc x->x<=0?0.1:x
+@mtest testpattern1 logpdfNormal(mu,sigma,x)  sigma->sigma<=0?0.1:sigma
+@mtest testpattern1 logpdfUniform(a,b,x)      a->a-10 b->b+10
+@mtest testpattern1 logpdfBeta(a,b,x)         x->clamp(x, 0.01, 0.99) a->a<=0?0.1:a b->b<=0?0.1:b
+@mtest testpattern1 logpdfTDist(df,x)         df->df<=0?0.1:df
+@mtest testpattern1 logpdfExponential(sc,x)   sc->sc<=0?0.1:sc  x->x<=0?0.1:x
+@mtest testpattern1 logpdfGamma(sh,sc,x)      sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
+@mtest testpattern1 logpdfCauchy(mu,sc,x)      sc->sc<=0?0.1:sc
+@mtest testpattern1 logpdflogNormal(lmu,lsc,x)  lsc->lsc<=0?0.1:lsc x->x<=0?0.1:x
+@mtest testpattern1 logpdfWeibull(sh,sc,x)    sh->sh<=0?0.1:sh  sc->sc<=0?0.1:sc  x->x<=0?0.1:x
 
 ## discrete distributions
-@mtest testpattern1 SimpleMCMC.logpdfBernoulli(prob,x)   exceptLast prob->clamp(prob, 0.01, 0.99) x->(x>0)+0. 
+@mtest testpattern1 logpdfBernoulli(prob,x)   exceptLast prob->clamp(prob, 0.01, 0.99) x->(x>0)+0. 
 # note for Bernoulli : having prob=1 or 0 is ok but will make the numeric differentiator fail => not tested
 
-@mtest testpattern1 SimpleMCMC.logpdfPoisson(l,x)   exceptLast l->l<=0?0.1:l x->iround(abs(x)) 
-@mtest testpattern1 SimpleMCMC.logpdfBinomial(n, prob,x)   exceptFirstAndLast prob->clamp(prob, 0.01, 0.99) x->iround(abs(x)) n->iround(abs(n)+10)
+@mtest testpattern1 logpdfPoisson(l,x)   exceptLast l->l<=0?0.1:l x->iround(abs(x)) 
+@mtest testpattern1 logpdfBinomial(n, prob,x)   exceptFirstAndLast prob->clamp(prob, 0.01, 0.99) x->iround(abs(x)) n->iround(abs(n)+10)
 
 
 #########################################################################
@@ -209,10 +197,10 @@ deriv1(:(v2ref[:,1:2]*x), [-3. 2 0 ; 1 1 -2])
 
 # Parsing should throw an error when model parameter is used as an integer variable
 try
-	deriv1(:(SimpleMCMC.logpdfBernoulli(1, x)), [0.])
-	deriv1(:(SimpleMCMC.logpdfPoisson(1, x)), [0.])
-	deriv1(:(SimpleMCMC.logpdfBinomial(3, 0.5, x)), [0.])
-	deriv1(:(SimpleMCMC.logpdfBinomial(x, 0.5, 2)), [0.])
+	deriv1(:(logpdfBernoulli(1, x)), [0.])
+	deriv1(:(logpdfPoisson(1, x)), [0.])
+	deriv1(:(logpdfBinomial(3, 0.5, x)), [0.])
+	deriv1(:(logpdfBinomial(x, 0.5, 2)), [0.])
 	throw("no error !!")
 catch e
 	assert(e != "no error !!", 
