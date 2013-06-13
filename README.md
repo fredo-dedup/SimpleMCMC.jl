@@ -5,28 +5,13 @@ Small framework for MCMC sampling and maximization on user-defined models
 
 Implements :
 - a DSL for specifying models
-- an automatic derivation of models (using reverse accumulation), producing a stand-alone function
+- an automatic derivation of models (using reverse accumulation) which can be called independently to produce a stand-alone function
 - a set of sampling methods : Randow Walk Metropolis, Hamiltonian Monte-Carlo and NUTS Hamiltonian Monte-Carlo (the last two using automatic derivation)
 - a set of solving methods : Nelder-Mead and accelerated gradient descent (this last one using automatic derivation)
 
-_______________________________________________________________
-## History
-
-Date         |   Changes
--------------|----------
-june 14th	 | removed model parameters definition from model DSL, they are now within the methods arguments, thanks to keyword args
-			 | optimized generated function, for a x2-x3 speedup
-			 | added solving functions (for maximization to be consistent with log-likelihood functions) using Nelder-Mead and Accelerated Gradient Methods
-			 | changed derivation rules format (in diff.jl) allowing different formulas depending on parameter type
--------------|----------
-april 11th   | added major missing distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) 
-             | added some functions that can be derived (min, max, abs, transpose, +=, *=)
-             | simplified unit testing of derivation and distributions that will make future improvements much easier to test
-
-_______________________________________________________________
 
 ## The model DSL
-It simply is a Julia Expression enclosed `:(...)` or `quote .. end` that fully follows the language syntax except for the `~` operator that associates a variable with a distribution (following in this regard the BUGS/JAGS/STAN syntax). The model expression may completely omit `~` operator in which case the last evaluated statement will be considered the variable to be sampled or optimized.
+It simply is a Julia Expression enclosed `:(...)` or `quote .. end` that fully follows the language syntax except for the `~` operator used here to associate a variable with a distribution (following in this regard the BUGS/JAGS/STAN syntax). The model expression may completely omit `~` operator in which case the last evaluated statement will be considered the variable to be sampled or optimized.
 
 Valid model expressions : 
 
@@ -38,21 +23,21 @@ model = quote
 	x ~ Normal(a, 2)
 end
 
-model2 = :(y = A * x ; dot(y,y))
+model2 = :(y = A * z ; dot(y,y))
 ```
 
 ### Variables
 Model variables fall in three categories :
-1. Model parameters : these are identified in the method calls (function generation, sampling, solving) as all the keyword arguments that do not have a special meaning for the method (such as steps / burnin / precision, etc). _Note that the use of keyword arguments to pass model parameters names prohibits parameter names such as 'steps' / 'burnin', etc that are preempted._
-2. Variables defined within the model (such as `a`, `x`, `y` in the examples above)
-3. All the remaining variables that are considered by the model parsing as external variables. These will be considered as constants regarding model evaluation and differentiation. The model function produced will look for them in the Main module (they have to be globals to be visible from the point of view of the SimpleMCMC module).
+- Model parameters : these are inferred by the method calls (function generation, sampling, solving) to be the keyword arguments remaining after taking away those that have a specific meaning to the method ( steps / burnin / precision, etc). _Note that the use of keyword arguments to pass model parameters names prohibits parameter names in the model such as 'steps' / 'burnin', etc._
+- Variables defined within the model : such as `a`, `x`, `y` in the examples above
+- And the variables that are neither model parameters or defined variables : these are considered as external variables and will be regarded as constants for model evaluation and differentiation. The model function produced will look for them in the Main module (they have to be globals to be visible from the point of view of the SimpleMCMC module).
 
-_Note that the generated function will create many temporary variables with two of them having a fixed denomination (`__beta` for the argument of the model function, and `__acc` for the log-likelihood accumulator). If you use those names in your model definition the result might be impredictable._
+_The generated function will create many temporary variables with two of them having a fixed denomination (`__beta` for the argument of the model function, and `__acc` for the log-likelihood accumulator). If you use those names in your model definition the results might become unpredictable._
 
 ### Distributions
-Statements with the operator `~` (`x ~ Normal(a, 2)` in the examples above) declare how to build the model likelihood, here this says that x should have a Normal distributions (SimpleMCMC.jl uses the same naming conventions as the "Distribution.jl" package).
+Statements with the operator `~` (`x ~ Normal(a, 2)` in the examples above) declare how to build the model likelihood, here this says that x should have a Normal distributions.
 
-Currently, the available distributions are (all follow the "Distributions" package conventions for naming and arguments) : 
+Currently, the available distributions are (all follow the "Distributions.jl" package conventions for naming and arguments) : 
 
 Distribution  |   Notes
 --------------|-----------
@@ -73,6 +58,7 @@ Distribution  |   Notes
 Besides the usual Julia meaning of `~` that becomes unavailable within a model definition (since it now links a variable with a distribution), only a small subset of functions can be used if the gradient calculations steps are generated (even if no gradient is required there are still limitations). Notably, if statements, for/while loops, comprehensions, are not currently possible (you will have to use matrix/vector algebra to replace for loops, or max/min/abs functions to replace if-then-else ).
 
 Supported functions are : 
+
 operator       |   arguments
 -------------|----------
 `+`  			| with operands scalar, vector or matrix (of compatible size)
@@ -97,7 +83,7 @@ operator       |   arguments
 `+=`, `-=` and `*=` | -
 
 ## The model function
-Calling the solving and MCMC sampling tools will generate the model function transparently, so you do not need to go through this step. You can however call the `generateModelFunction` method to get the model function with or without gradient code if you need to.
+Calling the solving and MCMC sampling tools will generate the model function transparently, so you do not need to go through this step. If needed, you can however call the `generateModelFunction` method to get the model function with or without gradient code.
 
 `mf, nparams, map, init = generateModelFunction(model, gradient=false, debug=false, x=., y=., etc.)`
 
@@ -108,28 +94,31 @@ or alternatively :
 - `model` is the model expression, 
 - `gradient` specifies if the gradient code is to be calculated or not
 - `debug` = true, dumps the function code without generating anything, useful for debugging
-- other arguments are assumed to be model parameters that can be passed separately or in a Dict
+- other arguments are assumed to be model parameters. They can be passed separately or in a Dict
 
 Returned values are :
-- `mf` : the model function returning a single scalar (`gradient=false`), or a scalar + vector for the gradient (`gradient=true`). Note that the model parameters values should provided to `mf` in a single vector.
+- `mf` : the model function returning a single scalar (`gradient=false`), or a scalar + vector for the gradient (`gradient=true`). This function requires the model parameters values to be passed in a single vector.
 - `nparams` : the length of the parameter vector
 - `map` : a mapping structure specifying how to go from the parameter vector to the parameters as indicated in the function call
 - `init` : inital values in vector form
 
 example : 
 
-`jl
+```jl
 A = rand(10,10) # external variable
 model = :( y=A*x; dot(y,y)) # model
 
-# generate function, with gradient, x being the model parameter (a vector of length 10)
+# generate function, with gradient, x being the model parameter (a vector of length 10) with initial values = zero
 testf, n, map, init = generateModelFunction(model, gradient=true, x=zeros(10))
 testf(rand(10)) # value and gradient for a random value of x
-`
+
+# or just check out the generated code
+generateModelFunction(model, gradient=true, debug=true, x=zeros(10))
+```
 
 ## Solving tools
-Two solving algorithms are implemented. Note that they do not play well will functions of limited support (such as models with Uniform / Gamma distributions) especially if the optimum is close to the support frontier.
-Additionally, the accelerated gradient descent supposedly needs a convex functions (concave in fact since we are maximizing the model) and may not work properly if you do not have this property around the inital values and the optimum.
+Two solving algorithms are implemented. Note that they do not play well with functions close to the limit of their support (such as models with distributions Uniform, Gamma, ..) especially if the optimum is close to the support frontier.
+Additionally, the accelerated gradient descent supposedly needs a convex function (concave in fact since we are maximizing the model) and may not behave properly if you do not have this property around the initial values and the optimum.
 
 `simpleNM(model, maxiter=100, precision=1e-3; init...)` for Nelder-Mead optimization
 and
@@ -142,11 +131,8 @@ Three sampling methods are provided by the SimpleMCMC package : plain Random Wal
 - `simpleHMC(model, steps=1000, burnin=100, isteps=2, stepsize=1e-3; init...)` for Hamiltonian Monte-Carlo (isteps is the number of inner steps, stepssize their scale).
 - `simpleNUTS(model, steps=1000, burnin=100; init...)` for NUTS type Hamiltonian Monte-Carlo.
 
-Each function provides basic results such as the running time, the min and max of effective sample size accross parameters and a few other stats.
+Each function prints out basic info at the end of the run such as the running time, the min and max of effective sample size accross parameters and a few other stats. The details are contained in the returned structure.
 
-
-
-A last note : the automated derivation will not look into refs, if somehow a ref depends directly or indirectly on a model parameter (for example  `x = Y[ round(sigma)]` ) , the gradient will be false.
 
 ## Examples
 
@@ -168,23 +154,41 @@ model = quote
 	resid ~ Normal(0, 1.0)  # Normal prior, zero mean and unit standard deviation for residuals
 end
 
-# run random walk metropolis (10000 steps, 5000 for burnin)
-res = SimpleMCMC.simpleRWM(model, steps=10000, vars=zeros(nbeta))
-# or a Hamiltonian Monte-Carlo (with 5 inner steps of size 0.1)
-res = SimpleMCMC.simpleHMC(model, 1000, 100, 5, 1e-1, vars=zeros(nbeta))
-# or a NUTS flavoured HMC
-res = SimpleMCMC.simpleNUTS(model, 1000, vars=zeros(nbeta))
+
+res = simpleRWM(model, steps=10000, vars=zeros(nbeta)) # random walk metropolis (10000 steps, 100 burnin)
+
+res = simpleHMC(model, 1000, 100, 5, 1e-1, vars=zeros(nbeta)) # HMC (with 5 inner steps of size 0.1)
+
+res = simpleNUTS(model, 1000, vars=zeros(nbeta)) # or a NUTS flavoured HMC
 ```
 
+_______________________________________________________________
 ## Issues
 - May be some bugs left in the NUTS implementation as it sometimes seem to go into a huge amount of doubling steps and converges toward tiny epsilons
 - The automated derivation will not look into refs, if somehow a ref depends directly or indirectly on a model parameter (for example  `x = Y[ round(sigma)]` ), the gradient will be false.
 - Setting a subset of values in a vector or array may cause a false gradient
 
+_______________________________________________________________
 ## (Possible) future work
-- Compare timings with other sampling tools (JAGS, STAN)
 - Enable other functions for automated derivation : vcat, hcat, one, zero, comprehensions ...  ?
 - Add for loops and ifs ?
 - Add truncation, censoring
+- Compare timings with other sampling tools (JAGS, STAN)
 - _ideas ?_
+
+_______________________________________________________________
+## History
+
+Date         |   Changes
+-------------|----------
+june 14th	 | removed model parameters definition from model DSL, they are now within the methods arguments, thanks to keyword args
+			 | optimized generated function, for a x2-x3 speedup
+			 | added solving functions (for maximization to be consistent with log-likelihood functions) using Nelder-Mead and Accelerated Gradient Methods
+			 | changed derivation rules format (in diff.jl) allowing different formulas depending on parameter type
+-------------|----------
+april 11th   | added major missing distributions (Gamma, TDist, Exponential, Cauchy, logNormal, Poisson, Binomial and Beta) 
+             | added some functions that can be derived (min, max, abs, transpose, +=, *=)
+             | simplified unit testing of derivation and distributions that will make future improvements much easier to test
+
+_______________________________________________________________
 
