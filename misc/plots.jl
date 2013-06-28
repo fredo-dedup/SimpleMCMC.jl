@@ -64,6 +64,17 @@ println(io, "
         .on(\"mouseover\", function(){d3.select(this).style(\"fill\", \"aliceblue\");})
         .on(\"mouseout\", function(){d3.select(this).style(\"fill\", \"white\");}); ")
 
+mc = `sampleSVG.append("circle")
+        .style("stroke", "red")
+        .style("fill", "blue")
+        .attr("r", 60)
+        .attr("cx", 50)
+        .attr("cy", 50)
+        .on("mouseover", function(){d3.select(this).style("fill", "aliceblue");})
+        .on("mouseout", function(){d3.select(this).style("fill", "white");}); `
+
+
+
 
 println(io, "</script> </body> </html> ")
 close(io)    
@@ -160,4 +171,17 @@ dump(:(`ab"c <d >`))
 stmt = 'ab"c <d >'
 
 
+max(4,5)
+
+apply(max, (4,5))
+
+(4,5) | max
+
+test(;a=3,b=12) = max(a,b)
+
+test()
+test(a=40)
+
+
+(a=4) | test
 
