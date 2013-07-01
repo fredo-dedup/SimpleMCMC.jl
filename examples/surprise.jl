@@ -1,7 +1,7 @@
 ######### Model using abs() and max()  ###########
 
 using SimpleMCMC
-using DataFrames
+using Vega
 
 # define model
 model = quote
@@ -13,23 +13,12 @@ end
 
 # run random walk metropolis 
 res = simpleRWM(model, steps=100000, burnin=0, x=0., y=0.)
-df = DataFrame(x=res.params[:x], y=res.params[:y])
-df["method"] = "RMW"
+plot(x=res.params[:x][1:10:end], y=res.params[:y][1:10:end], kind=:scatter)
 
 # run Hamiltonian Monte-Carlo
-res = simpleHMC(model, steps=100000, burnin=0, isteps=2, stepsize=0.5, x=0.5, y=0.5)
-df2 = DataFrame(x=res.params[:x], y=res.params[:y])
-df2["method"] = "HMC"
+res = simpleHMC(model, steps=100000, burnin=0, isteps=2, stepsize=0.13, x=0., y=0.)
+plot(x=res.params[:x][1:10:end], y=res.params[:y][1:10:end], kind=:scatter)
 
 # run NUTS - HMC
-res = simpleNUTS(model, steps=100000, burnin=0, x=0.5, y=0.5)   # extremely slow
-df3 = DataFrame(x=res.params[:x], y=res.params[:y])
-df3["method"] = "NUTS"
-
-# save for plotting
-df4 = [df, df2, df3][1:10:end, :]  # thinning by 10
-write_table("c:/temp/surprise.txt", df4, '\t', '"')
-
-# this may not work smoothly in your case..
-using DThree
-scatterChart(df4) | browse
+res = simpleNUTS(model, steps=100000, burnin=0, x=0., y=0.) 
+plot(x=res.params[:x][1:10:end], y=res.params[:y][1:10:end], kind=:scatter)

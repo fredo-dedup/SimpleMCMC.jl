@@ -22,7 +22,7 @@ model = quote
 	resid ~ Normal(0, 1.0)   # Normal prior, zero mean and unit standard deviation on residuals
 end
 
-simpleAGD(model, coefs=zeros(nbeta))           # find MLE by accelerated gradient descent
+simpleAGD(model, coefs=zeros(M))           # find MLE by accelerated gradient descent
 
 simpleRMW(model, steps=10000, coefs=zeros(M))  # Random Walk Metropolis
 
@@ -30,7 +30,7 @@ simpleRMW(model, steps=10000, coefs=zeros(M))  # Random Walk Metropolis
 
 
 ## The model DSL
-It simply is a Julia Expression enclosed `:(...)` or `quote .. end` that fully follows the language syntax except for the `~` operator used here to associate a variable with a distribution (following in this regard the BUGS/JAGS/STAN syntax). The model expression may completely omit `~` operator in which case the last evaluated statement will be considered the variable to be sampled or optimized.
+It simply is a Julia Expression enclosed `:(...)` or `quote .. end` that follows the language syntax except for the `~` operator used here to associate a variable with a distribution (same as the BUGS/JAGS/STAN syntax). The model expression may completely omit `~` operator in which case the last evaluated statement will be considered the variable to be sampled or optimized.
 
 Valid model expressions : 
 
@@ -49,14 +49,14 @@ model2 = :(y = A * z ; dot(y,y))
 Model variables fall in three categories :
 - Model parameters : these are inferred by the method calls (function generation, sampling, solving) to be the keyword arguments remaining after taking away those that have a specific meaning to the method ( steps / burnin / precision, etc). _Note that the use of keyword arguments to pass model parameters names prohibits parameter names in the model such as 'steps' / 'burnin', etc._
 - Variables defined within the model : such as `a`, `x`, `y` in the examples above
-- And the variables that are neither model parameters or defined variables : these are considered as external variables and will be regarded as constants for model evaluation and differentiation. The model function produced will look for them in the Main module (they have to be globals to be visible from the point of view of the SimpleMCMC module).
+- And the variables that are neither model parameters or defined variables : these are considered as external variables and will be regarded as constants for model evaluation and differentiation. The model function produced will look for them in the Main module (they have to be top level variables to be visible from the point of view of the SimpleMCMC module).
 
 _The generated function will create many temporary variables with two of them having a fixed denomination (`__beta` for the argument of the model function, and `__acc` for the log-likelihood accumulator). If you use those names in your model definition the results might become unpredictable._
 
 ### Distributions
-Statements with the operator `~` (`x ~ Normal(a, 2)` in the examples above) declare how to build the model likelihood, here this says that x should have a Normal distributions.
+Statements with the operator `~` declare how to build the model likelihood, e.g. `x ~ Normal(a, 2)` says that x should have a Normal distribution.
 
-Currently, the available distributions are (all follow the "Distributions.jl" package conventions for naming and arguments) : 
+Currently, the available distributions are : 
 
 Distribution  |   Notes
 --------------|-----------
@@ -72,6 +72,8 @@ Distribution  |   Notes
 `Bernoulli(prob)`		|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
 `Binomial(size, prob)`		|  0 <= prob <= 1, sampled var is an integer and cannot depend on model parameters
 `Poisson(lambda)`		|  sampled var is an integer and cannot depend on model parameter
+
+All follow the "Distributions" package conventions for naming and arguments.
 
 ### Allowed functions in a model expression
 Besides the usual Julia meaning of `~` that becomes unavailable within a model definition (since it now links a variable with a distribution), only a small subset of functions can be used if the gradient calculations steps are generated (even if no gradient is required there are still limitations). Notably, if statements, for/while loops, comprehensions, are not currently possible (you will have to use matrix/vector algebra to replace for loops, or max/min/abs functions to replace if-then-else ).
@@ -102,7 +104,7 @@ operator       |   arguments
 `+=`, `-=` and `*=` | -
 
 ## The model function
-Calling the solving and MCMC sampling tools will generate the model function transparently, so you do not need to go through this step. If needed, you can however call the `generateModelFunction` method to get the model function with or without gradient code.
+Calling the solving and MCMC sampling tools will generate the model function transparently, so you normally do not need to go through this step. However, if you do need to get the model function directly, with or without gradient code, you can call the `generateModelFunction` method directly :
 
 `mf, nparams, map, init = generateModelFunction(model, gradient=false, debug=false, x=., y=., etc.)`
 
@@ -113,7 +115,7 @@ or alternatively :
 - `model` is the model expression, 
 - `gradient` specifies if the gradient code is to be calculated or not
 - `debug` = true, dumps the function code without generating anything, useful for debugging
-- other arguments are assumed to be model parameters. They can be passed separately or in a Dict
+- other arguments are assumed to be model parameters. They can be passed separately or in a Dict (`init`)
 
 Returned values are :
 - `mf` : the model function returning a single scalar (`gradient=false`), or a scalar + vector for the gradient (`gradient=true`). This function requires the model parameters values to be passed in a single vector.
@@ -186,6 +188,8 @@ _______________________________________________________________
 - May be some bugs left in the NUTS implementation as it sometimes seem to go into a huge amount of doubling steps and converges toward tiny epsilons
 - The automated derivation will not look into refs, if somehow a ref depends directly or indirectly on a model parameter (for example  `x = Y[ round(sigma)]` ), the gradient will be false.
 - Setting a subset of values in a vector or array may cause a false gradient
+- simpleNM could handle better support exit
+- Code of simpleAGD needs cleaning up
 
 _______________________________________________________________
 ## (Possible) future work
